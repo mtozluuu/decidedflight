@@ -23,7 +23,11 @@ from sqlalchemy.orm import Session
 
 from decideflight.database import SessionLocal
 from decideflight.models.weather_report import WeatherReport
-from decideflight.services.decision_engine import make_decision
+from decideflight.services.ai_decision_engine import (
+    AIDecisionResult,
+    make_ai_decision,
+    reconstruct_ai_decision,
+)
 from decideflight.services.geocoding import geocode_city
 from decideflight.services.report_generator import generate_pdf
 from decideflight.services.weather_fetcher import (
@@ -96,6 +100,12 @@ class WeatherReportResponse(BaseModel):
     decision_detail: str
     parameters: list[ParameterResultSchema]
     created_at: datetime
+    # AI-specific fields (None when falling back to rule-based engine)
+    confidence: int | None = None
+    summary: str | None = None
+    detailed_analysis: str | None = None
+    risk_factors: list[str] | None = None
+    recommendations: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -147,10 +157,18 @@ async def create_weather_report(
             detail=str(exc),
         ) from exc
 
-    # 3. Evaluate decision
-    decision_result = make_decision(sources)
+    # 3. Evaluate decision (AI engine with rule-based fallback)
+    decision_result = await make_ai_decision(sources)
 
     # 4. Persist report
+    ai_analysis_json: str | None = None
+    if isinstance(decision_result, AIDecisionResult):
+        import json as _json
+
+        ai_extra = decision_result.ai_extra_as_dict()
+        ai_extra["decision"] = decision_result.decision
+        ai_analysis_json = _json.dumps(ai_extra, ensure_ascii=False)
+
     sources_json = json.dumps(
         [{k: v for k, v in asdict(s).items() if k != "raw"} for s in sources]
     )
@@ -161,11 +179,25 @@ async def create_weather_report(
         decision=decision_result.decision,
         decision_detail=decision_result.detail,
         sources_data=sources_json,
+        ai_analysis_data=ai_analysis_json,
         created_at=datetime.now(timezone.utc),
     )
     db.add(report)
     db.commit()
     db.refresh(report)
+
+    # Build AI fields for response
+    ai_confidence: int | None = None
+    ai_summary: str | None = None
+    ai_detailed: str | None = None
+    ai_risks: list[str] | None = None
+    ai_recs: list[str] | None = None
+    if isinstance(decision_result, AIDecisionResult):
+        ai_confidence = decision_result.confidence
+        ai_summary = decision_result.summary
+        ai_detailed = decision_result.detailed_analysis
+        ai_risks = decision_result.risk_factors
+        ai_recs = decision_result.recommendations
 
     return WeatherReportResponse(
         report_id=report.id,
@@ -196,6 +228,11 @@ async def create_weather_report(
             for p in decision_result.parameters
         ],
         created_at=report.created_at,
+        confidence=ai_confidence,
+        summary=ai_summary,
+        detailed_analysis=ai_detailed,
+        risk_factors=ai_risks,
+        recommendations=ai_recs,
     )
 
 
@@ -237,7 +274,7 @@ async def download_report_pdf(
         for s in raw_sources
     ]
 
-    decision_result = make_decision(sources)
+    decision_result = reconstruct_ai_decision(sources, report.ai_analysis_data)
 
     pdf_bytes = generate_pdf(
         location=report.location,

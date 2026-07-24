@@ -37,6 +37,22 @@ from decideflight.services.decision_engine import (
 )
 from decideflight.services.weather_fetcher import WeatherSourceData
 
+# Imported lazily to avoid circular-import risk at module load time;
+# used only for isinstance checks inside generate_pdf.
+_AIDecisionResult = None
+
+
+def _get_ai_result_class():  # type: ignore[return]
+    global _AIDecisionResult
+    if _AIDecisionResult is None:
+        from decideflight.services.ai_decision_engine import (
+            AIDecisionResult,
+        )
+
+        _AIDecisionResult = AIDecisionResult
+    return _AIDecisionResult
+
+
 # ---------------------------------------------------------------------------
 # Colour helpers
 # ---------------------------------------------------------------------------
@@ -404,6 +420,45 @@ def generate_pdf(
 
     limits_table.setStyle(TableStyle(lts))
     story.append(limits_table)
+
+    # ------------------------------------------------------------------
+    # AI Analysis section (only when GPT-4o result is available)
+    # ------------------------------------------------------------------
+    AIDecisionResult = _get_ai_result_class()
+    if isinstance(decision_result, AIDecisionResult):
+        ai = decision_result
+
+        story.append(Paragraph("AI Analizi (GPT-4o)", _SECTION_STYLE))
+
+        # Confidence score
+        conf_style = ParagraphStyle(
+            "ConfScore",
+            parent=_BODY_STYLE,
+            fontSize=10,
+            textColor=colors.HexColor("#2c3e50"),
+        )
+        story.append(Paragraph(f"<b>Güven Skoru:</b> %{ai.confidence}", conf_style))
+        story.append(Spacer(1, 0.2 * cm))
+
+        # Detailed analysis
+        if ai.detailed_analysis:
+            story.append(Paragraph("<b>Detaylı Analiz:</b>", _BODY_STYLE))
+            story.append(Paragraph(ai.detailed_analysis, _BODY_STYLE))
+            story.append(Spacer(1, 0.2 * cm))
+
+        # Risk factors
+        if ai.risk_factors:
+            story.append(Paragraph("<b>Risk Faktörleri:</b>", _BODY_STYLE))
+            for rf in ai.risk_factors:
+                story.append(Paragraph(f"• {rf}", _BODY_STYLE))
+            story.append(Spacer(1, 0.2 * cm))
+
+        # Recommendations
+        if ai.recommendations:
+            story.append(Paragraph("<b>Öneriler:</b>", _BODY_STYLE))
+            for rec in ai.recommendations:
+                story.append(Paragraph(f"• {rec}", _BODY_STYLE))
+            story.append(Spacer(1, 0.2 * cm))
 
     # ------------------------------------------------------------------
     # Build
