@@ -602,8 +602,13 @@
         renderResult(data);
       } catch (err) {
         hide('loadingSection');
+        console.error('Rapor oluşturma hatası:', err);
+        const detail =
+          err && typeof err.message === 'string' && err.message
+            ? ` Ayrıntı: ${err.message}`
+            : '';
         document.getElementById('errorMsg').textContent =
-          'İstek işlenemedi. Lütfen konumu veya koordinatı kontrol edip tekrar deneyin.';
+          `İstek işlenemedi. Lütfen konumu veya koordinatı kontrol edip tekrar deneyin.${detail}`;
         show('errorSection');
       } finally {
         document.getElementById('reportBtn').disabled = false;

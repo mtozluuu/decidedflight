@@ -52,7 +52,7 @@ def root():
 
 
 @app.get("/favicon.ico", include_in_schema=False)
-def get_favicon():
+def get_favicon() -> FileResponse:
     """Serve favicon for browsers requesting /favicon.ico directly."""
     if not os.path.isfile(_ICON_PATH):
         raise HTTPException(status_code=404, detail="Icon file not found")
@@ -61,7 +61,7 @@ def get_favicon():
 
 @app.get("/apple-touch-icon.png", include_in_schema=False)
 @app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
-def get_apple_touch_icon():
+def get_apple_touch_icon() -> FileResponse:
     """Serve Apple touch icon fallback requests."""
     if not os.path.isfile(_ICON_PATH):
         raise HTTPException(status_code=404, detail="Icon file not found")
