@@ -5,7 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from decideflight.api.health import router as health_router
+from decideflight.api.weather import router as weather_router
 from decideflight.database import init_db
+
+# Ensure all models are imported so SQLAlchemy registers their tables
+import decideflight.models  # noqa: F401
 
 
 @asynccontextmanager
@@ -22,6 +26,7 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(weather_router)
 
 
 @app.get("/")
