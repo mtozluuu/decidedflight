@@ -604,8 +604,8 @@
         hide('loadingSection');
         console.error('Rapor oluşturma hatası:', err);
         const detail =
-          err && typeof err.message === 'string' && err.message
-            ? ` Ayrıntı: ${err.message}`
+          err && typeof err.message === 'string' && err.message.trim()
+            ? ` Ayrıntı: ${err.message.trim()}`
             : '';
         document.getElementById('errorMsg').textContent =
           `İstek işlenemedi. Lütfen konumu veya koordinatı kontrol edip tekrar deneyin.${detail}`;
