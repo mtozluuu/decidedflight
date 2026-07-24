@@ -29,13 +29,24 @@ from sqlalchemy.orm import Session
 from decideflight.database import SessionLocal
 from decideflight.models.feedback import Feedback
 from decideflight.models.weather_report import WeatherReport
+from decideflight.services.ai_decision_engine import (
+    AIDecisionResult,
+    build_feedback_context,
+    make_ai_decision,
+)
 from decideflight.services.decision_engine import make_decision
 from decideflight.services.geocoding import geocode_city
 from decideflight.services.report_generator import generate_pdf
+from decideflight.services.trend_analyzer import fetch_wind_trend
 from decideflight.services.weather_fetcher import (
     WeatherSourceData,
     fetch_all_sources,
 )
+
+try:
+    from openai import AsyncOpenAI as _AsyncOpenAI  # type: ignore[import]
+except ImportError:  # pragma: no cover
+    _AsyncOpenAI = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +114,13 @@ class WeatherReportResponse(BaseModel):
     confidence_score: int
     parameters: list[ParameterResultSchema]
     created_at: datetime
+    # AI-enhanced fields (present when OPENAI_API_KEY is set)
+    confidence: int | None = None
+    summary: str | None = None
+    detailed_analysis: str | None = None
+    risk_factors: list[str] | None = None
+    recommendations: list[str] | None = None
+    wind_trend: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -154,10 +172,40 @@ async def create_weather_report(
             detail=str(exc),
         ) from exc
 
-    # 3. Evaluate decision
-    decision_result = make_decision(sources)
+    # 3. Fetch wind trend (non-blocking — failure just omits trend)
+    wind_trend_obj = await fetch_wind_trend(lat, lon)
+    wind_trend_str = wind_trend_obj.description if wind_trend_obj else ""
 
-    # 4. Persist report
+    # 4. Get feedback context from DB (Feature 4)
+    feedback_ctx = build_feedback_context(db)
+
+    # 5. Evaluate decision (AI if key present, rule-based fallback)
+    decision_result = await make_ai_decision(
+        sources=sources,
+        location=location_name,
+        lat=lat,
+        lon=lon,
+        feedback_context=feedback_ctx,
+        wind_trend=wind_trend_str,
+    )
+
+    # 6. Persist report
+    ai_data: str | None = None
+    if isinstance(decision_result, AIDecisionResult) and (
+        decision_result.summary or decision_result.detailed_analysis
+    ):
+        ai_data = json.dumps(
+            {
+                "confidence": decision_result.confidence,
+                "summary": decision_result.summary,
+                "detailed_analysis": decision_result.detailed_analysis,
+                "risk_factors": decision_result.risk_factors,
+                "recommendations": decision_result.recommendations,
+                "parameter_assessments": decision_result.parameter_assessments,
+            },
+            ensure_ascii=False,
+        )
+
     sources_json = json.dumps(
         [{k: v for k, v in asdict(s).items() if k != "raw"} for s in sources]
     )
@@ -168,11 +216,25 @@ async def create_weather_report(
         decision=decision_result.decision,
         decision_detail=decision_result.detail,
         sources_data=sources_json,
+        ai_analysis_data=ai_data,
         created_at=datetime.now(timezone.utc),
     )
     db.add(report)
     db.commit()
     db.refresh(report)
+
+    # AI fields for response
+    ai_confidence: int | None = None
+    ai_summary: str | None = None
+    ai_detailed: str | None = None
+    ai_risks: list[str] | None = None
+    ai_recs: list[str] | None = None
+    if isinstance(decision_result, AIDecisionResult) and decision_result.summary:
+        ai_confidence = decision_result.confidence
+        ai_summary = decision_result.summary
+        ai_detailed = decision_result.detailed_analysis
+        ai_risks = decision_result.risk_factors
+        ai_recs = decision_result.recommendations
 
     return WeatherReportResponse(
         report_id=report.id,
@@ -204,6 +266,12 @@ async def create_weather_report(
             for p in decision_result.parameters
         ],
         created_at=report.created_at,
+        confidence=ai_confidence,
+        summary=ai_summary,
+        detailed_analysis=ai_detailed,
+        risk_factors=ai_risks,
+        recommendations=ai_recs,
+        wind_trend=wind_trend_str if wind_trend_str else None,
     )
 
 
@@ -758,3 +826,127 @@ async def analyse_weather_grid(
         grid_size=body.grid_size,
         altitude_ft=body.altitude_ft,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/weather/grid/summary
+# ---------------------------------------------------------------------------
+
+
+class GridSummaryRequest(BaseModel):
+    points: list[GridPointWeather]
+    summary: GridSummary
+    altitude_ft: float = 1000.0
+    location_hint: str = ""
+
+
+class GridSummaryResponse(BaseModel):
+    ai_summary: str
+
+
+@router.post(
+    "/grid/summary",
+    response_model=GridSummaryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get an AI-generated Turkish summary for a grid analysis",
+)
+async def grid_summary(body: GridSummaryRequest) -> GridSummaryResponse:
+    """Call GPT-4o (or fall back to rule-based text) with aggregate grid stats
+    and return a single Turkish paragraph summarising the region for drone flight.
+    """
+    import os
+
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    summary_text = await _build_grid_ai_summary(body, api_key)
+    return GridSummaryResponse(ai_summary=summary_text)
+
+
+async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str:
+    """Return AI or rule-based Turkish grid summary."""
+    points = body.points
+    summary = body.summary
+
+    if not points:
+        return "Bölge için yeterli veri bulunamadı."
+
+    # Compute aggregate stats
+    avg_wind = sum(p.wind_speed_knots for p in points) / len(points)
+    avg_temp = sum(p.temperature_c for p in points) / len(points)
+    avg_humidity = sum(p.humidity_pct for p in points) / len(points)
+    avg_vis = sum(p.visibility_km for p in points) / len(points)
+    pct_uygun = round(summary.UYGUN / summary.total * 100) if summary.total else 0
+
+    if not api_key or _AsyncOpenAI is None:
+        return _rule_based_grid_summary(
+            summary, avg_wind, avg_temp, avg_humidity, avg_vis, pct_uygun
+        )
+
+    try:
+        client = _AsyncOpenAI(api_key=api_key)
+        pct_r = round(summary.RISKLI / summary.total * 100) if summary.total else 0
+        pct_d = round(summary.UYGUN_DEGIL / summary.total * 100) if summary.total else 0
+        prompt = (
+            "Bir drone uçuş güvenlik uzmanı olarak aşağıdaki bölge analizini "
+            "değerlendir.\n\n"
+            f"Konum ipucu: {body.location_hint or 'Belirtilmedi'}\n"
+            f"İrtifa: {body.altitude_ft:.0f} ft\n"
+            f"Toplam nokta: {summary.total}\n"
+            f"  UYGUN: {summary.UYGUN} (%{pct_uygun})\n"
+            f"  RISKLI: {summary.RISKLI} (%{pct_r})\n"
+            f"  UYGUN_DEGIL: {summary.UYGUN_DEGIL} (%{pct_d})\n"
+            f"Ortalama rüzgar: {avg_wind:.1f} knot\n"
+            f"Ortalama sıcaklık: {avg_temp:.1f} °C\n"
+            f"Ortalama nem: {avg_humidity:.0f}%\n"
+            f"Ortalama görüş: {avg_vis:.1f} km\n\n"
+            "Bu bölge için drone uçuşunu Türkçe 2-3 cümleyle değerlendir. "
+            "Sadece düz metin döndür, JSON değil."
+        )
+        response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=300,
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    except Exception as exc:
+        logger.warning("GPT grid summary failed, using rule-based: %s", exc)
+        return _rule_based_grid_summary(
+            summary, avg_wind, avg_temp, avg_humidity, avg_vis, pct_uygun
+        )
+
+
+def _rule_based_grid_summary(
+    summary: GridSummary,
+    avg_wind: float,
+    avg_temp: float,
+    avg_humidity: float,
+    avg_vis: float,
+    pct_uygun: int,
+) -> str:
+    """Generate a Turkish rule-based grid summary paragraph."""
+    total = summary.total
+    if pct_uygun >= 70:
+        overall = (
+            "Bölgenin büyük çoğunluğu drone uçuşu için UYGUN koşullar göstermektedir."
+        )
+    elif pct_uygun >= 40:
+        overall = (
+            "Bölgede karma koşullar gözlemlenmektedir;"
+            " uçuş planlaması dikkat gerektirir."
+        )
+    else:
+        overall = (
+            "Bölgenin önemli bir kısmı drone uçuşu için UYGUN DEĞİL koşullar "
+            "içermektedir."
+        )
+
+    stats = (
+        f"{total} noktanın {summary.UYGUN}'i uygun (%{pct_uygun}), "
+        f"{summary.RISKLI}'si riskli, {summary.UYGUN_DEGIL}'i uygun değil "
+        f"olarak değerlendirildi. "
+        f"Ortalama rüzgar {avg_wind:.1f} knot, görüş {avg_vis:.1f} km, "
+        f"nem %{avg_humidity:.0f}, sıcaklık {avg_temp:.1f} °C."
+    )
+
+    return f"{overall} {stats}"

@@ -347,6 +347,7 @@
               </div>
             </div>
             <p id="confidenceLabel" class="mono text-xs text-cyan-100/60 mt-2"></p>
+            <p id="windTrendBadge" class="hidden mono text-[11px] mt-1 text-cyan-300/80"></p>
           </div>
 
           <div>
@@ -354,6 +355,18 @@
             <p id="decisionDetail" class="text-sm leading-relaxed text-cyan-100/85 whitespace-pre-line"></p>
             <div id="confidenceBar" class="hidden"></div>
           </div>
+        </div>
+      </div>
+
+      <!-- AI Summary box (shown when GPT-4o is active) -->
+      <div id="aiSummaryCard" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
+        <h3 class="mono text-sm mb-3 text-violet-300">✦ YAPAY ZEKA ANALİZİ</h3>
+        <p id="aiSummaryText" class="text-sm text-violet-100/90 mb-3"></p>
+        <div id="aiDetailWrap" class="hidden">
+          <details class="text-sm text-cyan-100/75">
+            <summary class="mono text-[11px] text-cyan-300/70 cursor-pointer hover:text-cyan-300">◈ Detaylı Analizi Göster</summary>
+            <p id="aiDetailText" class="mt-2 leading-relaxed whitespace-pre-line"></p>
+          </details>
         </div>
       </div>
 
@@ -367,7 +380,6 @@
           <ul id="recList" class="space-y-2 text-sm"></ul>
         </div>
       </div>
-
       <div class="hud-card p-6">
         <h3 class="mono text-sm text-cyan-300 mb-4">◈ UÇUŞ PARAMETRELERİ</h3>
         <div class="overflow-x-auto">
@@ -576,6 +588,15 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- AI Grid Summary -->
+      <div id="gridAiLoadingSection" class="hidden hud-card p-4 text-center">
+        <p class="mono text-xs text-violet-300/80 animate-pulse">✦ Yapay zeka bölge analizi hazırlanıyor...</p>
+      </div>
+      <div id="gridAiSummarySection" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
+        <h3 class="mono text-sm mb-3 text-violet-300">✦ YAPAY ZEKA BÖLGE DEĞERLENDİRMESİ</h3>
+        <p id="gridAiSummaryText" class="text-sm text-violet-100/90 leading-relaxed"></p>
       </div>
     </div><!-- /panel-region -->
 
@@ -1018,27 +1039,65 @@
 
       document.getElementById('decisionDetail').textContent = data.decision_detail;
 
-      const conf = Number.isFinite(data.confidence_score)
-        ? data.confidence_score
-        : computeConfidence(data.parameters);
+      // Use AI confidence when available, otherwise fall back to score
+      const conf = (data.confidence != null)
+        ? data.confidence
+        : (Number.isFinite(data.confidence_score) ? data.confidence_score : computeConfidence(data.parameters));
       document.getElementById('confidenceLabel').textContent = `UÇUŞ GÜVEN ENDEKSİ: ${conf}%`;
       animateConfidence(conf);
 
-      const badParams = data.parameters.filter(p => p.decision !== 'UYGUN');
-      if (badParams.length > 0) {
-        const riskList = document.getElementById('riskList');
-        riskList.innerHTML = badParams.map(p => `
+      // Wind trend badge
+      const windTrendBadge = document.getElementById('windTrendBadge');
+      if (data.wind_trend) {
+        windTrendBadge.textContent = '📈 ' + data.wind_trend;
+        windTrendBadge.classList.remove('hidden');
+      } else {
+        windTrendBadge.classList.add('hidden');
+      }
+
+      // AI summary card
+      if (data.summary) {
+        document.getElementById('aiSummaryText').textContent = data.summary;
+        const detailWrap = document.getElementById('aiDetailWrap');
+        if (data.detailed_analysis) {
+          document.getElementById('aiDetailText').textContent = data.detailed_analysis;
+          detailWrap.classList.remove('hidden');
+        } else {
+          detailWrap.classList.add('hidden');
+        }
+        document.getElementById('aiSummaryCard').classList.remove('hidden');
+      } else {
+        document.getElementById('aiSummaryCard').classList.add('hidden');
+      }
+
+      // Risk card: prefer AI risk_factors if available
+      const riskList = document.getElementById('riskList');
+      if (data.risk_factors && data.risk_factors.length > 0) {
+        riskList.innerHTML = data.risk_factors.map(r => `
           <li class="flex items-start gap-2 text-cyan-100/85">
-            <span class="mono ${p.decision === 'RISKLI' ? 'text-amber-300' : 'text-red-300'}">→</span>
-            <span><strong>${p.name}:</strong> ${p.value}</span>
+            <span class="mono text-amber-300">→</span>
+            <span>${r}</span>
           </li>`).join('');
         show('riskCard');
       } else {
-        hide('riskCard');
+        const badParams = data.parameters.filter(p => p.decision !== 'UYGUN');
+        if (badParams.length > 0) {
+          riskList.innerHTML = badParams.map(p => `
+            <li class="flex items-start gap-2 text-cyan-100/85">
+              <span class="mono ${p.decision === 'RISKLI' ? 'text-amber-300' : 'text-red-300'}">→</span>
+              <span><strong>${p.name}:</strong> ${p.value}</span>
+            </li>`).join('');
+          show('riskCard');
+        } else {
+          hide('riskCard');
+        }
       }
 
-      const recs = buildRecommendations(data.decision, data.parameters);
+      // Recommendations: prefer AI recommendations if available
       const recList = document.getElementById('recList');
+      const recs = (data.recommendations && data.recommendations.length > 0)
+        ? data.recommendations
+        : buildRecommendations(data.decision, data.parameters);
       recList.innerHTML = recs.map(r => `
         <li class="flex items-start gap-2 text-cyan-100/85">
           <span class="mono text-cyan-300">→</span>
@@ -1538,6 +1597,8 @@
       document.getElementById('gridLoadingSection').classList.remove('hidden');
       document.getElementById('gridErrorSection').classList.add('hidden');
       document.getElementById('gridSummarySection').classList.add('hidden');
+      document.getElementById('gridAiSummarySection').classList.add('hidden');
+      document.getElementById('gridAiLoadingSection').classList.add('hidden');
       document.getElementById('filterBar').classList.add('hidden');
 
       try {
@@ -1641,6 +1702,9 @@
         document.getElementById('filterBar').classList.remove('hidden');
         document.getElementById('regionStatus').textContent = s.total + ' nokta analiz edildi.';
 
+        // Fetch AI grid summary asynchronously
+        fetchGridAiSummary(data, bounds, altitudeFt);
+
       } catch (err) {
         document.getElementById('gridErrorMsg').textContent = err.message;
         document.getElementById('gridErrorSection').classList.remove('hidden');
@@ -1655,6 +1719,39 @@
 
     function panToWorstPoint() {
       if (worstPt && map) map.setView([worstPt.lat, worstPt.lon], Math.max(map.getZoom(), 10));
+    }
+
+    async function fetchGridAiSummary(gridData, bounds, altitudeFt) {
+      const aiLoading = document.getElementById('gridAiLoadingSection');
+      const aiSection = document.getElementById('gridAiSummarySection');
+      const aiText = document.getElementById('gridAiSummaryText');
+
+      aiSection.classList.add('hidden');
+      aiLoading.classList.remove('hidden');
+
+      const center = bounds.getCenter();
+      const locationHint = center.lat.toFixed(2) + ', ' + center.lng.toFixed(2);
+
+      try {
+        const res = await fetch('/api/v1/weather/grid/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            points: gridData.points,
+            summary: gridData.summary,
+            altitude_ft: altitudeFt,
+            location_hint: locationHint,
+          }),
+        });
+        if (!res.ok) throw new Error('AI özeti alınamadı');
+        const result = await res.json();
+        aiText.textContent = result.ai_summary || '';
+        aiSection.classList.remove('hidden');
+      } catch (err) {
+        console.warn('Grid AI summary error:', err);
+      } finally {
+        aiLoading.classList.add('hidden');
+      }
     }
 
   </script>
