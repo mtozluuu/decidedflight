@@ -40,3 +40,4 @@ def test_icon_endpoints(client: TestClient, icon_path: str) -> None:
 
     assert response.status_code == 200
     assert "image/svg+xml" in response.headers["content-type"]
+    assert "<svg" in response.text
