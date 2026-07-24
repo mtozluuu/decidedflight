@@ -42,7 +42,7 @@ from decideflight.services.weather_fetcher import WeatherSourceData
 _AIDecisionResult = None
 
 
-def _get_ai_result_class():  # type: ignore[return]
+def _get_ai_result_class() -> "type":
     global _AIDecisionResult
     if _AIDecisionResult is None:
         from decideflight.services.ai_decision_engine import (

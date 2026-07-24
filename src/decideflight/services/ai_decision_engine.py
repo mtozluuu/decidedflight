@@ -25,44 +25,72 @@ from decideflight.services.weather_fetcher import WeatherSourceData
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# System prompt (Turkish)
+# System prompt (Turkish) – built from settings to keep limits consistent
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """Sen bir drone uçuş güvenlik uzmanısın. Verilen meteoroloji verilerini analiz ederek \
+_SYSTEM_PROMPT_TEMPLATE = """\
+Sen bir drone uçuş güvenlik uzmanısın. Verilen meteoroloji verilerini analiz ederek \
 drone uçuşunun güvenli olup olmadığına karar veriyorsun.
 
 Drone limitleri:
-- Rüzgar: <15 knot UYGUN, 15-25 knot RISKLI, >25 knot UYGUN_DEGIL
-- Görüş mesafesi: >5km UYGUN, 1-5km RISKLI, <1km UYGUN_DEGIL
+- Rüzgar: <{wind_ok} knot UYGUN, {wind_ok}-{wind_risky} knot RISKLI, \
+>{wind_risky} knot UYGUN_DEGIL
+- Görüş mesafesi: >{vis_ok}km UYGUN, {vis_risky}-{vis_ok}km RISKLI, \
+<{vis_risky}km UYGUN_DEGIL
 - Yağış: Yok UYGUN, Hafif RISKLI, Orta/Şiddetli UYGUN_DEGIL
-- Sıcaklık: 0-40°C UYGUN, -5~0 veya 40-45°C RISKLI, dışı UYGUN_DEGIL
-- Nem: <%85 UYGUN, %85-95 RISKLI, >%95 UYGUN_DEGIL
-- Bulut tabanı: >500ft UYGUN, 200-500ft RISKLI, <200ft UYGUN_DEGIL
-- Bulut tavanı: >1000ft UYGUN, 500-1000ft RISKLI, <500ft UYGUN_DEGIL
+- Sıcaklık: {temp_ok_min}-{temp_ok_max}°C UYGUN, \
+{temp_risky_min}~{temp_ok_min} veya {temp_ok_max}-{temp_risky_max}°C RISKLI, \
+dışı UYGUN_DEGIL
+- Nem: <%{hum_ok} UYGUN, %{hum_ok}-{hum_risky} RISKLI, >%{hum_risky} UYGUN_DEGIL
+- Bulut tabanı: >{cb_ok}ft UYGUN, {cb_risky}-{cb_ok}ft RISKLI, \
+<{cb_risky}ft UYGUN_DEGIL
+- Bulut tavanı: >{cc_ok}ft UYGUN, {cc_risky}-{cc_ok}ft RISKLI, \
+<{cc_risky}ft UYGUN_DEGIL
 
 Birden fazla kaynaktan veri geliyorsa hepsini değerlendir, çelişen verilere dikkat et.
 Sadece limitlerle değil, genel hava durumu tablosuna bakarak bütüncül bir karar ver.
 Türkçe yanıt ver.
 
 ÖNEMLİ: Yanıtını YALNIZCA aşağıdaki JSON formatında ver, başka hiçbir metin ekleme:
-{
+{{
   "decision": "UYGUN" veya "RISKLI" veya "UYGUN_DEGIL",
   "confidence": 0-100 arası tam sayı,
   "summary": "Kısa Türkçe özet (1-2 cümle)",
   "detailed_analysis": "Detaylı Türkçe analiz paragrafı",
   "risk_factors": ["risk1", "risk2"],
   "recommendations": ["öneri1", "öneri2"],
-  "parameter_assessments": {
-    "wind": {"value": 12.3, "unit": "knot", "status": "UYGUN", "comment": "..."},
-    "visibility": {"value": 10.0, "unit": "km", "status": "UYGUN", "comment": "..."},
-    "precipitation": {"value": 0, "unit": "level", "status": "UYGUN", "comment": "..."},
-    "temperature": {"value": 22.5, "unit": "°C", "status": "UYGUN", "comment": "..."},
-    "humidity": {"value": 65.0, "unit": "%", "status": "UYGUN", "comment": "..."},
-    "cloud_base": {"value": 1500.0, "unit": "ft", "status": "UYGUN", "comment": "..."},
-    "cloud_ceiling": {"value": 2000.0, "unit": "ft", "status": "UYGUN", "comment": "..."}
-  }
-}
+  "parameter_assessments": {{
+    "wind": {{"value": 12.3, "unit": "knot", "status": "UYGUN", "comment": "..."}},
+    "visibility": {{"value": 10.0, "unit": "km", "status": "UYGUN", "comment": "..."}},
+    "precipitation": {{"value": 0, "unit": "level", "status": "UYGUN", "comment": "..."}},
+    "temperature": {{"value": 22.5, "unit": "°C", "status": "UYGUN", "comment": "..."}},
+    "humidity": {{"value": 65.0, "unit": "%", "status": "UYGUN", "comment": "..."}},
+    "cloud_base": {{"value": 1500.0, "unit": "ft", "status": "UYGUN", "comment": "..."}},
+    "cloud_ceiling": {{"value": 2000.0, "unit": "ft", "status": "UYGUN", "comment": "..."}}
+  }}
+}}
 """
+
+
+def _build_system_prompt() -> str:
+    """Build the system prompt with limit values sourced from settings."""
+    return _SYSTEM_PROMPT_TEMPLATE.format(
+        wind_ok=int(settings.wind_ok_max_knots),
+        wind_risky=int(settings.wind_risky_max_knots),
+        vis_ok=int(settings.visibility_ok_min_km),
+        vis_risky=int(settings.visibility_risky_min_km),
+        temp_ok_min=int(settings.temp_ok_min_c),
+        temp_ok_max=int(settings.temp_ok_max_c),
+        temp_risky_min=int(settings.temp_risky_min_c),
+        temp_risky_max=int(settings.temp_risky_max_c),
+        hum_ok=int(settings.humidity_ok_max_pct),
+        hum_risky=int(settings.humidity_risky_max_pct),
+        cb_ok=int(settings.cloud_base_ok_min_ft),
+        cb_risky=int(settings.cloud_base_risky_min_ft),
+        cc_ok=int(settings.cloud_ceiling_ok_min_ft),
+        cc_risky=int(settings.cloud_ceiling_risky_min_ft),
+    )
+
 
 # ---------------------------------------------------------------------------
 # Pydantic models for GPT-4o structured output
@@ -143,20 +171,17 @@ class AIDecisionResult(DecisionResult):
 _PRECIP_LABELS = {0: "Yok", 1: "Hafif", 2: "Orta/Şiddetli"}
 
 
+def _fmt_cloud(value: float | None) -> str:
+    """Format an optional cloud altitude value for display."""
+    return f"{value:.0f} ft" if value is not None else "N/A"
+
+
 def _build_user_message(sources: list[WeatherSourceData]) -> str:
     lines: list[str] = [
         "Aşağıdaki hava kaynaklarından toplanan verilere göre "
         "drone uçuşu değerlendirmesi yapmanı istiyorum:\n"
     ]
     for src in sources:
-        cloud_base = (
-            f"{src.cloud_base_ft:.0f} ft" if src.cloud_base_ft is not None else "N/A"
-        )
-        cloud_ceiling = (
-            f"{src.cloud_ceiling_ft:.0f} ft"
-            if src.cloud_ceiling_ft is not None
-            else "N/A"
-        )
         lines.append(
             f"Kaynak: {src.source}\n"
             f"  - Rüzgar: {src.wind_speed_knots:.1f} knot\n"
@@ -164,8 +189,8 @@ def _build_user_message(sources: list[WeatherSourceData]) -> str:
             f"  - Sıcaklık: {src.temperature_c:.1f} °C\n"
             f"  - Nem: {src.humidity_pct:.0f}%\n"
             f"  - Yağış: {_PRECIP_LABELS.get(src.precipitation_level, 'Bilinmiyor')}\n"
-            f"  - Bulut Tabanı: {cloud_base}\n"
-            f"  - Bulut Tavanı: {cloud_ceiling}\n"
+            f"  - Bulut Tabanı: {_fmt_cloud(src.cloud_base_ft)}\n"
+            f"  - Bulut Tavanı: {_fmt_cloud(src.cloud_ceiling_ft)}\n"
         )
     lines.append(
         "\nBu drone için uçuş yapılabilir mi? " "Belirtilen JSON formatında yanıt ver."
@@ -223,7 +248,7 @@ async def make_ai_decision(sources: list[WeatherSourceData]) -> DecisionResult:
         response = await client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": _build_system_prompt()},
                 {"role": "user", "content": user_message},
             ],
             response_format={"type": "json_object"},

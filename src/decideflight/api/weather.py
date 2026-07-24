@@ -163,11 +163,9 @@ async def create_weather_report(
     # 4. Persist report
     ai_analysis_json: str | None = None
     if isinstance(decision_result, AIDecisionResult):
-        import json as _json
-
         ai_extra = decision_result.ai_extra_as_dict()
         ai_extra["decision"] = decision_result.decision
-        ai_analysis_json = _json.dumps(ai_extra, ensure_ascii=False)
+        ai_analysis_json = json.dumps(ai_extra, ensure_ascii=False)
 
     sources_json = json.dumps(
         [{k: v for k, v in asdict(s).items() if k != "raw"} for s in sources]
