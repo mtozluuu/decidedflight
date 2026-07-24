@@ -362,8 +362,8 @@ class GridAnalysisRequest(BaseModel):
     def _validate(self) -> "GridAnalysisRequest":
         if self.grid_size not in (25, 100):
             raise ValueError("grid_size must be 25 or 100")
-        if self.hours not in (1, 24):
-            raise ValueError("hours must be 1 or 24")
+        if not (0 <= self.hours <= 24):
+            raise ValueError("hours must be between 0 and 24")
         return self
 
 
@@ -378,6 +378,7 @@ class GridPointWeather(BaseModel):
     cloud_base_ft: float | None
     cloud_ceiling_ft: float | None
     precipitation_level: int
+    cloud_cover_pct: float = 0.0
 
 
 class GridSummary(BaseModel):
@@ -427,33 +428,53 @@ async def _fetch_grid_point_weather(
     lat: float,
     lon: float,
     altitude_ft: float,
-    hours: int,  # noqa: ARG001 -- future: aggregate over next N hours
+    hours: int,
     client: httpx.AsyncClient,
 ) -> dict[str, Any] | None:
-    """Fetch Open-Meteo current weather for one grid point.
+    """Fetch Open-Meteo weather for one grid point.
+
+    When ``hours`` is 0 or 1 the current conditions are returned.
+    For ``hours > 1`` the hourly forecast is fetched and data at the
+    requested hour offset (used as array index) is returned.
 
     For altitudes above ~1500 ft the nearest pressure-level wind speed is
-    requested via the hourly forecast.  Returns a normalised dict or None.
-
-    ``hours`` is accepted for API compatibility but not yet used; a future
-    update will aggregate forecasts over the next 1 or 24 hours.
+    requested and used in place of the 10 m wind.
     """
     url = "https://api.open-meteo.com/v1/forecast"
     pressure_hpa = _altitude_to_pressure_hpa(altitude_ft)
+    use_hourly = hours > 1
 
-    params: dict[str, Any] = {
-        "latitude": lat,
-        "longitude": lon,
-        "current": (
+    if not use_hourly:
+        # Current-conditions path (existing behaviour)
+        params: dict[str, Any] = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": (
+                "temperature_2m,relative_humidity_2m,dew_point_2m,"
+                "wind_speed_10m,precipitation,visibility,cloud_cover"
+            ),
+            "wind_speed_unit": "kmh",
+            "timezone": "UTC",
+        }
+        if pressure_hpa is not None:
+            params["hourly"] = f"wind_speed_{pressure_hpa}hPa"
+            params["forecast_hours"] = 1
+    else:
+        # Hourly forecast path — request all needed variables at once
+        hourly_vars = (
             "temperature_2m,relative_humidity_2m,dew_point_2m,"
             "wind_speed_10m,precipitation,visibility,cloud_cover"
-        ),
-        "wind_speed_unit": "kmh",
-        "timezone": "UTC",
-    }
-    if pressure_hpa is not None:
-        params["hourly"] = f"wind_speed_{pressure_hpa}hPa"
-        params["forecast_hours"] = 1
+        )
+        if pressure_hpa is not None:
+            hourly_vars += f",wind_speed_{pressure_hpa}hPa"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "hourly": hourly_vars,
+            "wind_speed_unit": "kmh",
+            "timezone": "UTC",
+            "forecast_hours": hours + 1,
+        }
 
     try:
         resp = await client.get(url, params=params, timeout=15.0)
@@ -468,34 +489,74 @@ async def _fetch_grid_point_weather(
         )
         return None
 
-    cur = data.get("current", {})
-    temp_c: float | None = cur.get("temperature_2m")
-    if temp_c is None:
-        return None
+    if not use_hourly:
+        cur = data.get("current", {})
+        temp_c: float | None = cur.get("temperature_2m")
+        if temp_c is None:
+            return None
 
-    dew_c: float | None = cur.get("dew_point_2m")
-    wind_kmh: float = cur.get("wind_speed_10m", 0.0)
-    rh: float = cur.get("relative_humidity_2m", 0.0)
-    precip_mm: float = cur.get("precipitation", 0.0)
-    vis_m: float = cur.get("visibility", 10000.0)
-    cloud_pct: float = cur.get("cloud_cover", 0.0)
+        dew_c: float | None = cur.get("dew_point_2m")
+        wind_kmh: float = cur.get("wind_speed_10m", 0.0)
+        rh: float = cur.get("relative_humidity_2m", 0.0)
+        precip_mm: float = cur.get("precipitation", 0.0)
+        vis_m: float = cur.get("visibility", 10000.0)
+        cloud_pct: float = cur.get("cloud_cover", 0.0)
 
-    wind_knots = wind_kmh * 0.539957
+        wind_knots = wind_kmh * 0.539957
 
-    if pressure_hpa is not None:
-        # Use pressure-level wind when altitude warrants it
-        hourly = data.get("hourly", {})
-        pl_wind_list = hourly.get(f"wind_speed_{pressure_hpa}hPa", [])
-        if pl_wind_list:
-            wind_knots = float(pl_wind_list[0]) * 0.539957
+        if pressure_hpa is not None:
+            hourly = data.get("hourly", {})
+            pl_wind_list = hourly.get(f"wind_speed_{pressure_hpa}hPa", [])
+            if pl_wind_list:
+                wind_knots = float(pl_wind_list[0]) * 0.539957
+        else:
+            # Power-law wind profile: V(z) = V_ref * (z/z_ref)^(1/7)
+            # Exponent 1/7 (~0.143) is the standard value for open terrain
+            # (Hellmann exponent); z_ref = 10 m (Open-Meteo measurement height).
+            alt_m = altitude_ft * 0.3048
+            ref_m = 10.0
+            if alt_m > ref_m:
+                wind_knots *= (alt_m / ref_m) ** (1.0 / 7.0)
     else:
-        # Power-law wind profile: V(z) = V_ref * (z/z_ref)^(1/7)
-        # Exponent 1/7 (~0.143) is the standard value for open terrain
-        # (Hellmann exponent); z_ref = 10 m (Open-Meteo measurement height).
-        alt_m = altitude_ft * 0.3048
-        ref_m = 10.0
-        if alt_m > ref_m:
-            wind_knots *= (alt_m / ref_m) ** (1.0 / 7.0)
+        # Parse hourly arrays at the requested index
+        hourly = data.get("hourly", {})
+        temp_list: list[Any] = hourly.get("temperature_2m", [])
+        if not temp_list or len(temp_list) <= hours:
+            return None
+        idx = hours
+
+        temp_c = temp_list[idx]
+        if temp_c is None:
+            return None
+
+        def _h(key: str, default: float) -> float:
+            lst = hourly.get(key, [])
+            val = lst[idx] if len(lst) > idx else None
+            return float(val) if val is not None else default
+
+        dew_c_val = hourly.get("dew_point_2m", [])
+        dew_c = (
+            float(dew_c_val[idx])
+            if len(dew_c_val) > idx and dew_c_val[idx] is not None
+            else None
+        )
+        wind_kmh = _h("wind_speed_10m", 0.0)
+        rh = _h("relative_humidity_2m", 0.0)
+        precip_mm = _h("precipitation", 0.0)
+        vis_m = _h("visibility", 10000.0)
+        cloud_pct = _h("cloud_cover", 0.0)
+
+        wind_knots = wind_kmh * 0.539957
+
+        if pressure_hpa is not None:
+            pl_wind_list = hourly.get(f"wind_speed_{pressure_hpa}hPa", [])
+            if len(pl_wind_list) > idx and pl_wind_list[idx] is not None:
+                wind_knots = float(pl_wind_list[idx]) * 0.539957
+        else:
+            alt_m = altitude_ft * 0.3048
+            ref_m = 10.0
+            if alt_m > ref_m:
+                wind_knots *= (alt_m / ref_m) ** (1.0 / 7.0)
 
     base_ft: float | None = None
     if dew_c is not None:
@@ -524,6 +585,7 @@ async def _fetch_grid_point_weather(
         "cloud_base_ft": base_ft,
         "cloud_ceiling_ft": ceiling_ft,
         "precipitation_level": precip_level,
+        "cloud_cover_pct": cloud_pct,
     }
 
 
@@ -671,6 +733,7 @@ async def analyse_weather_grid(
                 cloud_base_ft=result["cloud_base_ft"],
                 cloud_ceiling_ft=result["cloud_ceiling_ft"],
                 precipitation_level=result["precipitation_level"],
+                cloud_cover_pct=result.get("cloud_cover_pct", 0.0),
             )
         )
 

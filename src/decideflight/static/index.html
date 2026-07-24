@@ -212,6 +212,25 @@
     }
     /* Settings form range-like input accent */
     input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
+    /* Filter bar active button */
+    .filter-btn.filter-active {
+      border-color: #00d4ff !important;
+      box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+      color: #00d4ff !important;
+    }
+    /* Popup param table */
+    .popup-param-table { width: 100%; border-collapse: collapse; }
+    .popup-param-table td { padding: 2px 4px; vertical-align: middle; }
+    .popup-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: bold;
+    }
+    .popup-badge-ok   { background: rgba(0,255,136,0.18); color: #00ff88; }
+    .popup-badge-warn { background: rgba(255,184,0,0.18); color: #ffb800; }
+    .popup-badge-bad  { background: rgba(255,61,87,0.18);  color: #ff3d57; }
   </style>
 </head>
 <body>
@@ -420,7 +439,7 @@
           Haritada tıklayarak anlık nokta raporu, dikdörtgen çizerek ızgara analizi yapın.
           Dikdörtgen çizmek için sol araç çubuğundaki <strong>□</strong> ikonuna tıklayın.
         </p>
-        <div class="grid sm:grid-cols-3 gap-3 mb-4">
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <div>
             <label for="gridSizeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">IZGARA BOYUTU</label>
             <select id="gridSizeSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
@@ -443,12 +462,43 @@
           </div>
           <div>
             <label for="timeModeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ZAMAN MODU</label>
-            <select id="timeModeSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
-              <option value="1">Anlık</option>
-              <option value="24">Sonraki 24 Saat</option>
+            <select id="timeModeSelect" onchange="onTimeModeChange()" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
+              <option value="instant">Anlık</option>
+              <option value="forecast">Sonraki 24 Saat</option>
+            </select>
+          </div>
+          <div>
+            <label for="colorModeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">RENK MODU</label>
+            <select id="colorModeSelect" onchange="onColorModeChange()" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
+              <option value="decision">Karara Göre</option>
+              <option value="wind">Rüzgara Göre</option>
+              <option value="cloud">Bulutluluğa Göre</option>
+              <option value="humidity">Neme Göre</option>
+              <option value="temperature">Sıcaklığa Göre</option>
             </select>
           </div>
         </div>
+
+        <!-- 24-hour time slider (shown only in forecast mode) -->
+        <div id="timeSliderSection" class="hidden mb-3 p-3 bg-slate-900/50 rounded-md border border-cyan-400/20">
+          <div class="flex items-center gap-3">
+            <label class="mono text-[11px] text-cyan-100/70 whitespace-nowrap">SAAT OFSETİ</label>
+            <input id="timeSlider" type="range" min="0" max="24" step="1" value="0"
+              oninput="onTimeSliderChange(this.value)"
+              class="flex-1 accent-cyan-400 cursor-pointer" />
+            <span id="timeSliderLabel" class="mono text-[11px] text-cyan-300 whitespace-nowrap w-24 text-right">Şu an + 0h</span>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div id="filterBar" class="hidden mb-3 flex flex-wrap gap-2 items-center">
+          <span class="mono text-[11px] text-cyan-100/50">FİLTRE:</span>
+          <button id="filterAll"    onclick="setFilter('ALL')"         class="filter-btn filter-active mono text-[11px] px-3 py-1 rounded border border-cyan-400/50 bg-slate-900/60 text-cyan-200 hover:border-cyan-300">TÜM NOKTALAR</button>
+          <button id="filterUygun" onclick="setFilter('UYGUN')"       class="filter-btn mono text-[11px] px-3 py-1 rounded border border-green-400/40 bg-slate-900/60 text-green-300 hover:border-green-300">UYGUN</button>
+          <button id="filterRiskli" onclick="setFilter('RISKLI')"     class="filter-btn mono text-[11px] px-3 py-1 rounded border border-amber-400/40 bg-slate-900/60 text-amber-300 hover:border-amber-300">RİSKLİ</button>
+          <button id="filterUD"     onclick="setFilter('UYGUN_DEGIL')" class="filter-btn mono text-[11px] px-3 py-1 rounded border border-red-400/40 bg-slate-900/60 text-red-300 hover:border-red-300">UYGUN DEĞİL</button>
+        </div>
+
         <div class="flex flex-wrap gap-3 items-center">
           <button id="analyzeGridBtn" onclick="analyzeGrid()" disabled
             class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider opacity-40 cursor-not-allowed">
@@ -496,9 +546,35 @@
             <p class="mono text-[11px] text-red-300/70 mt-1">UYGUN DEĞİL</p>
           </div>
         </div>
-        <div class="flex items-center gap-3 mt-2">
+        <div class="flex items-center gap-3 mt-2 mb-5">
           <div id="summaryBar" class="flex-1 h-3 rounded-full overflow-hidden bg-slate-900/50 flex"></div>
           <p id="summaryPercent" class="mono text-[11px] text-cyan-100/60 whitespace-nowrap"></p>
+        </div>
+
+        <!-- Extended statistics -->
+        <div class="grid sm:grid-cols-2 gap-4 mb-4">
+          <div class="bg-slate-900/40 rounded-md p-3 border border-cyan-400/15">
+            <p class="mono text-[10px] text-cyan-100/50 mb-2 tracking-wider">ORT. PARAMETRE DEĞERLERİ</p>
+            <div class="space-y-1">
+              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">💨 Ort. Rüzgar</span><span class="mono text-[11px] text-cyan-200" id="avgWind">—</span></div>
+              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">☁ Ort. Bulutluluk</span><span class="mono text-[11px] text-cyan-200" id="avgCloud">—</span></div>
+              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">💧 Ort. Nem</span><span class="mono text-[11px] text-cyan-200" id="avgHumidity">—</span></div>
+              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">🌡 Ort. Sıcaklık</span><span class="mono text-[11px] text-cyan-200" id="avgTemp">—</span></div>
+            </div>
+          </div>
+          <div class="bg-slate-900/40 rounded-md p-3 border border-cyan-400/15">
+            <p class="mono text-[10px] text-cyan-100/50 mb-2 tracking-wider">EN İYİ / EN KÖTÜ NOKTA</p>
+            <div class="space-y-2">
+              <div>
+                <p class="mono text-[10px] text-green-300/70">🟢 EN İYİ NOKTA (UYGUN)</p>
+                <button id="bestPointBtn" onclick="panToBestPoint()" class="mono text-[11px] text-green-300 hover:text-green-200 hover:underline cursor-pointer text-left">—</button>
+              </div>
+              <div>
+                <p class="mono text-[10px] text-red-300/70">🔴 EN KÖTÜ NOKTA (UYGUN DEĞİL)</p>
+                <button id="worstPointBtn" onclick="panToWorstPoint()" class="mono text-[11px] text-red-300 hover:text-red-200 hover:underline cursor-pointer text-left">—</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div><!-- /panel-region -->
@@ -1165,7 +1241,173 @@
     let drawnRectangle = null;
     let drawnItems = null;
     let drawControl = null;
-    let gridMarkers = [];
+    let gridMarkers = [];       // { marker, pt } objects
+    let cachedGridData = null;  // last API response data
+    let activeFilter = 'ALL';
+    let colorMode = 'decision';
+    let bestPt = null;
+    let worstPt = null;
+
+    // ── Color helpers ──────────────────────────────────────────────────
+
+    function _lerp(a, b, t) { return a + (b - a) * Math.min(Math.max(t, 0), 1); }
+    function _rgb(r, g, b) {
+      return '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+    }
+
+    function getMarkerColor(pt, mode) {
+      if (mode === 'decision') {
+        return { UYGUN: '#00ff88', RISKLI: '#ffb800', UYGUN_DEGIL: '#ff3d57' }[pt.decision] || '#00d4ff';
+      }
+      if (mode === 'wind') {
+        // 0 kt = blue (#3080ff), 30+ kt = red (#ff3d57)
+        const t = Math.min(pt.wind_speed_knots / 30, 1);
+        return _rgb(_lerp(0x30, 0xff, t), _lerp(0x80, 0x3d, t), _lerp(0xff, 0x57, t));
+      }
+      if (mode === 'cloud') {
+        // 0% = light blue (#9ff0ff), 100% = dark gray (#3a4050)
+        const t = (pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0) / 100;
+        return _rgb(_lerp(0x9f, 0x3a, t), _lerp(0xf0, 0x40, t), _lerp(0xff, 0x50, t));
+      }
+      if (mode === 'humidity') {
+        // 0% = cyan (#00f4ff), 100% = deep blue (#0030c0)
+        const t = pt.humidity_pct / 100;
+        return _rgb(_lerp(0x00, 0x00, t), _lerp(0xf4, 0x30, t), _lerp(0xff, 0xc0, t));
+      }
+      if (mode === 'temperature') {
+        // -20°C = blue (#3080ff), 45°C = orange-red (#ff5020)
+        const t = Math.min(Math.max((pt.temperature_c + 20) / 65, 0), 1);
+        return _rgb(_lerp(0x30, 0xff, t), _lerp(0x80, 0x50, t), _lerp(0xff, 0x20, t));
+      }
+      return '#00d4ff';
+    }
+
+    // ── Popup builder ──────────────────────────────────────────────────
+
+    const PRECIP_LABELS_LOCAL = { 0: 'Yok', 1: 'Hafif', 2: 'Orta/Şiddetli' };
+
+    function _badge(level) {
+      if (level === 0) return '<span class="popup-badge popup-badge-ok">UYGUN</span>';
+      if (level === 1) return '<span class="popup-badge popup-badge-warn">RİSKLİ</span>';
+      return '<span class="popup-badge popup-badge-bad">KÖTÜ</span>';
+    }
+
+    function _paramLevel(value, okMax, riskyMax) {
+      if (value <= okMax) return 0;
+      if (value <= riskyMax) return 1;
+      return 2;
+    }
+    function _paramLevelMin(value, okMin, riskyMin) {
+      if (value > okMin) return 0;
+      if (value >= riskyMin) return 1;
+      return 2;
+    }
+
+    function buildGridPopupHtml(pt) {
+      const lim = loadSettings();
+      const dec = pt.decision;
+      const decBadge = dec === 'UYGUN'
+        ? '<span class="popup-badge popup-badge-ok">UYGUN</span>'
+        : dec === 'RISKLI'
+          ? '<span class="popup-badge popup-badge-warn">RİSKLİ</span>'
+          : '<span class="popup-badge popup-badge-bad">UYGUN DEĞİL</span>';
+
+      const wLvl = _paramLevel(pt.wind_speed_knots, lim.wind_ok_max_knots, lim.wind_risky_max_knots);
+      const vLvl = _paramLevelMin(pt.visibility_km, lim.visibility_ok_min_km, lim.visibility_risky_min_km);
+      const hLvl = _paramLevel(pt.humidity_pct, lim.humidity_ok_max_pct, lim.humidity_risky_max_pct);
+      const tOk  = pt.temperature_c >= lim.temp_ok_min_c && pt.temperature_c <= lim.temp_ok_max_c;
+      const tLvl = tOk ? 0 : 2;
+      const cloudVal = pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0;
+      const cLvl = cloudVal < 50 ? 0 : (cloudVal < 80 ? 1 : 2);
+      const bLvl = pt.cloud_base_ft == null ? 0
+                 : _paramLevelMin(pt.cloud_base_ft, lim.cloud_base_ok_min_ft, lim.cloud_base_risky_min_ft);
+      const pLvl = Math.min(pt.precipitation_level, 2);
+
+      const row = (label, value, lvl) =>
+        `<tr><td style="color:#9feaff;padding:2px 4px">${label}</td><td style="padding:2px 4px;color:#d8f5ff">${value}</td><td style="padding:2px 4px">${_badge(lvl)}</td></tr>`;
+
+      return (
+        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff;min-width:220px;' +
+        'background:rgba(7,13,29,0.97);padding:10px;border-radius:6px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">' +
+        '<span style="font-weight:bold;color:#00d4ff">📍 ' + pt.lat.toFixed(4) + ', ' + pt.lon.toFixed(4) + '</span>' +
+        decBadge + '</div>' +
+        '<table style="width:100%;border-collapse:collapse">' +
+        row('💨 Rüzgar (kt)', pt.wind_speed_knots.toFixed(1), wLvl) +
+        row('👁 Görüş (km)', pt.visibility_km.toFixed(1), vLvl) +
+        row('💧 Nem (%)', Math.round(pt.humidity_pct) + '%', hLvl) +
+        row('🌡 Sıcaklık', pt.temperature_c.toFixed(1) + '°C', tLvl) +
+        row('☁ Bulutluluk', Math.round(pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0) + '%', cLvl) +
+        (pt.cloud_base_ft != null ? row('🏔 Bulut Tabanı', Math.round(pt.cloud_base_ft) + ' ft', bLvl) : '') +
+        row('🌧 Yağış', PRECIP_LABELS_LOCAL[pt.precipitation_level] || '—', pLvl) +
+        '</table></div>'
+      );
+    }
+
+    // ── Color mode change ──────────────────────────────────────────────
+
+    function onColorModeChange() {
+      colorMode = document.getElementById('colorModeSelect').value;
+      gridMarkers.forEach(({ marker, pt }) => {
+        marker.setStyle({ fillColor: getMarkerColor(pt, colorMode) });
+      });
+    }
+
+    // ── Time mode / slider ─────────────────────────────────────────────
+
+    function onTimeModeChange() {
+      const mode = document.getElementById('timeModeSelect').value;
+      const sliderSec = document.getElementById('timeSliderSection');
+      if (mode === 'forecast') {
+        sliderSec.classList.remove('hidden');
+      } else {
+        sliderSec.classList.add('hidden');
+        document.getElementById('timeSlider').value = 0;
+        document.getElementById('timeSliderLabel').textContent = 'Şu an + 0h';
+      }
+    }
+
+    function onTimeSliderChange(val) {
+      document.getElementById('timeSliderLabel').textContent = 'Şu an + ' + val + 'h';
+      if (drawnRectangle) analyzeGrid();
+    }
+
+    function _getHoursParam() {
+      const mode = document.getElementById('timeModeSelect').value;
+      if (mode === 'forecast') {
+        return parseInt(document.getElementById('timeSlider').value, 10);
+      }
+      return 1;
+    }
+
+    // ── Filter bar ─────────────────────────────────────────────────────
+
+    function setFilter(f) {
+      activeFilter = f;
+      ['filterAll', 'filterUygun', 'filterRiskli', 'filterUD'].forEach(id => {
+        document.getElementById(id).classList.remove('filter-active');
+      });
+      const idMap = { ALL: 'filterAll', UYGUN: 'filterUygun', RISKLI: 'filterRiskli', UYGUN_DEGIL: 'filterUD' };
+      document.getElementById(idMap[f]).classList.add('filter-active');
+      gridMarkers.forEach(({ marker, pt }) => {
+        if (activeFilter === 'ALL' || pt.decision === activeFilter) {
+          marker.addTo(map);
+        } else {
+          marker.remove();
+        }
+      });
+    }
+
+    function _updateFilterCounts(points) {
+      const counts = { ALL: points.length, UYGUN: 0, RISKLI: 0, UYGUN_DEGIL: 0 };
+      points.forEach(p => { if (counts[p.decision] !== undefined) counts[p.decision]++; });
+      document.getElementById('filterAll').textContent    = 'TÜM NOKTALAR (' + counts.ALL + ')';
+      document.getElementById('filterUygun').textContent  = 'UYGUN (' + counts.UYGUN + ')';
+      document.getElementById('filterRiskli').textContent = 'RİSKLİ (' + counts.RISKLI + ')';
+      document.getElementById('filterUD').textContent     = 'UYGUN DEĞİL (' + counts.UYGUN_DEGIL + ')';
+    }
+
+    // ── Map init ───────────────────────────────────────────────────────
 
     function initMap() {
       if (mapInitialized) return;
@@ -1257,8 +1499,15 @@
     }
 
     function clearGridOverlay() {
-      gridMarkers.forEach(m => m.remove());
+      gridMarkers.forEach(({ marker }) => marker.remove());
       gridMarkers = [];
+      cachedGridData = null;
+      bestPt = null;
+      worstPt = null;
+      activeFilter = 'ALL';
+      document.getElementById('filterAll').classList.add('filter-active');
+      ['filterUygun', 'filterRiskli', 'filterUD'].forEach(id =>
+        document.getElementById(id).classList.remove('filter-active'));
       if (drawnRectangle) {
         drawnItems.removeLayer(drawnRectangle);
         drawnRectangle = null;
@@ -1269,6 +1518,7 @@
       document.getElementById('regionStatus').textContent = '';
       document.getElementById('gridSummarySection').classList.add('hidden');
       document.getElementById('gridErrorSection').classList.add('hidden');
+      document.getElementById('filterBar').classList.add('hidden');
     }
 
     async function analyzeGrid() {
@@ -1277,16 +1527,18 @@
       const bounds = drawnRectangle.getBounds();
       const gridSize = parseInt(document.getElementById('gridSizeSelect').value, 10);
       const altitudeFt = parseFloat(document.getElementById('altitudeSelect').value);
-      const hours = parseInt(document.getElementById('timeModeSelect').value, 10);
+      const hours = _getHoursParam();
       const limits = loadSettings();
 
       // Remove old grid markers
-      gridMarkers.forEach(m => m.remove());
+      gridMarkers.forEach(({ marker }) => marker.remove());
       gridMarkers = [];
+      cachedGridData = null;
 
       document.getElementById('gridLoadingSection').classList.remove('hidden');
       document.getElementById('gridErrorSection').classList.add('hidden');
       document.getElementById('gridSummarySection').classList.add('hidden');
+      document.getElementById('filterBar').classList.add('hidden');
 
       try {
         const res = await fetch('/api/v1/weather/grid', {
@@ -1307,38 +1559,46 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Bölge analizi başarısız');
 
-        const colorMap = {
-          'UYGUN': '#00ff88',
-          'RISKLI': '#ffb800',
-          'UYGUN_DEGIL': '#ff3d57',
-        };
-        const PRECIP_LABELS_LOCAL = { 0: 'Yok', 1: 'Hafif', 2: 'Orta/Şiddetli' };
+        cachedGridData = data;
+        const radius = gridSize === 25 ? 9 : 6;
+
+        // Reset best/worst tracking
+        bestPt = null;
+        worstPt = null;
 
         data.points.forEach(pt => {
-          const color = colorMap[pt.decision] || '#00d4ff';
-          const decCfg = DECISION_CONFIG[pt.decision] || DECISION_CONFIG['RISKLI'];
+          const color = getMarkerColor(pt, colorMode);
           const marker = L.circleMarker([pt.lat, pt.lon], {
-            radius: gridSize === 25 ? 9 : 6,
+            radius: radius,
             fillColor: color,
             color: '#0a0e1a',
-            fillOpacity: 0.75,
+            fillOpacity: 0.82,
             weight: 1,
           }).addTo(map);
-          marker.bindPopup(
-            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff;min-width:170px">' +
-            '<p style="font-weight:bold;margin-bottom:5px">' + decCfg.label + '</p>' +
-            '<p>📍 ' + pt.lat.toFixed(4) + ', ' + pt.lon.toFixed(4) + '</p>' +
-            '<p>💨 ' + pt.wind_speed_knots.toFixed(1) + ' kt</p>' +
-            '<p>👁 ' + pt.visibility_km.toFixed(1) + ' km</p>' +
-            '<p>🌡 ' + pt.temperature_c.toFixed(1) + '°C &nbsp; 💧 ' + Math.round(pt.humidity_pct) + '%</p>' +
-            '<p>🌧 ' + (PRECIP_LABELS_LOCAL[pt.precipitation_level] || '—') + '</p>' +
-            (pt.cloud_base_ft != null ? '<p>☁ Bulut tabanı: ' + Math.round(pt.cloud_base_ft) + ' ft</p>' : '') +
-            '</div>'
-          );
-          gridMarkers.push(marker);
+          marker.bindPopup(buildGridPopupHtml(pt), { maxWidth: 280 });
+          gridMarkers.push({ marker, pt });
+
+          // Track best (UYGUN: highest visibility = clearest conditions) and
+          // worst (UYGUN_DEGIL: highest wind speed = most severe restriction)
+          if (pt.decision === 'UYGUN') {
+            if (!bestPt || pt.visibility_km > bestPt.visibility_km) bestPt = pt;
+          }
+          if (pt.decision === 'UYGUN_DEGIL') {
+            if (!worstPt || pt.wind_speed_knots > worstPt.wind_speed_knots) worstPt = pt;
+          }
         });
 
-        // Update summary panel
+        // Apply current filter
+        if (activeFilter !== 'ALL') {
+          gridMarkers.forEach(({ marker, pt }) => {
+            if (pt.decision !== activeFilter) marker.remove();
+          });
+        }
+
+        // Update filter counts
+        _updateFilterCounts(data.points);
+
+        // ── Summary ──
         const s = data.summary;
         const total = s.total || 1;
         document.getElementById('summaryUygun').textContent = s.UYGUN;
@@ -1350,7 +1610,35 @@
           '<div style="width:' + (s.UYGUN_DEGIL / total * 100).toFixed(1) + '%;background:#ff3d57;height:100%"></div>';
         document.getElementById('summaryPercent').textContent =
           s.total + ' nokta — Uygun: ' + (s.UYGUN / total * 100).toFixed(0) + '%';
+
+        // ── Extended stats ──
+        const pts = data.points;
+        const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        document.getElementById('avgWind').textContent =
+          avg(pts.map(p => p.wind_speed_knots)).toFixed(1) + ' kt';
+        document.getElementById('avgCloud').textContent =
+          Math.round(avg(pts.map(p => p.cloud_cover_pct != null ? p.cloud_cover_pct : 0))) + '%';
+        document.getElementById('avgHumidity').textContent =
+          Math.round(avg(pts.map(p => p.humidity_pct))) + '%';
+        document.getElementById('avgTemp').textContent =
+          avg(pts.map(p => p.temperature_c)).toFixed(1) + '°C';
+
+        // ── Best / Worst points ──
+        const bestBtn = document.getElementById('bestPointBtn');
+        const worstBtn = document.getElementById('worstPointBtn');
+        if (bestPt) {
+          bestBtn.textContent = bestPt.lat.toFixed(4) + ', ' + bestPt.lon.toFixed(4);
+        } else {
+          bestBtn.textContent = '—';
+        }
+        if (worstPt) {
+          worstBtn.textContent = worstPt.lat.toFixed(4) + ', ' + worstPt.lon.toFixed(4);
+        } else {
+          worstBtn.textContent = '—';
+        }
+
         document.getElementById('gridSummarySection').classList.remove('hidden');
+        document.getElementById('filterBar').classList.remove('hidden');
         document.getElementById('regionStatus').textContent = s.total + ' nokta analiz edildi.';
 
       } catch (err) {
@@ -1359,6 +1647,14 @@
       } finally {
         document.getElementById('gridLoadingSection').classList.add('hidden');
       }
+    }
+
+    function panToBestPoint() {
+      if (bestPt && map) map.setView([bestPt.lat, bestPt.lon], Math.max(map.getZoom(), 10));
+    }
+
+    function panToWorstPoint() {
+      if (worstPt && map) map.setView([worstPt.lat, worstPt.lon], Math.max(map.getZoom(), 10));
     }
 
   </script>
