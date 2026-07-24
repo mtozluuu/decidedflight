@@ -1,12 +1,13 @@
 """Weather fetcher service.
 
-Retrieves current weather data from up to four sources and normalises them
+Retrieves current weather data from up to five sources and normalises them
 into ``WeatherSourceData`` objects:
 
 1. **Open-Meteo**  – always attempted (free, no key).
 2. **OpenWeatherMap** – requires ``OPENWEATHERMAP_API_KEY``.
 3. **WeatherAPI**    – requires ``WEATHERAPI_API_KEY``.
 4. **Windy**         – requires ``WINDY_API_KEY``.
+5. **METAR (AVWX)**  – requires ``AVWX_API_KEY``.
 
 Sources without a configured API key are silently skipped.
 """
@@ -21,6 +22,10 @@ from typing import Any
 import httpx
 
 from decideflight.config import settings
+from decideflight.services.metar_fetcher import (
+    estimate_relative_humidity,
+    fetch_metar_taf_for_coords,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +55,7 @@ class WeatherSourceData:
     precipitation_level: int  # 0 = none, 1 = light, 2 = moderate/heavy
     cloud_base_ft: float | None
     cloud_ceiling_ft: float | None
+    reliability_weight: float = 1.0
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
@@ -351,6 +357,46 @@ async def _fetch_windy(
 
 
 # ---------------------------------------------------------------------------
+# METAR (AVWX)
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_metar_avwx(
+    lat: float,
+    lon: float,
+    client: httpx.AsyncClient,
+) -> WeatherSourceData | None:
+    metar = await fetch_metar_taf_for_coords(lat=lat, lon=lon, client=client)
+    if metar is None:
+        return None
+
+    temp_c = metar.temperature_c if metar.temperature_c is not None else 20.0
+    rh = estimate_relative_humidity(metar.temperature_c, metar.dewpoint_c)
+    raw_payload: dict[str, Any] = {
+        "icao": metar.icao,
+        "raw_metar": metar.raw_metar,
+        "visibility_text": metar.visibility_text,
+        "taf_summary_next_6h": metar.taf_summary_next_6h,
+        "temperature_c": metar.temperature_c,
+        "dewpoint_c": metar.dewpoint_c,
+    }
+    raw_payload.update(metar.raw)
+
+    return WeatherSourceData(
+        source="METAR (AVWX)",
+        wind_speed_knots=metar.wind_speed_kt,
+        temperature_c=temp_c,
+        humidity_pct=rh,
+        visibility_km=metar.visibility_km,
+        precipitation_level=PRECIP_NONE,
+        cloud_base_ft=metar.cloud_base_ft,
+        cloud_ceiling_ft=metar.cloud_base_ft,
+        reliability_weight=1.8,
+        raw=raw_payload,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -358,7 +404,7 @@ async def _fetch_windy(
 async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
     """Fetch from all available sources and return non-None results.
 
-    Open-Meteo is always attempted.  The other three require API keys in
+    Open-Meteo is always attempted. The other four require API keys in
     ``settings``; they are skipped (not raising) if the key is absent or
     the request fails.
 
@@ -370,6 +416,7 @@ async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
             await _fetch_owm(lat, lon, client),
             await _fetch_weatherapi(lat, lon, client),
             await _fetch_windy(lat, lon, client),
+            await _fetch_metar_avwx(lat, lon, client),
         ]
 
     sources = [r for r in results if r is not None]

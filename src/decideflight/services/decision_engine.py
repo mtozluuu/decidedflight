@@ -11,6 +11,7 @@ The overall decision is the worst score across all averaged parameters.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 from decideflight.config import settings
 from decideflight.services.weather_fetcher import (
@@ -116,6 +117,22 @@ def _avg_optional(values: list[float | None]) -> float | None:
     return _avg(valid) if valid else None
 
 
+def _weighted_avg(values: list[tuple[float, float]]) -> float:
+    if not values:
+        return 0.0
+    total_weight = sum(weight for _, weight in values)
+    if total_weight <= 0:
+        return _avg([value for value, _ in values])
+    return sum(value * weight for value, weight in values) / total_weight
+
+
+def _weighted_avg_optional(values: list[tuple[float | None, float]]) -> float | None:
+    valid = [(value, weight) for value, weight in values if value is not None]
+    if not valid:
+        return None
+    return _weighted_avg([(float(value), weight) for value, weight in valid])
+
+
 # ---------------------------------------------------------------------------
 # Result dataclass
 # ---------------------------------------------------------------------------
@@ -140,6 +157,7 @@ class DecisionResult:
     avg_precip_level: float
     avg_cloud_base_ft: float | None
     avg_cloud_ceiling_ft: float | None
+    confidence_score: int
 
 
 # ---------------------------------------------------------------------------
@@ -149,14 +167,22 @@ class DecisionResult:
 
 def make_decision(sources: list[WeatherSourceData]) -> DecisionResult:
     """Aggregate *sources* and return a ``DecisionResult``."""
-    avg_wind = _avg([s.wind_speed_knots for s in sources])
-    avg_temp = _avg([s.temperature_c for s in sources])
-    avg_humidity = _avg([s.humidity_pct for s in sources])
-    avg_visibility = _avg([s.visibility_km for s in sources])
+
+    def _weighted_pairs(
+        getter: Callable[[WeatherSourceData], float | None],
+    ) -> list[tuple[float | None, float]]:
+        return [(getter(source), source.reliability_weight) for source in sources]
+
+    avg_wind = _weighted_avg(_weighted_pairs(lambda s: s.wind_speed_knots))
+    avg_temp = _weighted_avg(_weighted_pairs(lambda s: s.temperature_c))
+    avg_humidity = _weighted_avg(_weighted_pairs(lambda s: s.humidity_pct))
+    avg_visibility = _weighted_avg(_weighted_pairs(lambda s: s.visibility_km))
     # For precipitation use worst (max) across sources
     max_precip = max(s.precipitation_level for s in sources)
-    avg_cloud_base = _avg_optional([s.cloud_base_ft for s in sources])
-    avg_cloud_ceiling = _avg_optional([s.cloud_ceiling_ft for s in sources])
+    avg_cloud_base = _weighted_avg_optional(_weighted_pairs(lambda s: s.cloud_base_ft))
+    avg_cloud_ceiling = _weighted_avg_optional(
+        _weighted_pairs(lambda s: s.cloud_ceiling_ft)
+    )
 
     params: list[ParameterResult] = [
         ParameterResult(
@@ -214,6 +240,43 @@ def make_decision(sources: list[WeatherSourceData]) -> DecisionResult:
             lines.append(f"{p.name}: {p.value} – {label}")
         detail = "\n".join(lines)
 
+    metar_sources = [s for s in sources if s.source == "METAR (AVWX)"]
+    metar_conf_bonus = 0
+    if metar_sources:
+        metar = metar_sources[0]
+        raw_metar = str(metar.raw.get("raw_metar") or "").strip() or "N/A"
+        taf_summary = str(metar.raw.get("taf_summary_next_6h") or "").strip() or "N/A"
+        visibility_text = str(metar.raw.get("visibility_text") or "N/A")
+        wind_dir = metar.raw.get("metar", {}).get("wind_direction")
+        wind_dir_val: int | None = None
+        if isinstance(wind_dir, dict) and wind_dir.get("value") is not None:
+            try:
+                wind_dir_val = int(wind_dir.get("value"))
+            except (TypeError, ValueError):
+                wind_dir_val = None
+        wind_dir_text = f", yön: {wind_dir_val}°" if wind_dir_val is not None else ""
+        temperature_text = (
+            f"{metar.temperature_c:.0f}°C" if metar.temperature_c is not None else "N/A"
+        )
+        cloud_text = (
+            f"{metar.cloud_base_ft:.0f}ft" if metar.cloud_base_ft is not None else "N/A"
+        )
+        detail += (
+            "\n\nMETAR (Resmi Havacılık Gözlemi):\n"
+            f"Ham veri: {raw_metar}\n"
+            f"- Rüzgar: {metar.wind_speed_knots:.0f} knot{wind_dir_text}\n"
+            f"- Görüş: {visibility_text}\n"
+            f"- Bulut tabanı: {cloud_text}\n"
+            f"- Sıcaklık: {temperature_text}\n\n"
+            "TAF (Terminal Hava Tahmini - Sonraki 6 saat):\n"
+            f"{taf_summary}"
+        )
+        metar_conf_bonus = 12
+
+    score_map = {UYGUN: 100, RISKLI: 50, UYGUN_DEGIL: 0}
+    base_confidence = round(sum(score_map[p.decision] for p in params) / len(params))
+    confidence_score = max(0, min(100, base_confidence + metar_conf_bonus))
+
     return DecisionResult(
         decision=overall,
         detail=detail,
@@ -225,4 +288,5 @@ def make_decision(sources: list[WeatherSourceData]) -> DecisionResult:
         avg_precip_level=float(max_precip),
         avg_cloud_base_ft=avg_cloud_base,
         avg_cloud_ceiling_ft=avg_cloud_ceiling,
+        confidence_score=confidence_score,
     )

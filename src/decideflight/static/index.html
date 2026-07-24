@@ -331,7 +331,9 @@
       document.getElementById('decisionDetail').textContent = data.decision_detail;
 
       // Confidence
-      const conf = computeConfidence(data.parameters);
+      const conf = Number.isFinite(data.confidence_score)
+        ? data.confidence_score
+        : computeConfidence(data.parameters);
       document.getElementById('confidenceLabel').textContent = `${conf}%`;
       const bar = document.getElementById('confidenceBar');
       bar.style.width = '0%';
