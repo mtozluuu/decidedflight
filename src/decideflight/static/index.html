@@ -6,6 +6,8 @@
   <title>DecideFlight – Drone Uçuş Hava Durumu Analizi</title>
   <link rel="icon" type="image/svg+xml" href="/static/decideflight-icon.svg" />
   <link rel="apple-touch-icon" href="/static/decideflight-icon.svg" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#0a0e1a" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" crossorigin=""/>
@@ -231,6 +233,16 @@
     .popup-badge-ok   { background: rgba(0,255,136,0.18); color: #00ff88; }
     .popup-badge-warn { background: rgba(255,184,0,0.18); color: #ffb800; }
     .popup-badge-bad  { background: rgba(255,61,87,0.18);  color: #ff3d57; }
+
+    .weight-track { background: rgba(8, 20, 38, 0.82); border: 1px solid rgba(0, 212, 255, 0.16); }
+    .timeline-dot { width: 14px; height: 14px; border-radius: 999px; box-shadow: 0 0 12px currentColor; }
+    .chat-bubble-user { background: rgba(0, 212, 255, 0.12); border: 1px solid rgba(0, 212, 255, 0.35); }
+    .chat-bubble-ai { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(167, 139, 250, 0.35); }
+    .history-bar { min-height: 18px; border-radius: 6px 6px 0 0; }
+    .month-tile { min-height: 76px; }
+    .aqi-good { color: #00ff88; border-color: rgba(0,255,136,0.35); background: rgba(0,255,136,0.08); }
+    .aqi-mid { color: #ffb800; border-color: rgba(255,184,0,0.35); background: rgba(255,184,0,0.08); }
+    .aqi-bad { color: #ff3d57; border-color: rgba(255,61,87,0.35); background: rgba(255,61,87,0.08); }
   </style>
 </head>
 <body>
@@ -311,6 +323,16 @@
         </div>
       </div>
 
+      <div class="mt-4 grid sm:grid-cols-[1fr_auto] gap-3 items-end text-left">
+        <div>
+          <label for="favoritesSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">FAVORİLER</label>
+          <select id="favoritesSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
+            <option value="">Favori konum seçin</option>
+          </select>
+        </div>
+        <button id="installBtn" type="button" class="hidden mono border border-cyan-400/40 text-cyan-200 hover:bg-cyan-400/10 rounded-md px-4 py-2.5 text-xs tracking-wider">[ TELEFONA EKLE ]</button>
+      </div>
+
       <p id="cityDataStatus" class="mono text-[11px] text-cyan-100/60 mt-3">Şehir verisi hazırlanıyor...</p>
       <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
     </section>
@@ -328,7 +350,11 @@
     <section id="resultSection" class="hidden space-y-5">
       <div id="decisionBanner" class="hud-card p-6 text-center decision-animate">
         <div id="decisionText" class="mono text-2xl sm:text-4xl font-extrabold tracking-wide"></div>
-        <p id="locationLabel" class="mono text-xs text-cyan-100/70 mt-3"></p>
+        <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <p id="locationLabel" class="mono text-xs text-cyan-100/70"></p>
+          <button id="favoriteBtn" type="button" onclick="saveCurrentFavorite()" class="hidden mono border border-cyan-400/30 text-cyan-200 rounded-md px-2 py-1 text-[10px]">☆ FAVORİYE EKLE</button>
+          <span id="aqiBadge" class="hidden mono text-[10px] rounded-full px-2 py-1 border"></span>
+        </div>
         <p id="createdAt" class="mono text-[11px] text-cyan-100/55 mt-1"></p>
       </div>
 
@@ -354,6 +380,10 @@
             <h3 class="mono text-cyan-300 text-sm mb-2">◈ ANALİZ ÖZETİ</h3>
             <p id="decisionDetail" class="text-sm leading-relaxed text-cyan-100/85 whitespace-pre-line"></p>
             <div id="confidenceBar" class="hidden"></div>
+            <div id="parameterWeightsSection" class="hidden mt-5">
+              <h3 class="mono text-cyan-300 text-sm mb-3">AI KARAR AĞIRLIKLARI</h3>
+              <div id="parameterWeightsChart" class="space-y-2"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -401,6 +431,52 @@
         <div id="sourcesTable" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
       </div>
 
+      <div id="forecastSection" class="hidden hud-card p-6">
+        <h3 class="mono text-sm text-cyan-300 mb-4">SONRAKİ 6 SAAT TAHMİNİ</h3>
+        <div id="forecastTimeline" class="grid grid-cols-2 md:grid-cols-6 gap-3"></div>
+      </div>
+
+      <div class="hud-card p-6">
+        <div class="flex flex-col md:flex-row md:items-end gap-3 justify-between">
+          <div>
+            <h3 class="mono text-sm text-cyan-300 mb-2">UÇUŞ PLANLAMA</h3>
+            <p class="mono text-[11px] text-cyan-100/60">Bugün veya yarın için en uygun saat penceresini çıkarın.</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full md:w-auto">
+            <select id="flightPlanDate" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs">
+              <option value="0">Bugün</option>
+              <option value="1">Yarın</option>
+            </select>
+            <select id="flightPlanStart" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
+            <select id="flightPlanEnd" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
+            <button type="button" onclick="fetchFlightPlan()" class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-4 py-2 text-xs">[ PLANLA ]</button>
+          </div>
+        </div>
+        <div id="flightPlanTimeline" class="mt-4 grid gap-2 md:grid-cols-6"></div>
+        <p id="flightPlanBest" class="mono text-[11px] text-green-300 mt-3"></p>
+      </div>
+
+      <div id="seasonalSection" class="hidden hud-card p-6">
+        <h3 class="mono text-sm text-cyan-300 mb-4">MEVSIMSEL ANALİZ — EN İYİ UÇUŞ AYLARI</h3>
+        <div id="seasonalHeatmap" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3"></div>
+      </div>
+
+      <div id="notamSection" class="hidden hud-card p-6">
+        <h3 class="mono text-sm text-cyan-300 mb-3">NOTAM</h3>
+        <div class="rounded-md border border-amber-400/35 bg-amber-400/10 px-4 py-3 text-amber-200 text-sm">
+          <p id="notamDisclaimer"></p>
+        </div>
+      </div>
+
+      <div id="chatSection" class="hidden hud-card p-6">
+        <h3 class="mono text-sm text-cyan-300 mb-4">GPT İLE SOHBET</h3>
+        <div id="chatMessages" class="space-y-3 max-h-80 overflow-y-auto pr-1"></div>
+        <div class="mt-4 flex gap-2">
+          <input id="chatInput" type="text" placeholder="Bu analiz hakkında soru sorun..." class="mono flex-1 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+          <button type="button" onclick="sendChatMessage()" class="mono bg-violet-300 text-slate-950 font-semibold rounded-md px-4 py-2 text-xs">[ GÖNDER ]</button>
+        </div>
+      </div>
+
       <div class="hud-card p-6">
         <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
           <div id="feedbackSection">
@@ -438,6 +514,12 @@
           >[ RAPORU İNDİR ]</button>
         </div>
       </div>
+    </section>
+
+    <section id="historySection" class="hidden hud-card p-6">
+      <h3 class="mono text-sm text-cyan-300 mb-4">GEÇMİŞ ANALİZLER</h3>
+      <div id="historyChart" class="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2 items-end"></div>
+      <div id="historyList" class="mt-5 max-h-72 overflow-y-auto space-y-2"></div>
     </section>
     </div><!-- /panel-point -->
 
@@ -520,6 +602,10 @@
             class="mono border border-slate-400/40 text-slate-300 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs tracking-wider">
             [ TEMİZLE ]
           </button>
+          <button id="compareRegionBtn" type="button" onclick="toggleRegionCompare()"
+            class="mono border border-violet-400/40 text-violet-200 hover:bg-violet-400/10 rounded-md px-4 py-2 text-xs tracking-wider">
+            [ KARŞILAŞTIR ]
+          </button>
           <p id="regionStatus" class="mono text-[11px] text-cyan-100/60"></p>
         </div>
       </div>
@@ -597,6 +683,24 @@
       <div id="gridAiSummarySection" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
         <h3 class="mono text-sm mb-3 text-violet-300">✦ YAPAY ZEKA BÖLGE DEĞERLENDİRMESİ</h3>
         <p id="gridAiSummaryText" class="text-sm text-violet-100/90 leading-relaxed"></p>
+      </div>
+
+      <div id="regionCompareSection" class="hidden hud-card p-5">
+        <div class="flex flex-wrap gap-2 justify-between items-start mb-4">
+          <div>
+            <h3 class="mono text-sm text-cyan-300 mb-1">BÖLGE KARŞILAŞTIRMA</h3>
+            <p class="mono text-[11px] text-cyan-100/60">Bir bölgeyi analiz ettikten sonra A veya B yuvasına kaydedin; ikinci bölge ile yan yana kıyaslayın.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="captureCurrentRegion('A')" class="mono border border-cyan-400/35 text-cyan-200 rounded-md px-3 py-2 text-[11px]">[ A OLARAK KAYDET ]</button>
+            <button type="button" onclick="captureCurrentRegion('B')" class="mono border border-violet-400/35 text-violet-200 rounded-md px-3 py-2 text-[11px]">[ B OLARAK KAYDET ]</button>
+          </div>
+        </div>
+        <p id="regionCompareResult" class="mono text-[11px] text-green-300 mb-4"></p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div id="regionCompareA" class="rounded-md border border-cyan-400/20 bg-slate-950/40 p-4 text-sm text-cyan-100/80">Bölge A henüz kaydedilmedi.</div>
+          <div id="regionCompareB" class="rounded-md border border-violet-400/20 bg-slate-950/40 p-4 text-sm text-cyan-100/80">Bölge B henüz kaydedilmedi.</div>
+        </div>
       </div>
     </div><!-- /panel-region -->
 
@@ -776,9 +880,377 @@
       'RISKLI': '<span class="text-[11px] text-amber-300">[RİSKLİ]</span>',
       'UYGUN_DEGIL': '<span class="text-[11px] text-red-300">[UYGUN DEĞİL]</span>',
     };
+    const FAVORITES_KEY = 'decideflight_favorites';
+    let currentReportData = null;
+    let deferredInstallPrompt = null;
+    let compareMode = false;
+    const compareSlots = { A: null, B: null };
 
     function setLocation(name) {
       document.getElementById('locationInput').value = name;
+    }
+
+    function getDecisionTone(decision) {
+      return {
+        UYGUN: 'bg-green-400/10 text-green-300 border-green-400/30',
+        RISKLI: 'bg-amber-400/10 text-amber-300 border-amber-400/30',
+        UYGUN_DEGIL: 'bg-red-400/10 text-red-300 border-red-400/30',
+      }[decision] || 'bg-cyan-400/10 text-cyan-200 border-cyan-400/30';
+    }
+
+    function getAqiMeta(score) {
+      if (score == null) return null;
+      if (score > 150) return { label: 'HAVA KALİTESİ: KÖTÜ', className: 'aqi-bad' };
+      if (score > 100) return { label: 'HAVA KALİTESİ: ORTA', className: 'aqi-mid' };
+      return { label: 'HAVA KALİTESİ: İYİ', className: 'aqi-good' };
+    }
+
+    function renderAqiBadge(data) {
+      const badge = document.getElementById('aqiBadge');
+      const meta = getAqiMeta(data.aqi_score);
+      if (!meta) {
+        badge.classList.add('hidden');
+        return;
+      }
+      badge.textContent = `${meta.label}${data.aqi_score != null ? ` (${data.aqi_score})` : ''}`;
+      badge.className = `mono text-[10px] rounded-full px-2 py-1 border ${meta.className}`;
+    }
+
+    function renderParameterWeights(weights) {
+      const section = document.getElementById('parameterWeightsSection');
+      const chart = document.getElementById('parameterWeightsChart');
+      if (!weights || Object.keys(weights).length === 0) {
+        section.classList.add('hidden');
+        chart.innerHTML = '';
+        return;
+      }
+      const labels = {
+        wind: 'Rüzgar',
+        visibility: 'Görüş',
+        humidity: 'Nem',
+        temperature: 'Sıcaklık',
+        precipitation: 'Yağış',
+        cloud_base: 'Bulut Tabanı',
+      };
+      chart.innerHTML = Object.entries(weights).map(([key, value]) => `
+        <div>
+          <div class="flex items-center justify-between mono text-[11px] text-cyan-100/75 mb-1">
+            <span>${labels[key] || key}</span>
+            <span>${value}%</span>
+          </div>
+          <div class="weight-track rounded-full h-2 overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-cyan-400 to-violet-400" style="width:${Math.max(0, Math.min(100, value))}%"></div>
+          </div>
+        </div>`).join('');
+      section.classList.remove('hidden');
+    }
+
+    function loadFavorites() {
+      try {
+        const raw = localStorage.getItem(FAVORITES_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function saveFavorites(favorites) {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites.slice(0, 20)));
+    }
+
+    function renderFavorites() {
+      const select = document.getElementById('favoritesSelect');
+      const favorites = loadFavorites();
+      select.innerHTML = '<option value="">Favori konum seçin</option>';
+      favorites.forEach((favorite, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        option.textContent = `${favorite.name} — ${favorite.last_decision || '—'}`;
+        select.appendChild(option);
+      });
+    }
+
+    function saveCurrentFavorite() {
+      if (!currentReportData) return;
+      const favorites = loadFavorites();
+      const payload = {
+        name: currentReportData.location,
+        lat: currentReportData.lat,
+        lon: currentReportData.lon,
+        last_decision: currentReportData.decision,
+        last_analyzed: currentReportData.created_at,
+      };
+      const existingIndex = favorites.findIndex(item => item.name === payload.name);
+      if (existingIndex >= 0) favorites.splice(existingIndex, 1);
+      favorites.unshift(payload);
+      saveFavorites(favorites);
+      renderFavorites();
+      const btn = document.getElementById('favoriteBtn');
+      btn.textContent = '★ FAVORİLERE KAYDEDİLDİ';
+    }
+
+    function applyFavorite(index) {
+      const favorite = loadFavorites()[Number(index)];
+      if (!favorite) return;
+      setLocation(`${favorite.lat}, ${favorite.lon}`);
+      generateReport();
+    }
+
+    function updateFavoriteButton() {
+      const btn = document.getElementById('favoriteBtn');
+      if (!currentReportData) {
+        btn.classList.add('hidden');
+        return;
+      }
+      const exists = loadFavorites().some(item => item.name === currentReportData.location);
+      btn.textContent = exists ? '★ FAVORİLERDE' : '☆ FAVORİYE EKLE';
+      btn.classList.remove('hidden');
+    }
+
+    function populateHourSelects() {
+      ['flightPlanStart', 'flightPlanEnd'].forEach(id => {
+        const select = document.getElementById(id);
+        if (select.options.length) return;
+        for (let hour = 0; hour < 24; hour += 1) {
+          const option = document.createElement('option');
+          option.value = String(hour);
+          option.textContent = `${String(hour).padStart(2, '0')}:00`;
+          select.appendChild(option);
+        }
+      });
+      document.getElementById('flightPlanStart').value = '6';
+      document.getElementById('flightPlanEnd').value = '18';
+    }
+
+    function appendChatBubble(role, text) {
+      const box = document.getElementById('chatMessages');
+      const bubble = document.createElement('div');
+      bubble.className = `rounded-md px-3 py-2 text-sm ${role === 'user' ? 'chat-bubble-user ml-auto max-w-[85%]' : 'chat-bubble-ai mr-auto max-w-[85%]'}`;
+      bubble.innerHTML = `<p class="mono text-[10px] mb-1 ${role === 'user' ? 'text-cyan-300' : 'text-violet-300'}">${role === 'user' ? 'SİZ' : 'GPT-4o'}</p><p>${text}</p>`;
+      box.appendChild(bubble);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function resetChat() {
+      const box = document.getElementById('chatMessages');
+      box.innerHTML = '';
+      appendChatBubble('assistant', 'Bu analiz hakkında soru sorun...');
+      document.getElementById('chatSection').classList.remove('hidden');
+      document.getElementById('chatInput').value = '';
+    }
+
+    async function sendChatMessage() {
+      if (currentReportId == null) return;
+      const input = document.getElementById('chatInput');
+      const message = input.value.trim();
+      if (!message) return;
+      appendChatBubble('user', message);
+      input.value = '';
+      try {
+        const response = await fetch(`/api/v1/weather/report/${currentReportId}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Sohbet yanıtı alınamadı.');
+        appendChatBubble('assistant', data.reply || 'Yanıt boş geldi.');
+      } catch (error) {
+        appendChatBubble('assistant', error.message || 'Sohbet servisine ulaşılamadı.');
+      }
+    }
+
+    async function fetchForecastChange() {
+      if (currentReportId == null) return;
+      const section = document.getElementById('forecastSection');
+      const timeline = document.getElementById('forecastTimeline');
+      timeline.innerHTML = '';
+      try {
+        const response = await fetch(`/api/v1/weather/report/${currentReportId}/forecast-change`, { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Tahmin alınamadı.');
+        timeline.innerHTML = data.hours.map(item => {
+          const color = item.decision === 'UYGUN' ? '#00ff88' : item.decision === 'RISKLI' ? '#ffb800' : '#ff3d57';
+          return `
+            <div class="rounded-md border border-cyan-400/15 bg-slate-950/40 p-3 text-center">
+              <p class="mono text-[11px] text-cyan-100/60">+${item.offset} SAAT</p>
+              <div class="timeline-dot mx-auto my-2" style="background:${color}; color:${color};"></div>
+              <p class="mono text-sm text-cyan-100">${item.wind_kt.toFixed(1)} kt</p>
+            </div>`;
+        }).join('');
+        section.classList.remove('hidden');
+      } catch (_) {
+        section.classList.add('hidden');
+      }
+    }
+
+    async function fetchNotam() {
+      if (!currentReportData) return;
+      try {
+        const response = await fetch(`/api/v1/weather/notam?lat=${currentReportData.lat}&lon=${currentReportData.lon}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error();
+        document.getElementById('notamDisclaimer').textContent = data.disclaimer || '';
+        document.getElementById('notamSection').classList.remove('hidden');
+      } catch (_) {
+        document.getElementById('notamSection').classList.add('hidden');
+      }
+    }
+
+    async function fetchFlightPlan() {
+      if (!currentReportData) return;
+      const timeline = document.getElementById('flightPlanTimeline');
+      const best = document.getElementById('flightPlanBest');
+      timeline.innerHTML = '';
+      best.textContent = '';
+      try {
+        const response = await fetch('/api/v1/weather/flight-plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat: currentReportData.lat,
+            lon: currentReportData.lon,
+            date_offset: parseInt(document.getElementById('flightPlanDate').value, 10),
+            start_hour: parseInt(document.getElementById('flightPlanStart').value, 10),
+            end_hour: parseInt(document.getElementById('flightPlanEnd').value, 10),
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Plan verisi alınamadı.');
+        timeline.innerHTML = data.hours.map(hour => `
+          <div class="rounded-md border ${getDecisionTone(hour.decision)} px-3 py-3 text-center">
+            <p class="mono text-[11px]">${String(hour.hour).padStart(2, '0')}:00</p>
+            <p class="mono text-sm mt-2">${hour.wind_kt.toFixed(1)} kt</p>
+            <p class="text-[11px] mt-1">${hour.decision.replaceAll('_', ' ')}</p>
+          </div>`).join('');
+        if (data.best_window) {
+          best.textContent = `En iyi pencere: ${String(data.best_window.start_hour).padStart(2, '0')}:00 – ${String(data.best_window.end_hour).padStart(2, '0')}:00`;
+        }
+      } catch (error) {
+        best.textContent = error.message || 'Plan üretilemedi.';
+      }
+    }
+
+    async function fetchSeasonal() {
+      if (!currentReportData) return;
+      try {
+        const response = await fetch('/api/v1/weather/seasonal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat: currentReportData.lat, lon: currentReportData.lon }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error();
+        document.getElementById('seasonalHeatmap').innerHTML = data.months.map(month => `
+          <div class="month-tile rounded-md border border-cyan-400/15 p-3 ${getDecisionTone(month.decision)}">
+            <p class="mono text-[11px]">${month.month}</p>
+            <p class="mono text-xl mt-2">${month.suitability_score}</p>
+            <p class="text-[11px] mt-1">${month.avg_wind_kt.toFixed(1)} kt</p>
+          </div>`).join('');
+        document.getElementById('seasonalSection').classList.remove('hidden');
+      } catch (_) {
+        document.getElementById('seasonalSection').classList.add('hidden');
+      }
+    }
+
+    function timeAgo(value) {
+      const diffMs = Date.now() - new Date(value).getTime();
+      const minutes = Math.max(1, Math.round(diffMs / 60000));
+      if (minutes < 60) return `${minutes} dk önce`;
+      const hours = Math.round(minutes / 60);
+      if (hours < 24) return `${hours} sa önce`;
+      return `${Math.round(hours / 24)} gün önce`;
+    }
+
+    async function fetchHistory() {
+      try {
+        const response = await fetch('/api/v1/weather/history?limit=30');
+        const data = await response.json();
+        if (!response.ok) throw new Error();
+        const chart = document.getElementById('historyChart');
+        const list = document.getElementById('historyList');
+        chart.innerHTML = data.reports.map(report => {
+          const height = Math.max(18, report.confidence_score);
+          const bg = report.decision === 'UYGUN' ? '#00ff88' : report.decision === 'RISKLI' ? '#ffb800' : '#ff3d57';
+          return `<div class="history-bar" style="height:${height}px; background:${bg};" title="${report.location} — ${report.decision}"></div>`;
+        }).join('');
+        list.innerHTML = data.reports.map(report => `
+          <div class="rounded-md border border-cyan-400/15 bg-slate-950/40 px-3 py-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="mono text-xs text-cyan-100">${report.location}</p>
+              <p class="text-[11px] text-cyan-100/55 mt-1">${timeAgo(report.created_at)}</p>
+            </div>
+            <span class="mono text-[10px] rounded-full border px-2 py-1 ${getDecisionTone(report.decision)}">${report.decision.replaceAll('_', ' ')}</span>
+          </div>`).join('');
+        document.getElementById('historySection').classList.remove('hidden');
+      } catch (_) {
+        document.getElementById('historySection').classList.add('hidden');
+      }
+    }
+
+    function toggleRegionCompare() {
+      compareMode = !compareMode;
+      document.getElementById('regionCompareSection').classList.toggle('hidden', !compareMode);
+      document.getElementById('compareRegionBtn').textContent = compareMode ? '[ KARŞILAŞTIRMAYI GİZLE ]' : '[ KARŞILAŞTIR ]';
+    }
+
+    function captureCurrentRegion(slot) {
+      if (!cachedGridData) return;
+      compareSlots[slot] = {
+        summary: cachedGridData.summary,
+        avgWind: document.getElementById('avgWind').textContent,
+        avgCloud: document.getElementById('avgCloud').textContent,
+        avgHumidity: document.getElementById('avgHumidity').textContent,
+        avgTemp: document.getElementById('avgTemp').textContent,
+      };
+      renderRegionComparison();
+    }
+
+    function renderRegionComparison() {
+      ['A', 'B'].forEach(slot => {
+        const card = document.getElementById(`regionCompare${slot}`);
+        const data = compareSlots[slot];
+        if (!data) {
+          card.textContent = `Bölge ${slot} henüz kaydedilmedi.`;
+          return;
+        }
+        card.innerHTML = `
+          <p class="mono text-xs text-cyan-200 mb-3">BÖLGE ${slot}</p>
+          <div class="space-y-1">
+            <p>UYGUN: ${data.summary.UYGUN}</p>
+            <p>RİSKLİ: ${data.summary.RISKLI}</p>
+            <p>UYGUN DEĞİL: ${data.summary.UYGUN_DEGIL}</p>
+            <p>Ort. rüzgar: ${data.avgWind}</p>
+            <p>Ort. bulutluluk: ${data.avgCloud}</p>
+            <p>Ort. nem: ${data.avgHumidity}</p>
+            <p>Ort. sıcaklık: ${data.avgTemp}</p>
+          </div>`;
+      });
+      const result = document.getElementById('regionCompareResult');
+      if (!compareSlots.A || !compareSlots.B) {
+        result.textContent = 'İki bölge de kaydedildiğinde daha iyi bölge vurgulanacak.';
+        return;
+      }
+      const score = slot => (slot.summary.UYGUN * 2) + slot.summary.RISKLI - (slot.summary.UYGUN_DEGIL * 2);
+      const scoreA = score(compareSlots.A);
+      const scoreB = score(compareSlots.B);
+      result.textContent = scoreA === scoreB
+        ? 'İki bölge birbirine çok yakın görünüyor.'
+        : `Daha iyi görünen bölge: ${scoreA > scoreB ? 'A' : 'B'}`;
+    }
+
+    function handleInstallPrompt(event) {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      document.getElementById('installBtn').classList.remove('hidden');
+    }
+
+    async function promptInstall() {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt = null;
+      document.getElementById('installBtn').classList.add('hidden');
     }
 
     function show(id) {
@@ -1018,6 +1490,7 @@
 
     function renderResult(data) {
       currentReportId = data.report_id;
+      currentReportData = data;
       pendingFeedbackCorrect = null;
 
       show('feedbackButtons');
@@ -1036,6 +1509,8 @@
       document.getElementById('locationLabel').textContent = `KONUM: ${data.location}  (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
       document.getElementById('createdAt').textContent =
         'RAPOR ZAMANI: ' + new Date(data.created_at).toLocaleString('tr-TR');
+      renderAqiBadge(data);
+      updateFavoriteButton();
 
       document.getElementById('decisionDetail').textContent = data.decision_detail;
 
@@ -1045,6 +1520,7 @@
         : (Number.isFinite(data.confidence_score) ? data.confidence_score : computeConfidence(data.parameters));
       document.getElementById('confidenceLabel').textContent = `UÇUŞ GÜVEN ENDEKSİ: ${conf}%`;
       animateConfidence(conf);
+      renderParameterWeights(data.parameter_weights);
 
       // Wind trend badge
       const windTrendBadge = document.getElementById('windTrendBadge');
@@ -1127,6 +1603,12 @@
           </div>
         </div>`).join('');
 
+      resetChat();
+      fetchForecastChange();
+      fetchNotam();
+      fetchFlightPlan();
+      fetchSeasonal();
+      fetchHistory();
       show('resultSection');
       document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -1136,6 +1618,7 @@
         'open-meteo': 'Open-Meteo',
         'openweathermap': 'OpenWeatherMap',
         'weatherapi': 'WeatherAPI',
+        'MGM (Türkiye)': 'MGM (Türkiye)',
       };
       return names[src] || src;
     }
@@ -1187,6 +1670,19 @@
       }
     });
 
+    document.getElementById('favoritesSelect').addEventListener('change', (event) => {
+      if (event.target.value) applyFavorite(event.target.value);
+    });
+
+    document.getElementById('installBtn').addEventListener('click', promptInstall);
+
+    document.getElementById('chatInput').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendChatMessage();
+      }
+    });
+
     updateUtcClock();
     setInterval(updateUtcClock, 1000);
 
@@ -1195,6 +1691,17 @@
     });
 
     loadCityDataset();
+    populateHourSelects();
+    renderFavorites();
+    fetchHistory();
+    renderRegionComparison();
+
+    window.addEventListener('beforeinstallprompt', handleInstallPrompt);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => {
+        console.warn('Service worker kaydı başarısız:', err);
+      });
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // TAB SWITCHING

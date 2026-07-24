@@ -1,0 +1,17 @@
+{
+  "name": "DecideFlight",
+  "short_name": "DecideFlight",
+  "description": "Drone uçuş hava koşulu karar desteği",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e1a",
+  "theme_color": "#0a0e1a",
+  "icons": [
+    {
+      "src": "/static/decideflight-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

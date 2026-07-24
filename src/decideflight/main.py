@@ -16,6 +16,7 @@ import decideflight.models  # noqa: F401
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 _ICON_PATH = os.path.join(_STATIC_DIR, "decideflight-icon.svg")
+_SW_PATH = os.path.join(_STATIC_DIR, "sw.js")
 
 
 @asynccontextmanager
@@ -66,3 +67,11 @@ def get_apple_touch_icon() -> FileResponse:
     if not os.path.isfile(_ICON_PATH):
         raise HTTPException(status_code=404, detail="Icon file not found")
     return FileResponse(_ICON_PATH, media_type="image/svg+xml")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def get_service_worker() -> FileResponse:
+    """Serve service worker from the app root for PWA scope."""
+    if not os.path.isfile(_SW_PATH):
+        raise HTTPException(status_code=404, detail="Service worker not found")
+    return FileResponse(_SW_PATH, media_type="application/javascript")
