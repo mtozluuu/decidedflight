@@ -10,3 +10,4 @@ coverage.xml
 dist/
 build/
 .DS_Store
+*.db

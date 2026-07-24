@@ -18,6 +18,11 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+try:
+    from openai import AsyncOpenAI as _AsyncOpenAI  # type: ignore[import]
+except ImportError:  # pragma: no cover
+    _AsyncOpenAI = None  # type: ignore[assignment,misc]
+
 from decideflight.models.feedback import Feedback
 from decideflight.models.weather_report import WeatherReport
 from decideflight.services.decision_engine import (
@@ -104,9 +109,10 @@ _SEASONS_TR = {
 
 def _build_location_context(location: str, lat: float, lon: float) -> str:
     """Build a brief location/season context string for the GPT prompt."""
-    month = datetime.now(timezone.utc).month
+    now = datetime.now(timezone.utc)
+    month = now.month
     season = _SEASONS_TR.get(month, "Bilinmiyor")
-    month_name = datetime.now(timezone.utc).strftime("%B")
+    month_name = now.strftime("%B")
 
     # Rough coastal heuristic: within ~150 km of a coast is "coastal"
     # We use a simplified bounding-box approach.
@@ -188,13 +194,11 @@ async def make_ai_decision(
     rule_result = make_decision(sources)
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key:
+    if not api_key or _AsyncOpenAI is None:
         return _wrap_rule_result(rule_result)
 
     try:
-        from openai import AsyncOpenAI  # type: ignore[import]
-
-        client = AsyncOpenAI(api_key=api_key)
+        client = _AsyncOpenAI(api_key=api_key)
         prompt = _build_system_prompt(
             sources, location, lat, lon, feedback_context, wind_trend, rule_result
         )

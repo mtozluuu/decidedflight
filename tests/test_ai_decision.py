@@ -106,7 +106,10 @@ class TestAIDecisionFallback:
         """If GPT raises an exception, make_ai_decision silently falls back."""
         with (
             patch.dict("os.environ", {"OPENAI_API_KEY": "fake-key"}),
-            patch("openai.AsyncOpenAI", side_effect=Exception("network error")),
+            patch(
+                "decideflight.services.ai_decision_engine._AsyncOpenAI",  # noqa: E501
+                side_effect=Exception("network error"),
+            ),
         ):
             result = await make_ai_decision(
                 sources=[_good_source()],
@@ -130,7 +133,10 @@ class TestAIDecisionFallback:
 
         with (
             patch.dict("os.environ", {"OPENAI_API_KEY": "fake-key"}),
-            patch("openai.AsyncOpenAI", return_value=mock_client),
+            patch(
+                "decideflight.services.ai_decision_engine._AsyncOpenAI",  # noqa: E501
+                return_value=mock_client,
+            ),
         ):
             result = await make_ai_decision(
                 sources=[_good_source()],
@@ -165,7 +171,10 @@ class TestAIDecisionFallback:
 
         with (
             patch.dict("os.environ", {"OPENAI_API_KEY": "fake-key"}),
-            patch("openai.AsyncOpenAI", return_value=mock_client),
+            patch(
+                "decideflight.services.ai_decision_engine._AsyncOpenAI",  # noqa: E501
+                return_value=mock_client,
+            ),
         ):
             result = await make_ai_decision(
                 sources=[_good_source()],
@@ -222,8 +231,13 @@ class TestFeedbackContextInjection:
         captured: list[str] = []
 
         async def _fake_make_ai(
-            sources, location, lat, lon, feedback_context="", wind_trend=""
-        ):
+            sources: list,
+            location: str,
+            lat: float,
+            lon: float,
+            feedback_context: str = "",
+            wind_trend: str = "",
+        ) -> object:
             captured.append(feedback_context)
             from decideflight.services.decision_engine import make_decision
             from decideflight.services.ai_decision_engine import _wrap_rule_result
@@ -438,7 +452,10 @@ class TestGridSummaryEndpoint:
         """If GPT raises, the rule-based summary is still returned."""
         with (
             patch.dict("os.environ", {"OPENAI_API_KEY": "fake-key"}),
-            patch("openai.AsyncOpenAI", side_effect=Exception("api error")),
+            patch(
+                "decideflight.api.weather._AsyncOpenAI",
+                side_effect=Exception("api error"),
+            ),
         ):
             response = client.post(
                 "/api/v1/weather/grid/summary",

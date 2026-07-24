@@ -30,6 +30,7 @@ from decideflight.database import SessionLocal
 from decideflight.models.feedback import Feedback
 from decideflight.models.weather_report import WeatherReport
 from decideflight.services.ai_decision_engine import (
+    AIDecisionResult,
     build_feedback_context,
     make_ai_decision,
 )
@@ -41,6 +42,11 @@ from decideflight.services.weather_fetcher import (
     WeatherSourceData,
     fetch_all_sources,
 )
+
+try:
+    from openai import AsyncOpenAI as _AsyncOpenAI  # type: ignore[import]
+except ImportError:  # pragma: no cover
+    _AsyncOpenAI = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -184,8 +190,6 @@ async def create_weather_report(
     )
 
     # 6. Persist report
-    from decideflight.services.ai_decision_engine import AIDecisionResult
-
     ai_data: str | None = None
     if isinstance(decision_result, AIDecisionResult) and (
         decision_result.summary or decision_result.detailed_analysis
@@ -872,15 +876,13 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str:
     avg_vis = sum(p.visibility_km for p in points) / len(points)
     pct_uygun = round(summary.UYGUN / summary.total * 100) if summary.total else 0
 
-    if not api_key:
+    if not api_key or _AsyncOpenAI is None:
         return _rule_based_grid_summary(
             summary, avg_wind, avg_temp, avg_humidity, avg_vis, pct_uygun
         )
 
     try:
-        from openai import AsyncOpenAI  # type: ignore[import]
-
-        client = AsyncOpenAI(api_key=api_key)
+        client = _AsyncOpenAI(api_key=api_key)
         pct_r = round(summary.RISKLI / summary.total * 100) if summary.total else 0
         pct_d = round(summary.UYGUN_DEGIL / summary.total * 100) if summary.total else 0
         prompt = (
