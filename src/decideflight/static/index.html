@@ -475,22 +475,6 @@
       statusEl.className = `mono text-[11px] mt-3 ${isError ? 'text-red-300' : 'text-cyan-100/60'}`;
     }
 
-    function localizeErrorMessage(message) {
-      if (!message || typeof message !== 'string') {
-        return 'Beklenmeyen bir hata oluştu.';
-      }
-
-      if (message.includes('Geocoding service unavailable.')) {
-        return 'Konum çözümleme servisine şu anda ulaşılamıyor.';
-      }
-
-      if (message.startsWith('Report ') && message.endsWith(' not found.')) {
-        return 'İlgili rapor bulunamadı.';
-      }
-
-      return message;
-    }
-
     function populateCountrySelect() {
       const countrySelect = document.getElementById('countrySelect');
       countrySelect.innerHTML = '<option value="">Ülke seçin</option>';
@@ -576,7 +560,7 @@
         document.getElementById('countrySelect').disabled = true;
         document.getElementById('citySelect').disabled = true;
         updateCityDataStatus(
-          `${error.message} Manuel konum veya koordinat girmeye devam edebilirsiniz.`,
+          'Şehir verisi yüklenemedi. Manuel konum veya koordinat girmeye devam edebilirsiniz.',
           true,
         );
       }
@@ -618,8 +602,8 @@
         renderResult(data);
       } catch (err) {
         hide('loadingSection');
-        const localizedError = localizeErrorMessage(err.message);
-        document.getElementById('errorMsg').textContent = localizedError;
+        document.getElementById('errorMsg').textContent =
+          'İstek işlenemedi. Lütfen konumu veya koordinatı kontrol edip tekrar deneyin.';
         show('errorSection');
       } finally {
         document.getElementById('reportBtn').disabled = false;
