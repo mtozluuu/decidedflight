@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
@@ -428,15 +427,17 @@ async def _fetch_grid_point_weather(
     lat: float,
     lon: float,
     altitude_ft: float,
-    hours: int,
+    hours: int,  # noqa: ARG001  — future: aggregate over next N hours
     client: httpx.AsyncClient,
 ) -> dict[str, Any] | None:
     """Fetch Open-Meteo current weather for one grid point.
 
     For altitudes above ~1500 ft the nearest pressure-level wind speed is
     requested via the hourly forecast.  Returns a normalised dict or None.
+
+    ``hours`` is accepted for API compatibility but not yet used; a future
+    update will aggregate forecasts over the next 1 or 24 hours.
     """
-    _ = hours  # reserved for future hourly aggregation
     url = "https://api.open-meteo.com/v1/forecast"
     pressure_hpa = _altitude_to_pressure_hpa(altitude_ft)
 
@@ -488,7 +489,9 @@ async def _fetch_grid_point_weather(
         if pl_wind_list:
             wind_knots = float(pl_wind_list[0]) * 0.539957
     else:
-        # Power-law wind profile scaling for sub-1500 ft altitudes
+        # Power-law wind profile: V(z) = V_ref * (z/z_ref)^(1/7)
+        # Exponent 1/7 (~0.143) is the standard value for open terrain
+        # (Hellmann exponent); z_ref = 10 m (Open-Meteo measurement height).
         alt_m = altitude_ft * 0.3048
         ref_m = 10.0
         if alt_m > ref_m:
@@ -502,6 +505,8 @@ async def _fetch_grid_point_weather(
 
     ceiling_ft: float | None = None
     if base_ft is not None and cloud_pct > 50:
+        # Heuristic: when cloud cover > 50 % the ceiling is just above the
+        # estimated base (200 ft offset mirrors the existing weather_fetcher).
         ceiling_ft = base_ft + 200.0
 
     if precip_mm <= 0:
@@ -613,7 +618,7 @@ async def analyse_weather_grid(
     Grid sizes: 25 points (5x5) or 100 points (10x10).
     All grid-point fetches are issued concurrently via ``asyncio.gather``.
     """
-    n = int(math.sqrt(body.grid_size))  # 5 or 10
+    n = {25: 5, 100: 10}[body.grid_size]
 
     if n > 1:
         lats = [

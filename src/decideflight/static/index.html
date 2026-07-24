@@ -1180,6 +1180,9 @@
       // Layer to hold drawn shapes
       drawnItems = new L.FeatureGroup().addTo(map);
 
+      // Track whether Leaflet.draw rectangle tool is active
+      let isRectDrawing = false;
+
       // Leaflet.draw control — rectangle only
       drawControl = new L.Control.Draw({
         edit: { featureGroup: drawnItems, edit: false, remove: false },
@@ -1192,6 +1195,9 @@
         },
       });
       map.addControl(drawControl);
+
+      map.on(L.Draw.Event.DRAWSTART, function () { isRectDrawing = true; });
+      map.on(L.Draw.Event.DRAWSTOP, function () { isRectDrawing = false; });
 
       // When a rectangle is drawn
       map.on(L.Draw.Event.CREATED, function (e) {
@@ -1207,8 +1213,7 @@
 
       // Click on map = single-point popup
       map.on('click', async function (e) {
-        // Skip if draw toolbar is active
-        if (document.querySelector('.leaflet-draw-toolbar .leaflet-draw-draw-rectangle.leaflet-draw-toolbar-button-enabled')) return;
+        if (isRectDrawing) return;
         const { lat, lng } = e.latlng;
         const popup = L.popup()
           .setLatLng([lat, lng])
