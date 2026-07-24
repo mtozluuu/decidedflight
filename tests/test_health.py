@@ -25,3 +25,19 @@ def test_health_endpoint(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.parametrize(
+    "icon_path",
+    [
+        "/favicon.ico",
+        "/apple-touch-icon.png",
+        "/apple-touch-icon-precomposed.png",
+    ],
+)
+def test_icon_endpoints(client: TestClient, icon_path: str) -> None:
+    response = client.get(icon_path)
+
+    assert response.status_code == 200
+    assert "image/svg+xml" in response.headers["content-type"]
+    assert "<svg" in response.text

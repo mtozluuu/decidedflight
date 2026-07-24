@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DecideFlight – Drone Uçuş Hava Durumu Analizi</title>
+  <link rel="icon" type="image/svg+xml" href="/static/decideflight-icon.svg" />
+  <link rel="apple-touch-icon" href="/static/decideflight-icon.svg" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
@@ -174,7 +176,7 @@
           <input
             id="locationInput"
             type="text"
-            placeholder="KONUM GİRİN..."
+            placeholder="ŞEHİR ADI VEYA ENLEM, BOYLAM GİRİN..."
             aria-label="Konum veya koordinat girişi"
             class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md pl-9 pr-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
           />
@@ -308,6 +310,7 @@
                 id="commentInput"
                 type="text"
                 placeholder="Opsiyonel not..."
+                aria-label="Geri bildirim notu"
                 class="mono flex-1 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
               />
               <button
@@ -557,7 +560,7 @@
         document.getElementById('countrySelect').disabled = true;
         document.getElementById('citySelect').disabled = true;
         updateCityDataStatus(
-          `${error.message} Manuel konum veya koordinat girmeye devam edebilirsiniz.`,
+          'Şehir verisi yüklenemedi. Manuel konum veya koordinat girmeye devam edebilirsiniz.',
           true,
         );
       }
@@ -599,7 +602,16 @@
         renderResult(data);
       } catch (err) {
         hide('loadingSection');
-        document.getElementById('errorMsg').textContent = err.message;
+        console.error('Rapor oluşturma hatası:', err);
+        const baseErrorMessage =
+          'İstek işlenemedi. Lütfen konumu veya koordinatı kontrol edip tekrar deneyin.';
+        const detail =
+          err && typeof err.message === 'string' && err.message.trim()
+            ? `Ayrıntı: ${err.message.trim()}`
+            : '';
+        document.getElementById('errorMsg').textContent = detail
+          ? `${baseErrorMessage} ${detail}`
+          : baseErrorMessage;
         show('errorSection');
       } finally {
         document.getElementById('reportBtn').disabled = false;

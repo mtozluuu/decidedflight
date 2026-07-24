@@ -3,7 +3,7 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -15,6 +15,7 @@ from decideflight.database import init_db
 import decideflight.models  # noqa: F401
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+_ICON_PATH = os.path.join(_STATIC_DIR, "decideflight-icon.svg")
 
 
 @asynccontextmanager
@@ -48,3 +49,20 @@ def root():
     if os.path.isfile(index_path):
         return FileResponse(index_path, media_type="text/html")
     return {"message": "DecideFlight API is running"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def get_favicon() -> FileResponse:
+    """Serve favicon for browsers requesting /favicon.ico directly."""
+    if not os.path.isfile(_ICON_PATH):
+        raise HTTPException(status_code=404, detail="Icon file not found")
+    return FileResponse(_ICON_PATH, media_type="image/svg+xml")
+
+
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+@app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+def get_apple_touch_icon() -> FileResponse:
+    """Serve Apple touch icon fallback requests."""
+    if not os.path.isfile(_ICON_PATH):
+        raise HTTPException(status_code=404, detail="Icon file not found")
+    return FileResponse(_ICON_PATH, media_type="image/svg+xml")
