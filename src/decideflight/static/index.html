@@ -332,6 +332,7 @@
         </div>
         <button id="installBtn" type="button" class="hidden mono border border-cyan-400/40 text-cyan-200 hover:bg-cyan-400/10 rounded-md px-4 py-2.5 text-xs tracking-wider">[ TELEFONA EKLE ]</button>
       </div>
+      <p id="installStatus" class="mono text-[11px] text-cyan-100/55 mt-2"></p>
 
       <p id="cityDataStatus" class="mono text-[11px] text-cyan-100/60 mt-3">Şehir verisi hazırlanıyor...</p>
       <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
@@ -885,6 +886,11 @@
     let deferredInstallPrompt = null;
     let compareMode = false;
     const compareSlots = { A: null, B: null };
+    const REGION_COMPARE_SCORES = {
+      UYGUN: 2,
+      RISKLI: 1,
+      UYGUN_DEGIL: -2,
+    };
 
     function setLocation(name) {
       document.getElementById('locationInput').value = name;
@@ -1023,11 +1029,32 @@
       document.getElementById('flightPlanEnd').value = '18';
     }
 
+    function setInstallStatus(message, isError = false) {
+      const status = document.getElementById('installStatus');
+      status.textContent = message;
+      status.className = `mono text-[11px] mt-2 ${
+        isError ? 'text-amber-300' : 'text-cyan-100/55'
+      }`;
+    }
+
     function appendChatBubble(role, text) {
       const box = document.getElementById('chatMessages');
       const bubble = document.createElement('div');
-      bubble.className = `rounded-md px-3 py-2 text-sm ${role === 'user' ? 'chat-bubble-user ml-auto max-w-[85%]' : 'chat-bubble-ai mr-auto max-w-[85%]'}`;
-      bubble.innerHTML = `<p class="mono text-[10px] mb-1 ${role === 'user' ? 'text-cyan-300' : 'text-violet-300'}">${role === 'user' ? 'SİZ' : 'GPT-4o'}</p><p>${text}</p>`;
+      const isUser = role === 'user';
+      bubble.className = `rounded-md px-3 py-2 text-sm ${
+        isUser
+          ? 'chat-bubble-user ml-auto max-w-[85%]'
+          : 'chat-bubble-ai mr-auto max-w-[85%]'
+      }`;
+      const label = document.createElement('p');
+      label.className = `mono text-[10px] mb-1 ${
+        isUser ? 'text-cyan-300' : 'text-violet-300'
+      }`;
+      label.textContent = isUser ? 'SİZ' : 'GPT-4o';
+      const message = document.createElement('p');
+      message.textContent = text;
+      bubble.appendChild(label);
+      bubble.appendChild(message);
       box.appendChild(bubble);
       box.scrollTop = box.scrollHeight;
     }
@@ -1232,7 +1259,11 @@
         result.textContent = 'İki bölge de kaydedildiğinde daha iyi bölge vurgulanacak.';
         return;
       }
-      const score = slot => (slot.summary.UYGUN * 2) + slot.summary.RISKLI - (slot.summary.UYGUN_DEGIL * 2);
+      const score = slot => (
+        (slot.summary.UYGUN * REGION_COMPARE_SCORES.UYGUN)
+        + (slot.summary.RISKLI * REGION_COMPARE_SCORES.RISKLI)
+        + (slot.summary.UYGUN_DEGIL * REGION_COMPARE_SCORES.UYGUN_DEGIL)
+      );
       const scoreA = score(compareSlots.A);
       const scoreB = score(compareSlots.B);
       result.textContent = scoreA === scoreB
@@ -1244,6 +1275,7 @@
       event.preventDefault();
       deferredInstallPrompt = event;
       document.getElementById('installBtn').classList.remove('hidden');
+      setInstallStatus('Uygulama yüklemeye hazır.');
     }
 
     async function promptInstall() {
@@ -1251,6 +1283,7 @@
       deferredInstallPrompt.prompt();
       deferredInstallPrompt = null;
       document.getElementById('installBtn').classList.add('hidden');
+      setInstallStatus('Kurulum isteği gönderildi.');
     }
 
     function show(id) {
@@ -1700,6 +1733,7 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(err => {
         console.warn('Service worker kaydı başarısız:', err);
+        setInstallStatus('PWA kurulumu şu anda hazır değil.', true);
       });
     }
 

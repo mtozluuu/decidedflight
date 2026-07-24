@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 _TIMEOUT = 15.0
+_MISSING_VALUE_SENTINEL = -9999
 
 # Precipitation level constants
 PRECIP_NONE = 0
@@ -95,7 +96,7 @@ def _m_to_km(m: float) -> float:
 
 
 def _to_float(value: Any) -> float | None:
-    if value in (None, "", -9999, "-9999"):
+    if value in (None, "", _MISSING_VALUE_SENTINEL, str(_MISSING_VALUE_SENTINEL)):
         return None
     if isinstance(value, str):
         value = value.strip().replace(",", ".")

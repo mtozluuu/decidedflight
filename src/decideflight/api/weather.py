@@ -811,7 +811,6 @@ async def forecast_change(
     summary="NOTAM yer tutucu yanıtı",
 )
 async def get_notam_placeholder(lat: float, lon: float) -> NotamResponse:
-    _ = (lat, lon)
     return NotamResponse(
         notams=[],
         disclaimer=(
