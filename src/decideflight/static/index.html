@@ -123,6 +123,29 @@
       .headline-glow { letter-spacing: 0.08em; }
       .source-grid { grid-template-columns: 1fr; }
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hud-card,
+      .hud-grid > *,
+      .radar::before,
+      .blink,
+      .decision-animate,
+      .decision-danger-blink {
+        animation: none !important;
+      }
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
   </style>
 </head>
 <body>
@@ -132,9 +155,9 @@
         <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest">◈ DECIDEFLIGHT</p>
         <p class="mono text-[10px] sm:text-xs text-cyan-100/60 mt-1">AVIATION WEATHER DECISION CORE</p>
       </div>
-      <div class="text-right">
+      <div class="text-right" role="timer" aria-label="Universal Coordinated Time">
         <p class="mono text-[10px] text-green-300/70 tracking-wider">UTC</p>
-        <p id="utcClock" class="mono text-sm sm:text-base text-green-300">--:--:--</p>
+        <p id="utcClock" aria-label="Current UTC time" class="mono text-sm sm:text-base text-green-300">--:--:--</p>
       </div>
     </div>
     <div class="max-w-6xl mx-auto mt-3 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent"></div>
@@ -170,8 +193,8 @@
       </div>
     </section>
 
-    <div id="loadingSection" class="hidden hud-card py-10 px-6 text-center">
-      <div class="flex justify-center"><div class="radar"></div></div>
+    <div id="loadingSection" role="status" aria-live="polite" aria-busy="true" class="hidden hud-card py-10 px-6 text-center">
+      <div class="flex justify-center"><div class="radar" aria-label="Loading weather data"></div></div>
       <p class="mono text-green-300 mt-4 blink">ACQUIRING WEATHER DATA...</p>
       <p class="mono text-[11px] text-cyan-100/60 mt-3">CONNECTING TO SOURCES: OPEN-METEO ● METAR ● OWM ● WEATHERAPI</p>
     </div>
@@ -191,13 +214,14 @@
         <div class="grid md:grid-cols-[220px_1fr] gap-6 items-center">
           <div class="text-center">
             <div class="relative w-40 h-40 mx-auto">
-              <svg class="w-40 h-40 -rotate-90" viewBox="0 0 120 120">
+              <svg class="w-40 h-40 -rotate-90" role="img" aria-label="Confidence score ring" viewBox="0 0 120 120">
                 <circle cx="60" cy="60" r="52" stroke="rgba(14,165,233,0.25)" stroke-width="8" fill="none"></circle>
-                <circle id="confidenceRing" cx="60" cy="60" r="52" stroke="#00d4ff" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="326.72" stroke-dashoffset="326.72"></circle>
+                <circle id="confidenceRing" cx="60" cy="60" r="52" stroke="#00d4ff" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="0" stroke-dashoffset="0"></circle>
               </svg>
               <div class="absolute inset-0 flex flex-col items-center justify-center">
                 <p id="confidencePercent" class="mono text-3xl font-extrabold text-cyan-300">0%</p>
                 <p class="mono text-[10px] text-cyan-100/60 tracking-widest">CONFIDENCE</p>
+                <span id="confidenceAria" class="sr-only" aria-live="polite">Confidence score 0 percent</span>
               </div>
             </div>
             <p id="confidenceLabel" class="mono text-xs text-cyan-100/60 mt-2"></p>
@@ -289,6 +313,22 @@
   <script>
     let currentReportId = null;
     let pendingFeedbackCorrect = null;
+    const CONFIDENCE_ANIMATION_DURATION_MS = 900;
+    const CONFIDENCE_SAFE_THRESHOLD_PCT = 70;
+    const CONFIDENCE_CAUTION_THRESHOLD_PCT = 40;
+    const CONFIDENCE_RING_RADIUS = 52;
+    let cachedHudColors = null;
+
+    function getHudColors() {
+      if (cachedHudColors) return cachedHudColors;
+      const rootStyles = getComputedStyle(document.documentElement);
+      cachedHudColors = {
+        safe: rootStyles.getPropertyValue('--hud-green').trim() || '#00ff88',
+        caution: rootStyles.getPropertyValue('--hud-amber').trim() || '#ffb800',
+        danger: rootStyles.getPropertyValue('--hud-red').trim() || '#ff3d57',
+      };
+      return cachedHudColors;
+    }
 
     const PRECIP_LABELS = { 0: 'None', 1: 'Light', 2: 'Moderate/Heavy' };
     const DECISION_CONFIG = {
@@ -318,8 +358,16 @@
       document.getElementById('locationInput').value = name;
     }
 
-    function show(id) { document.getElementById(id).classList.remove('hidden'); }
-    function hide(id) { document.getElementById(id).classList.add('hidden'); }
+    function show(id) {
+      const el = document.getElementById(id);
+      el.classList.remove('hidden');
+      if (id === 'loadingSection') el.setAttribute('aria-busy', 'true');
+    }
+    function hide(id) {
+      const el = document.getElementById(id);
+      el.classList.add('hidden');
+      if (id === 'loadingSection') el.setAttribute('aria-busy', 'false');
+    }
 
     function computeConfidence(parameters) {
       const scores = { 'UYGUN': 100, 'RISKLI': 50, 'UYGUN_DEGIL': 0 };
@@ -356,30 +404,35 @@
       const clamped = Math.max(0, Math.min(100, conf));
       const ring = document.getElementById('confidenceRing');
       const percent = document.getElementById('confidencePercent');
-      const circumference = 326.72;
-      const targetOffset = circumference * (1 - clamped / 100);
-      const ringColor = clamped >= 70 ? '#00ff88' : clamped >= 40 ? '#ffb800' : '#ff3d57';
+      const ariaText = document.getElementById('confidenceAria');
+      const colors = getHudColors();
+      const radius = Number(ring.getAttribute('r') || CONFIDENCE_RING_RADIUS);
+      const circumference = 2 * Math.PI * radius;
+      const ringColor = clamped >= CONFIDENCE_SAFE_THRESHOLD_PCT
+        ? colors.safe
+        : clamped >= CONFIDENCE_CAUTION_THRESHOLD_PCT
+          ? colors.caution
+          : colors.danger;
 
       ring.style.stroke = ringColor;
-      ring.style.strokeDashoffset = String(circumference);
+      ring.style.strokeDasharray = `${circumference}`;
+      ring.style.strokeDashoffset = `${circumference}`;
       percent.style.color = ringColor;
 
       let start = 0;
-      const duration = 900;
+      const duration = CONFIDENCE_ANIMATION_DURATION_MS;
       const startedAt = performance.now();
-
       function step(now) {
         const progress = Math.min((now - startedAt) / duration, 1);
         const value = Math.round(start + (clamped - start) * progress);
         percent.textContent = `${value}%`;
-        ring.style.strokeDashoffset = String(circumference * (1 - value / 100));
+        ring.style.strokeDashoffset = `${circumference * (1 - value / 100)}`;
+        if (progress >= 1) {
+          ariaText.textContent = `Confidence score ${value} percent`;
+        }
         if (progress < 1) requestAnimationFrame(step);
       }
-
       requestAnimationFrame(step);
-      setTimeout(() => {
-        ring.style.strokeDashoffset = String(targetOffset);
-      }, duration);
     }
 
     function updateUtcClock() {
@@ -453,7 +506,7 @@
       document.getElementById('decisionText').textContent = cfg.label;
       document.getElementById('locationLabel').textContent = `LOCATION: ${data.location}  (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
       document.getElementById('createdAt').textContent =
-        'REPORT TIME: ' + new Date(data.created_at).toLocaleString('tr-TR');
+        'REPORT TIME: ' + new Date(data.created_at).toLocaleString('en-US');
 
       document.getElementById('decisionDetail').textContent = data.decision_detail;
 
