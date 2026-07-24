@@ -6,231 +6,368 @@
   <title>DecideFlight – Drone Uçuş Hava Durumu Analizi</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    body { font-family: 'Inter', sans-serif; }
-    .spinner {
-      border: 3px solid #e5e7eb;
-      border-top-color: #3b82f6;
-      border-radius: 50%;
-      width: 36px;
-      height: 36px;
-      animation: spin 0.8s linear infinite;
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --hud-bg: #0a0e1a;
+      --hud-panel: rgba(10, 17, 35, 0.72);
+      --hud-panel-strong: rgba(7, 13, 29, 0.92);
+      --hud-cyan: #00d4ff;
+      --hud-cyan-soft: #0ea5e9;
+      --hud-green: #00ff88;
+      --hud-amber: #ffb800;
+      --hud-red: #ff3d57;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .fade-in { animation: fadeIn 0.4s ease-in; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-    .progress-bar { transition: width 1s ease-in-out; }
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(0, 212, 255, 0.13), transparent 35%),
+        radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.12), transparent 42%),
+        linear-gradient(180deg, #0a0e1a 0%, #060913 100%);
+      color: #d8f5ff;
+      min-height: 100vh;
+    }
+
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    .hud-card {
+      background: var(--hud-panel);
+      border: 1px solid rgba(0, 212, 255, 0.28);
+      border-radius: 12px;
+      box-shadow: inset 0 0 0 1px rgba(8, 23, 45, 0.35), 0 0 20px rgba(0, 160, 220, 0.09);
+      clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+      animation: slideUp 0.55s ease both;
+    }
+
+    .hud-grid > * { animation: slideUp 0.55s ease both; }
+    .hud-grid > *:nth-child(2) { animation-delay: 0.06s; }
+    .hud-grid > *:nth-child(3) { animation-delay: 0.12s; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .headline-glow {
+      letter-spacing: 0.2em;
+      text-shadow: 0 0 14px rgba(0, 212, 255, 0.65);
+    }
+
+    .chip {
+      border: 1px solid rgba(0, 212, 255, 0.35);
+      background: rgba(4, 20, 35, 0.65);
+      color: #9feaff;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .chip:hover { box-shadow: 0 0 16px rgba(0, 212, 255, 0.3); }
+
+    .radar {
+      width: 116px;
+      height: 116px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 255, 136, 0.35);
+      position: relative;
+      background: radial-gradient(circle, rgba(0, 255, 136, 0.08), rgba(0, 255, 136, 0.01));
+      overflow: hidden;
+      box-shadow: 0 0 25px rgba(0, 255, 136, 0.2);
+    }
+
+    .radar::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: conic-gradient(from 0deg, transparent 0deg, rgba(0, 255, 136, 0.35) 55deg, transparent 100deg);
+      animation: radarSweep 1.35s linear infinite;
+    }
+
+    .radar::after {
+      content: '';
+      position: absolute;
+      inset: 18%;
+      border: 1px solid rgba(0, 255, 136, 0.35);
+      border-radius: 50%;
+    }
+
+    @keyframes radarSweep { to { transform: rotate(360deg); } }
+    @keyframes blinkText { 50% { opacity: 0.35; } }
+    .blink { animation: blinkText 1.1s steps(2, start) infinite; }
+
+    .decision-animate { animation: decisionPop 0.42s ease; }
+    @keyframes decisionPop {
+      0% { transform: scale(0.96); opacity: 0.4; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .decision-danger-blink { animation: dangerBlink 0.85s steps(2, start) infinite; }
+    @keyframes dangerBlink { 50% { opacity: 0.45; } }
+
+    .table-row:hover { background: rgba(0, 212, 255, 0.08); }
+
+    .source-card {
+      border: 1px solid rgba(0, 212, 255, 0.28);
+      background: rgba(7, 18, 37, 0.7);
+      border-radius: 10px;
+      padding: 0.9rem;
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.4rem 0.8rem;
+      font-size: 0.78rem;
+    }
+
+    @media (max-width: 640px) {
+      .headline-glow { letter-spacing: 0.08em; }
+      .source-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hud-card,
+      .hud-grid > *,
+      .radar::before,
+      .blink,
+      .decision-animate,
+      .decision-danger-blink {
+        animation: none !important;
+      }
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
   </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-
-  <!-- Header -->
-  <header class="bg-white shadow-sm sticky top-0 z-10">
-    <div class="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
-      <span class="text-2xl">✈️</span>
+<body>
+  <header class="px-4 pt-5 pb-3">
+    <div class="max-w-6xl mx-auto flex items-start justify-between gap-4">
       <div>
-        <h1 class="text-xl font-bold text-gray-900">DecideFlight</h1>
-        <p class="text-xs text-gray-500">AI destekli drone uçuş hava durumu analizi</p>
+        <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest">◈ DECIDEFLIGHT</p>
+        <p class="mono text-[10px] sm:text-xs text-cyan-100/60 mt-1">AVIATION WEATHER DECISION CORE</p>
+      </div>
+      <div class="text-right" role="timer" aria-label="Universal Coordinated Time">
+        <p class="mono text-[10px] text-green-300/70 tracking-wider">UTC</p>
+        <p id="utcClock" aria-label="Current UTC time" class="mono text-sm sm:text-base text-green-300">--:--:--</p>
       </div>
     </div>
+    <div class="max-w-6xl mx-auto mt-3 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent"></div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-4 py-8 space-y-6">
+  <main class="max-w-6xl mx-auto px-4 pb-8 space-y-6">
+    <section class="hud-card p-6 sm:p-8 text-center">
+      <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">DRONE FLIGHT WEATHER ANALYSIS</h1>
+      <p class="mono text-xs sm:text-sm text-cyan-100/75 mt-3">SELECT COORDINATES OR CITY — WORLDWIDE COVERAGE</p>
 
-    <!-- Search Card -->
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-      <h2 class="text-lg font-semibold text-gray-800 mb-4">📍 Konum Seç</h2>
-      <div class="flex flex-col sm:flex-row gap-3">
-        <input
-          id="locationInput"
-          type="text"
-          placeholder="Şehir adı veya enlem,boylam (örn: Istanbul veya 41.01,28.97)"
-          class="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
-        />
+      <div class="mt-6 flex flex-col sm:flex-row gap-3">
+        <div class="relative flex-1">
+          <span class="mono absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300/80">▶</span>
+          <input
+            id="locationInput"
+            type="text"
+            placeholder="ENTER LOCATION..."
+            class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md pl-9 pr-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+          />
+        </div>
         <button
           id="reportBtn"
           onclick="generateReport()"
-          class="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold rounded-xl px-6 py-3 text-sm transition flex items-center gap-2 justify-center"
-        >
-          <span>🔍</span> Rapor Oluştur
-        </button>
-      </div>
-      <p class="text-xs text-gray-400 mt-2">Örnekler: <span class="cursor-pointer underline" onclick="setLocation('Istanbul')">Istanbul</span>, <span class="cursor-pointer underline" onclick="setLocation('Ankara')">Ankara</span>, <span class="cursor-pointer underline" onclick="setLocation('Izmir')">Izmir</span></p>
-    </div>
-
-    <!-- Loading Spinner -->
-    <div id="loadingSection" class="hidden flex flex-col items-center justify-center py-12 gap-4">
-      <div class="spinner"></div>
-      <p class="text-sm text-gray-500 animate-pulse">Hava verisi toplanıyor ve analiz ediliyor…</p>
-    </div>
-
-    <!-- Error Message -->
-    <div id="errorSection" class="hidden bg-red-50 border border-red-200 rounded-2xl p-5 text-red-700 text-sm flex items-start gap-3">
-      <span class="text-lg">⚠️</span>
-      <p id="errorMsg"></p>
-    </div>
-
-    <!-- Result Card -->
-    <div id="resultSection" class="hidden fade-in space-y-5">
-
-      <!-- Decision Banner -->
-      <div id="decisionBanner" class="rounded-2xl p-6 text-center shadow-sm">
-        <p class="text-sm font-medium mb-1 opacity-80" id="locationLabel"></p>
-        <div class="text-4xl font-black tracking-wide" id="decisionText"></div>
-        <p class="text-xs mt-2 opacity-70" id="createdAt"></p>
+          class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-6 py-3 text-sm tracking-wider hover:shadow-[0_0_20px_rgba(0,212,255,0.45)] transition"
+        >[ ANALYZE ]</button>
       </div>
 
-      <!-- AI Summary + Confidence -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-        <h3 class="font-semibold text-gray-800">🤖 Analiz Özeti</h3>
-        <p id="decisionDetail" class="text-sm text-gray-700 leading-relaxed whitespace-pre-line"></p>
+      <div class="mt-4 flex flex-wrap justify-center gap-2 text-xs">
+        <button class="chip px-2.5 py-1 rounded-sm" onclick="setLocation('Istanbul')">[ ISTANBUL ]</button>
+        <button class="chip px-2.5 py-1 rounded-sm" onclick="setLocation('New York')">[ NEW YORK ]</button>
+        <button class="chip px-2.5 py-1 rounded-sm" onclick="setLocation('Tokyo')">[ TOKYO ]</button>
+        <button class="chip px-2.5 py-1 rounded-sm" onclick="setLocation('Dubai')">[ DUBAI ]</button>
+      </div>
+    </section>
 
-        <div>
-          <div class="flex justify-between text-xs text-gray-500 mb-1">
-            <span>Güven Skoru</span>
-            <span id="confidenceLabel" class="font-semibold"></span>
+    <div id="loadingSection" role="status" aria-live="polite" aria-busy="true" class="hidden hud-card py-10 px-6 text-center">
+      <div class="flex justify-center"><div class="radar" aria-label="Loading weather data"></div></div>
+      <p class="mono text-green-300 mt-4 blink">ACQUIRING WEATHER DATA...</p>
+      <p class="mono text-[11px] text-cyan-100/60 mt-3">CONNECTING TO SOURCES: OPEN-METEO ● METAR ● OWM ● WEATHERAPI</p>
+    </div>
+
+    <div id="errorSection" class="hidden hud-card px-5 py-4 border-red-500/40 text-red-300 mono text-sm">
+      ⚠ <span id="errorMsg"></span>
+    </div>
+
+    <section id="resultSection" class="hidden space-y-5">
+      <div id="decisionBanner" class="hud-card p-6 text-center decision-animate">
+        <div id="decisionText" class="mono text-2xl sm:text-4xl font-extrabold tracking-wide"></div>
+        <p id="locationLabel" class="mono text-xs text-cyan-100/70 mt-3"></p>
+        <p id="createdAt" class="mono text-[11px] text-cyan-100/55 mt-1"></p>
+      </div>
+
+      <div class="hud-card p-6 hud-grid">
+        <div class="grid md:grid-cols-[220px_1fr] gap-6 items-center">
+          <div class="text-center">
+            <div class="relative w-40 h-40 mx-auto">
+              <svg class="w-40 h-40 -rotate-90" role="img" aria-label="Confidence score ring" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="52" stroke="rgba(14,165,233,0.25)" stroke-width="8" fill="none"></circle>
+                <circle id="confidenceRing" cx="60" cy="60" r="52" stroke="#00d4ff" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="0" stroke-dashoffset="0"></circle>
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <p id="confidencePercent" class="mono text-3xl font-extrabold text-cyan-300">0%</p>
+                <p class="mono text-[10px] text-cyan-100/60 tracking-widest">CONFIDENCE</p>
+                <span id="confidenceAria" class="sr-only" aria-live="polite">Confidence score 0 percent</span>
+              </div>
+            </div>
+            <p id="confidenceLabel" class="mono text-xs text-cyan-100/60 mt-2"></p>
           </div>
-          <div class="h-3 bg-gray-100 rounded-full overflow-hidden">
-            <div id="confidenceBar" class="progress-bar h-3 rounded-full w-0"></div>
+
+          <div>
+            <h3 class="mono text-cyan-300 text-sm mb-2">◈ ANALYSIS SUMMARY</h3>
+            <p id="decisionDetail" class="text-sm leading-relaxed text-cyan-100/85 whitespace-pre-line"></p>
+            <div id="confidenceBar" class="hidden"></div>
           </div>
         </div>
       </div>
 
-      <!-- Risk Factors & Recommendations -->
-      <div class="grid sm:grid-cols-2 gap-4">
-        <div id="riskCard" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hidden">
-          <h3 class="font-semibold text-gray-800 mb-3">⚠️ Risk Faktörleri</h3>
-          <ul id="riskList" class="space-y-2 text-sm text-gray-700"></ul>
+      <div class="grid lg:grid-cols-2 gap-4 hud-grid">
+        <div id="riskCard" class="hud-card p-5 hidden">
+          <h3 class="mono text-sm mb-3 text-amber-300">⚠ RISK ASSESSMENT</h3>
+          <ul id="riskList" class="space-y-2 text-sm"></ul>
         </div>
-        <div id="recCard" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hidden">
-          <h3 class="font-semibold text-gray-800 mb-3">💡 Öneriler</h3>
-          <ul id="recList" class="space-y-2 text-sm text-gray-700"></ul>
+        <div id="recCard" class="hud-card p-5 hidden">
+          <h3 class="mono text-sm mb-3 text-cyan-300">◈ RECOMMENDATIONS</h3>
+          <ul id="recList" class="space-y-2 text-sm"></ul>
         </div>
       </div>
 
-      <!-- Parameters Table -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h3 class="font-semibold text-gray-800 mb-4">📊 Hava Parametreleri</h3>
+      <div class="hud-card p-6">
+        <h3 class="mono text-sm text-cyan-300 mb-4">◈ FLIGHT PARAMETERS</h3>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm mono">
             <thead>
-              <tr class="text-left text-gray-400 border-b border-gray-100">
-                <th class="pb-2 font-medium">Parametre</th>
-                <th class="pb-2 font-medium">Değer</th>
-                <th class="pb-2 font-medium">Durum</th>
+              <tr class="text-cyan-100/60 border-b border-cyan-400/20 text-left">
+                <th class="pb-2 font-semibold">PARAMETER</th>
+                <th class="pb-2 font-semibold">VALUE</th>
+                <th class="pb-2 font-semibold">STATUS</th>
               </tr>
             </thead>
-            <tbody id="parametersTable" class="divide-y divide-gray-50"></tbody>
+            <tbody id="parametersTable"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- Sources Table -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h3 class="font-semibold text-gray-800 mb-4">🌐 Kaynak Verileri</h3>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-gray-400 border-b border-gray-100">
-                <th class="pb-2 font-medium">Kaynak</th>
-                <th class="pb-2 font-medium">Rüzgar (kt)</th>
-                <th class="pb-2 font-medium">Görüş (km)</th>
-                <th class="pb-2 font-medium">Yağış</th>
-                <th class="pb-2 font-medium">Sıcaklık (°C)</th>
-                <th class="pb-2 font-medium">Nem (%)</th>
-                <th class="pb-2 font-medium">Bulut Tabanı (ft)</th>
-              </tr>
-            </thead>
-            <tbody id="sourcesTable" class="divide-y divide-gray-50"></tbody>
-          </table>
-        </div>
+      <div class="hud-card p-6">
+        <h3 class="mono text-sm text-cyan-300 mb-4">◈ DATA SOURCES</h3>
+        <div id="sourcesTable" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
       </div>
 
-      <!-- Feedback & PDF -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-
+      <div class="hud-card p-6">
+        <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
           <div id="feedbackSection">
-            <p class="text-sm font-medium text-gray-700 mb-3">Bu karar doğru muydu?</p>
-            <div id="feedbackButtons" class="flex gap-3">
+            <p class="mono text-sm text-cyan-200 mb-3">◈ MISSION DEBRIEF — WAS THIS ASSESSMENT CORRECT?</p>
+            <div id="feedbackButtons" class="flex flex-wrap gap-3">
               <button
                 onclick="submitFeedback(true)"
-                class="bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 font-semibold rounded-xl px-5 py-2 text-sm transition flex items-center gap-2"
-              >✅ EVET</button>
+                class="mono border border-green-400/70 text-green-300 hover:bg-green-400/10 rounded-md px-4 py-2 text-xs tracking-wider"
+              >[ CONFIRMED ]</button>
               <button
                 onclick="submitFeedback(false)"
-                class="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-semibold rounded-xl px-5 py-2 text-sm transition flex items-center gap-2"
-              >❌ HAYIR</button>
+                class="mono border border-red-400/70 text-red-300 hover:bg-red-400/10 rounded-md px-4 py-2 text-xs tracking-wider"
+              >[ INCORRECT ]</button>
             </div>
-            <div id="feedbackComment" class="hidden mt-3 flex gap-2">
+            <div id="feedbackComment" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
               <input
                 id="commentInput"
                 type="text"
-                placeholder="Neden yanlış olduğunu açıklayın (isteğe bağlı)"
-                class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                placeholder="Optional note..."
+                class="mono flex-1 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
               />
               <button
                 onclick="confirmFeedback()"
-                class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg px-4 py-2 transition"
-              >Gönder</button>
+                class="mono bg-cyan-300 text-slate-950 font-semibold rounded-md px-4 py-2 text-xs"
+              >[ SUBMIT ]</button>
             </div>
-            <p id="feedbackThanks" class="hidden text-sm text-green-600 font-medium mt-2">✓ Geri bildiriminiz kaydedildi, teşekkürler!</p>
+            <p id="feedbackThanks" class="hidden mono text-xs text-green-300 mt-2">✓ FEEDBACK RECORDED</p>
           </div>
 
           <button
             id="pdfBtn"
             onclick="downloadPDF()"
-            class="bg-gray-800 hover:bg-gray-900 text-white font-semibold rounded-xl px-5 py-2.5 text-sm transition flex items-center gap-2 self-start sm:self-auto"
-          >
-            📄 PDF İndir
-          </button>
+            class="mono border border-slate-300/35 text-slate-200 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs self-start"
+          >[ EXPORT REPORT ]</button>
         </div>
       </div>
-
-    </div>
+    </section>
   </main>
 
-  <footer class="text-center text-xs text-gray-400 py-8">
-    DecideFlight &copy; 2024 — AI destekli drone hava durumu analizi
+  <footer class="text-center mono text-[10px] text-slate-500 pb-6 px-4">
+    DECIDEFLIGHT SYSTEM v2.0 — WORLDWIDE DRONE WEATHER INTELLIGENCE
   </footer>
 
   <script>
     let currentReportId = null;
     let pendingFeedbackCorrect = null;
+    const CONFIDENCE_ANIMATION_DURATION_MS = 900;
+    const CONFIDENCE_SAFE_THRESHOLD_PCT = 70;
+    const CONFIDENCE_CAUTION_THRESHOLD_PCT = 40;
+    const CONFIDENCE_RING_RADIUS = 52;
+    let cachedHudColors = null;
 
-    const PRECIP_LABELS = { 0: 'Yok', 1: 'Hafif', 2: 'Orta/Şiddetli' };
+    function getHudColors() {
+      if (cachedHudColors) return cachedHudColors;
+      const rootStyles = getComputedStyle(document.documentElement);
+      cachedHudColors = {
+        safe: rootStyles.getPropertyValue('--hud-green').trim() || '#00ff88',
+        caution: rootStyles.getPropertyValue('--hud-amber').trim() || '#ffb800',
+        danger: rootStyles.getPropertyValue('--hud-red').trim() || '#ff3d57',
+      };
+      return cachedHudColors;
+    }
+
+    const PRECIP_LABELS = { 0: 'None', 1: 'Light', 2: 'Moderate/Heavy' };
     const DECISION_CONFIG = {
       'UYGUN': {
-        bg: 'bg-green-500',
-        text: 'text-white',
-        label: '✅ UYGUN',
-        banner: 'bg-gradient-to-r from-green-500 to-emerald-600 text-white',
+        label: '✦ FLIGHT AUTHORIZED',
+        banner: 'border border-green-400/40 text-green-300 shadow-[0_0_24px_rgba(0,255,136,0.25)]',
+        pulse: false,
       },
       'RISKLI': {
-        bg: 'bg-yellow-400',
-        text: 'text-gray-900',
-        label: '⚠️ RİSKLİ',
-        banner: 'bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900',
+        label: '⚠ CAUTION — REVIEW CONDITIONS',
+        banner: 'border border-amber-400/45 text-amber-300 shadow-[0_0_24px_rgba(255,184,0,0.24)]',
+        pulse: false,
       },
       'UYGUN_DEGIL': {
-        bg: 'bg-red-500',
-        text: 'text-white',
-        label: '❌ UYGUN DEĞİL',
-        banner: 'bg-gradient-to-r from-red-500 to-rose-600 text-white',
+        label: '✕ FLIGHT NOT AUTHORIZED',
+        banner: 'border border-red-400/45 text-red-300 shadow-[0_0_26px_rgba(255,61,87,0.32)]',
+        pulse: true,
       },
     };
     const PARAM_DECISION_BADGE = {
-      'UYGUN': '<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">UYGUN</span>',
-      'RISKLI': '<span class="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">RİSKLİ</span>',
-      'UYGUN_DEGIL': '<span class="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded-full">UYGUN DEĞİL</span>',
+      'UYGUN': '<span class="text-[11px] text-green-300">[AUTHORIZED]</span>',
+      'RISKLI': '<span class="text-[11px] text-amber-300">[CAUTION]</span>',
+      'UYGUN_DEGIL': '<span class="text-[11px] text-red-300">[RESTRICTED]</span>',
     };
 
     function setLocation(name) {
       document.getElementById('locationInput').value = name;
     }
 
-    function show(id) { document.getElementById(id).classList.remove('hidden'); }
-    function hide(id) { document.getElementById(id).classList.add('hidden'); }
+    function show(id) {
+      const el = document.getElementById(id);
+      el.classList.remove('hidden');
+      if (id === 'loadingSection') el.setAttribute('aria-busy', 'true');
+    }
+    function hide(id) {
+      const el = document.getElementById(id);
+      el.classList.add('hidden');
+      if (id === 'loadingSection') el.setAttribute('aria-busy', 'false');
+    }
 
     function computeConfidence(parameters) {
       const scores = { 'UYGUN': 100, 'RISKLI': 50, 'UYGUN_DEGIL': 0 };
@@ -263,6 +400,49 @@
       return [...new Set(recs)];
     }
 
+    function animateConfidence(conf) {
+      const clamped = Math.max(0, Math.min(100, conf));
+      const ring = document.getElementById('confidenceRing');
+      const percent = document.getElementById('confidencePercent');
+      const ariaText = document.getElementById('confidenceAria');
+      const colors = getHudColors();
+      const radius = Number(ring.getAttribute('r') || CONFIDENCE_RING_RADIUS);
+      const circumference = 2 * Math.PI * radius;
+      const ringColor = clamped >= CONFIDENCE_SAFE_THRESHOLD_PCT
+        ? colors.safe
+        : clamped >= CONFIDENCE_CAUTION_THRESHOLD_PCT
+          ? colors.caution
+          : colors.danger;
+
+      ring.style.stroke = ringColor;
+      ring.style.strokeDasharray = `${circumference}`;
+      ring.style.strokeDashoffset = `${circumference}`;
+      percent.style.color = ringColor;
+
+      let start = 0;
+      const duration = CONFIDENCE_ANIMATION_DURATION_MS;
+      const startedAt = performance.now();
+      function step(now) {
+        const progress = Math.min((now - startedAt) / duration, 1);
+        const value = Math.round(start + (clamped - start) * progress);
+        percent.textContent = `${value}%`;
+        ring.style.strokeDashoffset = `${circumference * (1 - value / 100)}`;
+        if (progress >= 1) {
+          ariaText.textContent = `Confidence score ${value} percent`;
+        }
+        if (progress < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    function updateUtcClock() {
+      const now = new Date();
+      const hh = String(now.getUTCHours()).padStart(2, '0');
+      const mm = String(now.getUTCMinutes()).padStart(2, '0');
+      const ss = String(now.getUTCSeconds()).padStart(2, '0');
+      document.getElementById('utcClock').textContent = `${hh}:${mm}:${ss}`;
+    }
+
     async function generateReport() {
       const raw = document.getElementById('locationInput').value.trim();
       if (!raw) {
@@ -270,7 +450,6 @@
         return;
       }
 
-      // Reset UI
       hide('errorSection');
       hide('resultSection');
       hide('loadingSection');
@@ -312,44 +491,37 @@
       currentReportId = data.report_id;
       pendingFeedbackCorrect = null;
 
-      // Reset feedback UI
       show('feedbackButtons');
       hide('feedbackComment');
       hide('feedbackThanks');
       document.getElementById('commentInput').value = '';
 
-      // Decision banner
       const cfg = DECISION_CONFIG[data.decision] || DECISION_CONFIG['RISKLI'];
       const banner = document.getElementById('decisionBanner');
-      banner.className = `rounded-2xl p-6 text-center shadow-sm ${cfg.banner}`;
-      document.getElementById('decisionText').textContent = cfg.label;
-      document.getElementById('locationLabel').textContent = `📍 ${data.location}  (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
-      document.getElementById('createdAt').textContent =
-        'Rapor zamanı: ' + new Date(data.created_at).toLocaleString('tr-TR');
+      banner.className = `hud-card p-6 text-center decision-animate ${cfg.banner}`;
+      if (cfg.pulse) {
+        banner.classList.add('decision-danger-blink');
+      }
 
-      // Summary
+      document.getElementById('decisionText').textContent = cfg.label;
+      document.getElementById('locationLabel').textContent = `LOCATION: ${data.location}  (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
+      document.getElementById('createdAt').textContent =
+        'REPORT TIME: ' + new Date(data.created_at).toLocaleString('en-US');
+
       document.getElementById('decisionDetail').textContent = data.decision_detail;
 
-      // Confidence
       const conf = Number.isFinite(data.confidence_score)
         ? data.confidence_score
         : computeConfidence(data.parameters);
-      document.getElementById('confidenceLabel').textContent = `${conf}%`;
-      const bar = document.getElementById('confidenceBar');
-      bar.style.width = '0%';
-      const barColor = conf >= 70 ? 'bg-green-500' : conf >= 40 ? 'bg-yellow-400' : 'bg-red-500';
-      bar.className = `progress-bar h-3 rounded-full ${barColor}`;
-      setTimeout(() => { bar.style.width = `${conf}%`; }, 50);
+      document.getElementById('confidenceLabel').textContent = `FLIGHT RELIABILITY INDEX: ${conf}%`;
+      animateConfidence(conf);
 
-      // Risk factors
       const badParams = data.parameters.filter(p => p.decision !== 'UYGUN');
       if (badParams.length > 0) {
         const riskList = document.getElementById('riskList');
         riskList.innerHTML = badParams.map(p => `
-          <li class="flex items-start gap-2">
-            ${p.decision === 'RISKLI'
-              ? '<span class="text-yellow-500 mt-0.5">⚠️</span>'
-              : '<span class="text-red-500 mt-0.5">❌</span>'}
+          <li class="flex items-start gap-2 text-cyan-100/85">
+            <span class="mono ${p.decision === 'RISKLI' ? 'text-amber-300' : 'text-red-300'}">→</span>
             <span><strong>${p.name}:</strong> ${p.value}</span>
           </li>`).join('');
         show('riskCard');
@@ -357,37 +529,36 @@
         hide('riskCard');
       }
 
-      // Recommendations
       const recs = buildRecommendations(data.decision, data.parameters);
       const recList = document.getElementById('recList');
       recList.innerHTML = recs.map(r => `
-        <li class="flex items-start gap-2">
-          <span class="text-blue-400 mt-0.5">•</span>
+        <li class="flex items-start gap-2 text-cyan-100/85">
+          <span class="mono text-cyan-300">→</span>
           <span>${r}</span>
         </li>`).join('');
       show('recCard');
 
-      // Parameters table
       const paramTbody = document.getElementById('parametersTable');
       paramTbody.innerHTML = data.parameters.map(p => `
-        <tr>
-          <td class="py-2.5 text-gray-700 font-medium">${p.name}</td>
-          <td class="py-2.5 text-gray-600">${p.value}</td>
+        <tr class="table-row border-b border-cyan-400/15">
+          <td class="py-2.5 text-cyan-100/85 font-semibold">${p.name}</td>
+          <td class="py-2.5 text-cyan-100/70">${p.value}</td>
           <td class="py-2.5">${PARAM_DECISION_BADGE[p.decision] || p.decision}</td>
         </tr>`).join('');
 
-      // Sources table
-      const srcTbody = document.getElementById('sourcesTable');
-      srcTbody.innerHTML = data.sources.map(s => `
-        <tr>
-          <td class="py-2.5 font-medium text-gray-700">${formatSourceName(s.source)}</td>
-          <td class="py-2.5 text-gray-600">${s.wind_speed_knots.toFixed(1)}</td>
-          <td class="py-2.5 text-gray-600">${s.visibility_km.toFixed(1)}</td>
-          <td class="py-2.5 text-gray-600">${PRECIP_LABELS[s.precipitation_level] ?? s.precipitation_level}</td>
-          <td class="py-2.5 text-gray-600">${s.temperature_c.toFixed(1)}</td>
-          <td class="py-2.5 text-gray-600">${s.humidity_pct.toFixed(0)}</td>
-          <td class="py-2.5 text-gray-600">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'}</td>
-        </tr>`).join('');
+      const srcContainer = document.getElementById('sourcesTable');
+      srcContainer.innerHTML = data.sources.map(s => `
+        <div class="source-card mono">
+          <p class="text-cyan-300 font-bold mb-2">${formatSourceName(s.source)}</p>
+          <div class="source-grid text-cyan-100/75">
+            <p>WIND: <span class="text-cyan-100">${s.wind_speed_knots.toFixed(1)} kt</span></p>
+            <p>VIS: <span class="text-cyan-100">${s.visibility_km.toFixed(1)} km</span></p>
+            <p>PRECIP: <span class="text-cyan-100">${PRECIP_LABELS[s.precipitation_level] ?? s.precipitation_level}</span></p>
+            <p>TEMP: <span class="text-cyan-100">${s.temperature_c.toFixed(1)} °C</span></p>
+            <p>HUM: <span class="text-cyan-100">${s.humidity_pct.toFixed(0)}%</span></p>
+            <p>CLOUD BASE: <span class="text-cyan-100">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'} ft</span></p>
+          </div>
+        </div>`).join('');
 
       show('resultSection');
       document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -436,7 +607,9 @@
       window.open(`/api/v1/weather/report/${currentReportId}/pdf`, '_blank');
     }
 
-    // Allow Enter key to submit
+    updateUtcClock();
+    setInterval(updateUtcClock, 1000);
+
     document.getElementById('locationInput').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') generateReport();
     });
