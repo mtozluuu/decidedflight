@@ -35,6 +35,7 @@ class Settings:
     openweathermap_api_key: str = os.getenv("OPENWEATHERMAP_API_KEY", "")
     weatherapi_api_key: str = os.getenv("WEATHERAPI_API_KEY", "")
     windy_api_key: str = os.getenv("WINDY_API_KEY", "")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     debug: bool = _to_bool(os.getenv("DEBUG"), default=False)
 
     # --- Drone flight limits (configurable via .env) ---

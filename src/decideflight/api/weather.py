@@ -6,6 +6,9 @@ POST /api/v1/weather/report
 
 GET /api/v1/weather/report/{report_id}/pdf
     Return the stored report as a downloadable PDF.
+
+POST /api/v1/weather/report/{report_id}/feedback
+    Store user feedback about whether the decision was correct.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 
 from decideflight.database import SessionLocal
+from decideflight.models.feedback import Feedback
 from decideflight.models.weather_report import WeatherReport
 from decideflight.services.decision_engine import make_decision
 from decideflight.services.geocoding import geocode_city
@@ -253,4 +257,66 @@ async def download_report_pdf(
         iter([pdf_bytes]),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Feedback schemas
+# ---------------------------------------------------------------------------
+
+
+class FeedbackRequest(BaseModel):
+    correct: bool
+    user_comment: str | None = None
+
+
+class FeedbackResponse(BaseModel):
+    feedback_id: int
+    report_id: int
+    correct: bool
+    created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/weather/report/{report_id}/feedback
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/report/{report_id}/feedback",
+    response_model=FeedbackResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit feedback for a weather report decision",
+)
+async def submit_feedback(
+    report_id: int,
+    body: FeedbackRequest,
+    db: Session = Depends(get_db),
+) -> FeedbackResponse:
+    """Store user feedback indicating whether the decision was correct.
+
+    The feedback is persisted and later used by the AI decision engine to
+    improve future recommendations.
+    """
+    report: WeatherReport | None = db.get(WeatherReport, report_id)
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {report_id} not found.",
+        )
+
+    fb = Feedback(
+        report_id=report_id,
+        correct=body.correct,
+        user_comment=body.user_comment,
+    )
+    db.add(fb)
+    db.commit()
+    db.refresh(fb)
+
+    return FeedbackResponse(
+        feedback_id=fb.id,
+        report_id=fb.report_id,
+        correct=fb.correct,
+        created_at=fb.created_at,
     )
