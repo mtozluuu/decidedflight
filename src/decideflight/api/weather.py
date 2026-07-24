@@ -42,6 +42,7 @@ from decideflight.services.trend_analyzer import fetch_wind_trend
 from decideflight.services.weather_fetcher import (
     AirQualityData,
     WeatherSourceData,
+    _fetch_with_retry,
     fetch_air_quality,
     fetch_all_sources,
 )
@@ -54,6 +55,10 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
+
+# Grid analysis: batch size and inter-batch delay to avoid rate limits
+_GRID_BATCH_SIZE = 5
+_GRID_BATCH_DELAY = 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -612,9 +617,10 @@ async def _fetch_open_meteo_hourly(
     forecast_days: int = 2,
 ) -> dict[str, Any]:
     async with httpx.AsyncClient() as client:
-        resp = await client.get(
+        resp = await _fetch_with_retry(
+            client,
             "https://api.open-meteo.com/v1/forecast",
-            params={
+            {
                 "latitude": lat,
                 "longitude": lon,
                 "hourly": (
@@ -625,9 +631,7 @@ async def _fetch_open_meteo_hourly(
                 "timezone": timezone_name,
                 "forecast_days": forecast_days,
             },
-            timeout=15.0,
         )
-        resp.raise_for_status()
         return resp.json()
 
 
@@ -917,18 +921,17 @@ async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
     year = datetime.now(timezone.utc).year
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
+            resp = await _fetch_with_retry(
+                client,
                 "https://climate-api.open-meteo.com/v1/climate",
-                params={
+                {
                     "latitude": body.lat,
                     "longitude": body.lon,
                     "monthly": "wind_speed_10m,visibility",
                     "start_date": f"{year}-01",
                     "end_date": f"{year}-12",
                 },
-                timeout=15.0,
             )
-            resp.raise_for_status()
             payload = resp.json()
     except Exception as exc:
         raise HTTPException(
@@ -1124,8 +1127,7 @@ async def _fetch_grid_point_weather(
         }
 
     try:
-        resp = await client.get(url, params=params, timeout=15.0)
-        resp.raise_for_status()
+        resp = await _fetch_with_retry(client, url, params)
         data = resp.json()
     except Exception as exc:
         logger.warning(
@@ -1342,12 +1344,20 @@ async def analyse_weather_grid(
 
     grid_coords = [(lat, lon) for lat in lats for lon in lons]
 
+    raw_results: list[Any] = []
     async with httpx.AsyncClient() as client:
-        tasks = [
-            _fetch_grid_point_weather(lat, lon, body.altitude_ft, body.hours, client)
-            for lat, lon in grid_coords
-        ]
-        raw_results: list[Any] = await asyncio.gather(*tasks, return_exceptions=True)
+        for batch_start in range(0, len(grid_coords), _GRID_BATCH_SIZE):
+            batch = grid_coords[batch_start : batch_start + _GRID_BATCH_SIZE]
+            batch_tasks = [
+                _fetch_grid_point_weather(
+                    lat, lon, body.altitude_ft, body.hours, client
+                )
+                for lat, lon in batch
+            ]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            raw_results.extend(batch_results)
+            if batch_start + _GRID_BATCH_SIZE < len(grid_coords):
+                await asyncio.sleep(_GRID_BATCH_DELAY)
 
     points: list[GridPointWeather] = []
     for (lat, lon), result in zip(grid_coords, raw_results):
