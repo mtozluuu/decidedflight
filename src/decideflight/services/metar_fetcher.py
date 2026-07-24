@@ -256,7 +256,6 @@ async def fetch_metar_taf_for_coords(
     if owned_client:
         client = httpx.AsyncClient()
 
-    assert client is not None
     try:
         icao = await _resolve_nearest_icao(lat, lon, client)
         if not icao:

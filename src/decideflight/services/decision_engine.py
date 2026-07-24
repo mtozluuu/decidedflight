@@ -11,6 +11,7 @@ The overall decision is the worst score across all averaged parameters.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 from decideflight.config import settings
 from decideflight.services.weather_fetcher import (
@@ -167,7 +168,9 @@ class DecisionResult:
 def make_decision(sources: list[WeatherSourceData]) -> DecisionResult:
     """Aggregate *sources* and return a ``DecisionResult``."""
 
-    def _weighted_pairs(getter):
+    def _weighted_pairs(
+        getter: Callable[[WeatherSourceData], float | None],
+    ) -> list[tuple[float | None, float]]:
         return [(getter(source), source.reliability_weight) for source in sources]
 
     avg_wind = _weighted_avg(_weighted_pairs(lambda s: s.wind_speed_knots))
@@ -245,11 +248,12 @@ def make_decision(sources: list[WeatherSourceData]) -> DecisionResult:
         taf_summary = str(metar.raw.get("taf_summary_next_6h") or "").strip() or "N/A"
         visibility_text = str(metar.raw.get("visibility_text") or "N/A")
         wind_dir = metar.raw.get("metar", {}).get("wind_direction")
-        wind_dir_val = (
-            int(wind_dir.get("value"))
-            if isinstance(wind_dir, dict) and wind_dir.get("value") is not None
-            else None
-        )
+        wind_dir_val: int | None = None
+        if isinstance(wind_dir, dict) and wind_dir.get("value") is not None:
+            try:
+                wind_dir_val = int(wind_dir.get("value"))
+            except (TypeError, ValueError):
+                wind_dir_val = None
         wind_dir_text = f", yön: {wind_dir_val}°" if wind_dir_val is not None else ""
         temperature_text = (
             f"{metar.temperature_c:.0f}°C" if metar.temperature_c is not None else "N/A"
