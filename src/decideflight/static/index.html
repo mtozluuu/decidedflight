@@ -480,14 +480,8 @@
         return 'Beklenmeyen bir hata oluştu.';
       }
 
-      const knownMessages = [
-        ['Geocoding service unavailable.', 'Konum çözümleme servisine şu anda ulaşılamıyor.'],
-      ];
-
-      for (const [english, turkish] of knownMessages) {
-        if (message.includes(english)) {
-          return turkish;
-        }
+      if (message.includes('Geocoding service unavailable.')) {
+        return 'Konum çözümleme servisine şu anda ulaşılamıyor.';
       }
 
       if (message.startsWith('Report ') && message.endsWith(' not found.')) {
