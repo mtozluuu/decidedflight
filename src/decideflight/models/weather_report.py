@@ -24,6 +24,11 @@ class WeatherReport(Base):
         nullable=False,
         doc="JSON-encoded list of WeatherSourceData dicts",
     )
+    ai_analysis_data: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        doc="JSON-encoded AI analysis extra fields (confidence, detailed_analysis, etc.)",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
