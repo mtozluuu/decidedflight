@@ -736,7 +736,7 @@
       const city = event.target.value;
       const country = getSelectedCountry();
       if (city && country) {
-        setLocation(`${city}, ${country.queryName || country.name}`);
+        setLocation(`${city}, ${country.queryName}`);
       }
     });
 

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "countries": [
-    {"code": "TR", "name": "Türkiye", "queryName": "Turkey", "cities": ["Istanbul", "Ankara", "Izmir", "Bursa", "Antalya", "Adana"]},
+    {"code": "TR", "name": "Türkiye", "queryName": "Turkey", "cities": ["Istanbul", "Ankara", "İzmir", "Bursa", "Antalya", "Adana"]},
     {"code": "US", "name": "Amerika Birleşik Devletleri", "queryName": "United States", "cities": ["New York", "Los Angeles", "Chicago", "Houston", "Miami", "Seattle"]},
     {"code": "CA", "name": "Kanada", "queryName": "Canada", "cities": ["Toronto", "Vancouver", "Montreal", "Calgary", "Ottawa", "Edmonton"]},
     {"code": "MX", "name": "Meksika", "queryName": "Mexico", "cities": ["Mexico City", "Guadalajara", "Monterrey", "Tijuana", "Cancun", "Puebla"]},
