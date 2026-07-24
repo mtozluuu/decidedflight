@@ -33,7 +33,16 @@ self.addEventListener('fetch', (event) => {
         const clone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         return response;
-      }).catch(() => caches.match('/static/index.html'));
+      }).catch((error) => {
+        console.error('Service worker fetch failed:', error);
+        return caches.match('/static/index.html').then(
+          (fallback) => fallback || new Response('Çevrimdışı içerik kullanılamıyor.', {
+            status: 503,
+            statusText: 'Offline',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          })
+        );
+      });
     })
   );
 });

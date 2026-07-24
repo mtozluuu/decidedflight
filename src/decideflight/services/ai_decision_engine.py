@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 MAX_FEEDBACK_CONTEXT = 20
 MAX_CHAT_MESSAGES = 10
+MIN_PARAMETER_WEIGHT = 0
+MAX_PARAMETER_WEIGHT = 100
 _REPORT_CHAT_HISTORY: dict[int, list[dict[str, str]]] = {}
 
 
@@ -318,7 +320,10 @@ def _parse_parameter_weights(raw: Any) -> dict[str, int]:
     for key in expected:
         value = raw.get(key)
         try:
-            parsed[key] = max(0, min(100, int(float(value))))
+            parsed[key] = max(
+                MIN_PARAMETER_WEIGHT,
+                min(MAX_PARAMETER_WEIGHT, int(float(value))),
+            )
         except (TypeError, ValueError):
             continue
     return parsed

@@ -45,7 +45,7 @@ def _source() -> WeatherSourceData:
     )
 
 
-def _create_report(client: TestClient, *, location: str = "Test Konum") -> int:
+def _create_report(client: TestClient, *, location: str = "Test Location") -> int:
     with patch(
         "decideflight.api.weather.fetch_all_sources",
         new=AsyncMock(return_value=[_source()]),
