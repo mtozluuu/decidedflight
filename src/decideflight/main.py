@@ -48,3 +48,18 @@ def root():
     if os.path.isfile(index_path):
         return FileResponse(index_path, media_type="text/html")
     return {"message": "DecideFlight API is running"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Serve favicon for browsers requesting /favicon.ico directly."""
+    icon_path = os.path.join(_STATIC_DIR, "decideflight-icon.svg")
+    return FileResponse(icon_path, media_type="image/svg+xml")
+
+
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+@app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+def apple_touch_icon():
+    """Serve Apple touch icon fallback requests."""
+    icon_path = os.path.join(_STATIC_DIR, "decideflight-icon.svg")
+    return FileResponse(icon_path, media_type="image/svg+xml")

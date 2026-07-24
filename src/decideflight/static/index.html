@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DecideFlight – Drone Uçuş Hava Durumu Analizi</title>
+  <link rel="icon" type="image/svg+xml" href="/static/decideflight-icon.svg" />
+  <link rel="apple-touch-icon" href="/static/decideflight-icon.svg" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
@@ -174,7 +176,7 @@
           <input
             id="locationInput"
             type="text"
-            placeholder="KONUM GİRİN..."
+            placeholder="ŞEHİR ADI VEYA ENLEM, BOYLAM GİRİN..."
             aria-label="Konum veya koordinat girişi"
             class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md pl-9 pr-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
           />
@@ -308,6 +310,7 @@
                 id="commentInput"
                 type="text"
                 placeholder="Opsiyonel not..."
+                aria-label="Geri bildirim notu"
                 class="mono flex-1 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
               />
               <button
@@ -472,6 +475,29 @@
       statusEl.className = `mono text-[11px] mt-3 ${isError ? 'text-red-300' : 'text-cyan-100/60'}`;
     }
 
+    function localizeErrorMessage(message) {
+      if (!message || typeof message !== 'string') {
+        return 'Beklenmeyen bir hata oluştu.';
+      }
+
+      const knownMessages = [
+        ['Geocoding service unavailable.', 'Konum çözümleme servisine şu anda ulaşılamıyor.'],
+        ['Report not found.', 'İlgili rapor bulunamadı.'],
+      ];
+
+      for (const [english, turkish] of knownMessages) {
+        if (message.includes(english)) {
+          return turkish;
+        }
+      }
+
+      if (message.startsWith('Report ') && message.endsWith(' not found.')) {
+        return 'İlgili rapor bulunamadı.';
+      }
+
+      return message;
+    }
+
     function populateCountrySelect() {
       const countrySelect = document.getElementById('countrySelect');
       countrySelect.innerHTML = '<option value="">Ülke seçin</option>';
@@ -599,7 +625,8 @@
         renderResult(data);
       } catch (err) {
         hide('loadingSection');
-        document.getElementById('errorMsg').textContent = err.message;
+        const localizedError = localizeErrorMessage(err.message);
+        document.getElementById('errorMsg').textContent = localizedError;
         show('errorSection');
       } finally {
         document.getElementById('reportBtn').disabled = false;
