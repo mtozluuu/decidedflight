@@ -519,7 +519,7 @@
 
     async function loadCityDataset() {
       try {
-        const response = await fetch('/static/data/cities.json', { cache: 'no-store' });
+        const response = await fetch('/static/data/cities.json');
         if (!response.ok) {
           throw new Error('Şehir verisi indirilemedi.');
         }
@@ -528,16 +528,21 @@
         const countries = Array.isArray(payload.countries) ? payload.countries : [];
         const normalized = countries
           .filter(item => item && typeof item.name === 'string' && Array.isArray(item.cities))
-          .map(item => ({
-            code: item.code,
-            name: item.name.trim(),
-            queryName: typeof item.queryName === 'string' && item.queryName.trim()
+          .map(item => {
+            const normalizedName = item.name.trim();
+            const normalizedQueryName = typeof item.queryName === 'string'
               ? item.queryName.trim()
-              : item.name.trim(),
-            cities: item.cities
-              .filter(city => typeof city === 'string' && city.trim())
-              .map(city => city.trim()),
-          }))
+              : '';
+
+            return {
+              code: item.code,
+              name: normalizedName,
+              queryName: normalizedQueryName || normalizedName,
+              cities: item.cities
+                .filter(city => typeof city === 'string' && city.trim())
+                .map(city => city.trim()),
+            };
+          })
           .filter(item => item.name && item.cities.length > 0)
           .sort((a, b) => a.name.localeCompare(b.name, 'tr'));
 
