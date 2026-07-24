@@ -7,6 +7,10 @@
   <link rel="icon" type="image/svg+xml" href="/static/decideflight-icon.svg" />
   <link rel="apple-touch-icon" href="/static/decideflight-icon.svg" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin=""></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
 
@@ -148,6 +152,66 @@
       white-space: nowrap;
       border: 0;
     }
+
+    /* ── Tabs ─────────────────────────────────────────────────────────── */
+    .tab-btn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      padding: 0.6rem 1.1rem;
+      border-bottom: 2px solid transparent;
+      color: rgba(209, 245, 255, 0.5);
+      transition: color 0.2s, border-color 0.2s;
+      white-space: nowrap;
+      background: none;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      color: var(--hud-cyan);
+      border-bottom-color: var(--hud-cyan);
+    }
+    .tab-btn:hover:not(.active) {
+      color: rgba(209, 245, 255, 0.85);
+    }
+
+    /* ── Leaflet dark theme ───────────────────────────────────────────── */
+    #mapContainer { height: 500px; }
+    .leaflet-tile {
+      filter: invert(100%) hue-rotate(180deg) brightness(95%)
+              contrast(90%) saturate(70%);
+    }
+    .leaflet-popup-content-wrapper {
+      background: rgba(7, 13, 29, 0.96);
+      border: 1px solid rgba(0, 212, 255, 0.4);
+      color: #d8f5ff;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(0, 160, 220, 0.25);
+    }
+    .leaflet-popup-tip {
+      background: rgba(7, 13, 29, 0.96);
+    }
+    .leaflet-popup-close-button { color: rgba(0, 212, 255, 0.7) !important; }
+    .leaflet-container { background: #0a0e1a; }
+    .leaflet-draw-toolbar a,
+    .leaflet-draw-toolbar a:hover {
+      background-color: rgba(10, 17, 35, 0.92) !important;
+      border-color: rgba(0, 212, 255, 0.35) !important;
+      color: #00d4ff !important;
+    }
+    .leaflet-bar a, .leaflet-bar a:hover {
+      background-color: rgba(10, 17, 35, 0.92) !important;
+      border-color: rgba(0, 212, 255, 0.3) !important;
+      color: #00d4ff !important;
+    }
+    .leaflet-draw-tooltip {
+      background: rgba(7, 13, 29, 0.9);
+      border: 1px solid rgba(0, 212, 255, 0.4);
+      color: #d8f5ff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+    /* Settings form range-like input accent */
+    input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
   </style>
 </head>
 <body>
@@ -165,7 +229,22 @@
     <div class="max-w-6xl mx-auto mt-3 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent"></div>
   </header>
 
-  <main class="max-w-6xl mx-auto px-4 pb-8 space-y-6">
+  <!-- Tab navigation -->
+  <div class="max-w-6xl mx-auto px-4 pt-4">
+    <nav class="flex gap-0 border-b border-cyan-400/20" role="tablist" aria-label="Uygulama sekmeleri">
+      <button id="tab-btn-point" role="tab" aria-selected="true" aria-controls="panel-point"
+        onclick="switchTab('point')" class="tab-btn active">◈ NOKTA ANALİZİ</button>
+      <button id="tab-btn-region" role="tab" aria-selected="false" aria-controls="panel-region"
+        onclick="switchTab('region')" class="tab-btn">◈ BÖLGE ANALİZİ</button>
+      <button id="tab-btn-settings" role="tab" aria-selected="false" aria-controls="panel-settings"
+        onclick="switchTab('settings')" class="tab-btn">◈ AYARLAR</button>
+    </nav>
+  </div>
+
+  <main class="max-w-6xl mx-auto px-4 pb-8">
+
+    <!-- ══ Tab 1: Point Analysis ══════════════════════════════════════════ -->
+    <div id="panel-point" role="tabpanel" aria-labelledby="tab-btn-point" class="space-y-6 pt-6">
     <section class="hud-card p-6 sm:p-8 text-center">
       <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">DRONE UÇUŞ HAVA ANALİZİ</h1>
       <p class="mono text-xs sm:text-sm text-cyan-100/75 mt-3">KONUM VEYA KOORDİNAT GİRİN — DÜNYA GENELİ KAPSAM</p>
@@ -329,6 +408,227 @@
         </div>
       </div>
     </section>
+    </div><!-- /panel-point -->
+
+    <!-- ══ Tab 2: Regional Analysis ══════════════════════════════════════ -->
+    <div id="panel-region" role="tabpanel" aria-labelledby="tab-btn-region" class="hidden space-y-4 pt-6">
+
+      <!-- Controls -->
+      <div class="hud-card p-5">
+        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ BÖLGE ANALİZİ — IZGARA TARAMA</h2>
+        <p class="mono text-[11px] text-cyan-100/60 mb-4">
+          Haritada tıklayarak anlık nokta raporu, dikdörtgen çizerek ızgara analizi yapın.
+          Dikdörtgen çizmek için sol araç çubuğundaki <strong>□</strong> ikonuna tıklayın.
+        </p>
+        <div class="grid sm:grid-cols-3 gap-3 mb-4">
+          <div>
+            <label for="gridSizeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">IZGARA BOYUTU</label>
+            <select id="gridSizeSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
+              <option value="25">5×5 = 25 Nokta</option>
+              <option value="100">10×10 = 100 Nokta</option>
+            </select>
+          </div>
+          <div>
+            <label for="altitudeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">İRTİFA KATI</label>
+            <select id="altitudeSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
+              <option value="1000">0–1000 ft (Yüzey)</option>
+              <option value="2000">2000 ft</option>
+              <option value="4000">4000 ft</option>
+              <option value="8000">8000 ft</option>
+              <option value="10000">10000 ft</option>
+              <option value="14000">14000 ft</option>
+              <option value="15000">15000 ft</option>
+              <option value="20000">20000 ft</option>
+            </select>
+          </div>
+          <div>
+            <label for="timeModeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ZAMAN MODU</label>
+            <select id="timeModeSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
+              <option value="1">Anlık</option>
+              <option value="24">Sonraki 24 Saat</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-3 items-center">
+          <button id="analyzeGridBtn" onclick="analyzeGrid()" disabled
+            class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider opacity-40 cursor-not-allowed">
+            [ BÖLGE ANALİZ ET ]
+          </button>
+          <button onclick="clearGridOverlay()"
+            class="mono border border-slate-400/40 text-slate-300 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs tracking-wider">
+            [ TEMİZLE ]
+          </button>
+          <p id="regionStatus" class="mono text-[11px] text-cyan-100/60"></p>
+        </div>
+      </div>
+
+      <!-- Map -->
+      <div class="hud-card overflow-hidden" style="padding:0; border-radius:12px; clip-path:none;">
+        <div id="mapContainer"></div>
+      </div>
+
+      <!-- Grid loading -->
+      <div id="gridLoadingSection" class="hidden hud-card py-6 px-6 text-center">
+        <div class="flex justify-center"><div class="radar" aria-label="Izgara analizi yükleniyor"></div></div>
+        <p class="mono text-green-300 mt-4 blink">IZGARA VERİSİ TOPLANIYOR...</p>
+        <p class="mono text-[11px] text-cyan-100/60 mt-2">TÜM NOKTALARA BAĞLANILIYOR...</p>
+      </div>
+
+      <!-- Grid error -->
+      <div id="gridErrorSection" class="hidden hud-card px-5 py-4 border-red-500/40 text-red-300 mono text-sm">
+        ⚠ <span id="gridErrorMsg"></span>
+      </div>
+
+      <!-- Grid summary -->
+      <div id="gridSummarySection" class="hidden hud-card p-5">
+        <h3 class="mono text-cyan-300 text-sm mb-4">◈ BÖLGE ANALİZ ÖZETİ</h3>
+        <div class="grid grid-cols-3 gap-4 mb-4 text-center">
+          <div>
+            <p class="mono text-2xl font-extrabold text-green-300" id="summaryUygun">0</p>
+            <p class="mono text-[11px] text-green-300/70 mt-1">UYGUN</p>
+          </div>
+          <div>
+            <p class="mono text-2xl font-extrabold text-amber-300" id="summaryRiskli">0</p>
+            <p class="mono text-[11px] text-amber-300/70 mt-1">RİSKLİ</p>
+          </div>
+          <div>
+            <p class="mono text-2xl font-extrabold text-red-300" id="summaryUygunDegil">0</p>
+            <p class="mono text-[11px] text-red-300/70 mt-1">UYGUN DEĞİL</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 mt-2">
+          <div id="summaryBar" class="flex-1 h-3 rounded-full overflow-hidden bg-slate-900/50 flex"></div>
+          <p id="summaryPercent" class="mono text-[11px] text-cyan-100/60 whitespace-nowrap"></p>
+        </div>
+      </div>
+    </div><!-- /panel-region -->
+
+    <!-- ══ Tab 3: Settings ════════════════════════════════════════════════ -->
+    <div id="panel-settings" role="tabpanel" aria-labelledby="tab-btn-settings" class="hidden space-y-4 pt-6">
+      <div class="hud-card p-6">
+        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ DRONE UÇUŞ LİMİTLERİ</h2>
+        <p class="mono text-[11px] text-cyan-100/60 mb-5">
+          Bu limitler tarayıcınızda saklanır ve bölge analizinde karar kriteri olarak kullanılır.
+        </p>
+
+        <div class="space-y-5">
+          <!-- Wind -->
+          <div>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">RÜZGAR HIZI (knot)</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label for="s_wind_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Uygun (≤)</label>
+                <input id="s_wind_ok" type="number" step="1" min="0" max="50"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+              <div>
+                <label for="s_wind_risky" class="mono text-[11px] text-amber-300/80 block mb-1">Maks. Riskli (≤)</label>
+                <input id="s_wind_risky" type="number" step="1" min="0" max="100"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Visibility -->
+          <div>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">GÖRÜŞ MESAFESİ (km)</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label for="s_vis_ok" class="mono text-[11px] text-green-300/80 block mb-1">Min. Uygun (&gt;)</label>
+                <input id="s_vis_ok" type="number" step="0.5" min="0" max="50"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+              <div>
+                <label for="s_vis_risky" class="mono text-[11px] text-amber-300/80 block mb-1">Min. Riskli (≥)</label>
+                <input id="s_vis_risky" type="number" step="0.5" min="0" max="20"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Cloud base -->
+          <div>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">BULUT TABANI (ft AGL)</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label for="s_cloud_base_ok" class="mono text-[11px] text-green-300/80 block mb-1">Min. Uygun (&gt;)</label>
+                <input id="s_cloud_base_ok" type="number" step="50" min="0" max="5000"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+              <div>
+                <label for="s_cloud_base_risky" class="mono text-[11px] text-amber-300/80 block mb-1">Min. Riskli (≥)</label>
+                <input id="s_cloud_base_risky" type="number" step="50" min="0" max="2000"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Cloud ceiling -->
+          <div>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">BULUT TAVANI (ft)</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label for="s_cloud_ceil_ok" class="mono text-[11px] text-green-300/80 block mb-1">Min. Uygun (&gt;)</label>
+                <input id="s_cloud_ceil_ok" type="number" step="100" min="0" max="10000"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+              <div>
+                <label for="s_cloud_ceil_risky" class="mono text-[11px] text-amber-300/80 block mb-1">Min. Riskli (≥)</label>
+                <input id="s_cloud_ceil_risky" type="number" step="100" min="0" max="5000"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Humidity -->
+          <div>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">NEM (%)</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label for="s_hum_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Uygun (&lt;)</label>
+                <input id="s_hum_ok" type="number" step="5" min="0" max="100"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+              <div>
+                <label for="s_hum_risky" class="mono text-[11px] text-amber-300/80 block mb-1">Maks. Riskli (≤)</label>
+                <input id="s_hum_risky" type="number" step="5" min="0" max="100"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Temperature -->
+          <div>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">SICAKLIK (°C) — UYGUN ARALIK</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label for="s_temp_min" class="mono text-[11px] text-green-300/80 block mb-1">Min. Sıcaklık (≥)</label>
+                <input id="s_temp_min" type="number" step="1" min="-50" max="20"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+              <div>
+                <label for="s_temp_max" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Sıcaklık (≤)</label>
+                <input id="s_temp_max" type="number" step="1" min="20" max="60"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+            </div>
+          </div>
+        </div><!-- /space-y-5 -->
+
+        <div class="flex gap-3 mt-6">
+          <button onclick="saveSettings()"
+            class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider hover:shadow-[0_0_16px_rgba(0,212,255,0.4)] transition">
+            [ LİMİTLERİ KAYDET ]
+          </button>
+          <button onclick="resetSettings()"
+            class="mono border border-slate-400/40 text-slate-300 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs tracking-wider">
+            [ VARSAYILANLARA DÖNDÜR ]
+          </button>
+        </div>
+        <p id="settingsSaved" class="hidden mono text-xs text-green-300 mt-3">✓ LİMİTLER KAYDEDİLDİ</p>
+      </div>
+    </div><!-- /panel-settings -->
+
   </main>
 
   <footer class="text-center mono text-[10px] text-slate-500 pb-6 px-4">
@@ -760,6 +1060,302 @@
     });
 
     loadCityDataset();
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB SWITCHING
+    // ═══════════════════════════════════════════════════════════════════
+
+    function switchTab(tabId) {
+      ['point', 'region', 'settings'].forEach(id => {
+        document.getElementById('panel-' + id).classList.add('hidden');
+        const btn = document.getElementById('tab-btn-' + id);
+        btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
+      });
+      document.getElementById('panel-' + tabId).classList.remove('hidden');
+      const activeBtn = document.getElementById('tab-btn-' + tabId);
+      activeBtn.classList.add('active');
+      activeBtn.setAttribute('aria-selected', 'true');
+      if (tabId === 'region' && !mapInitialized) {
+        // Defer map init until next tick so container is visible
+        setTimeout(initMap, 50);
+      }
+      if (tabId === 'settings') {
+        populateSettingsForm();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SETTINGS — localStorage persistence
+    // ═══════════════════════════════════════════════════════════════════
+
+    const SETTINGS_KEY = 'decideflight_limits';
+    const DEFAULT_LIMITS = {
+      wind_ok_max_knots: 15,
+      wind_risky_max_knots: 25,
+      visibility_ok_min_km: 5,
+      visibility_risky_min_km: 1,
+      cloud_base_ok_min_ft: 500,
+      cloud_base_risky_min_ft: 200,
+      cloud_ceiling_ok_min_ft: 1000,
+      cloud_ceiling_risky_min_ft: 500,
+      humidity_ok_max_pct: 85,
+      humidity_risky_max_pct: 95,
+      temp_ok_min_c: 0,
+      temp_ok_max_c: 40,
+    };
+
+    function loadSettings() {
+      try {
+        const saved = localStorage.getItem(SETTINGS_KEY);
+        return saved ? Object.assign({}, DEFAULT_LIMITS, JSON.parse(saved)) : Object.assign({}, DEFAULT_LIMITS);
+      } catch (_) {
+        return Object.assign({}, DEFAULT_LIMITS);
+      }
+    }
+
+    function populateSettingsForm() {
+      const lim = loadSettings();
+      document.getElementById('s_wind_ok').value = lim.wind_ok_max_knots;
+      document.getElementById('s_wind_risky').value = lim.wind_risky_max_knots;
+      document.getElementById('s_vis_ok').value = lim.visibility_ok_min_km;
+      document.getElementById('s_vis_risky').value = lim.visibility_risky_min_km;
+      document.getElementById('s_cloud_base_ok').value = lim.cloud_base_ok_min_ft;
+      document.getElementById('s_cloud_base_risky').value = lim.cloud_base_risky_min_ft;
+      document.getElementById('s_cloud_ceil_ok').value = lim.cloud_ceiling_ok_min_ft;
+      document.getElementById('s_cloud_ceil_risky').value = lim.cloud_ceiling_risky_min_ft;
+      document.getElementById('s_hum_ok').value = lim.humidity_ok_max_pct;
+      document.getElementById('s_hum_risky').value = lim.humidity_risky_max_pct;
+      document.getElementById('s_temp_min').value = lim.temp_ok_min_c;
+      document.getElementById('s_temp_max').value = lim.temp_ok_max_c;
+    }
+
+    function saveSettings() {
+      const lim = {
+        wind_ok_max_knots: parseFloat(document.getElementById('s_wind_ok').value),
+        wind_risky_max_knots: parseFloat(document.getElementById('s_wind_risky').value),
+        visibility_ok_min_km: parseFloat(document.getElementById('s_vis_ok').value),
+        visibility_risky_min_km: parseFloat(document.getElementById('s_vis_risky').value),
+        cloud_base_ok_min_ft: parseFloat(document.getElementById('s_cloud_base_ok').value),
+        cloud_base_risky_min_ft: parseFloat(document.getElementById('s_cloud_base_risky').value),
+        cloud_ceiling_ok_min_ft: parseFloat(document.getElementById('s_cloud_ceil_ok').value),
+        cloud_ceiling_risky_min_ft: parseFloat(document.getElementById('s_cloud_ceil_risky').value),
+        humidity_ok_max_pct: parseFloat(document.getElementById('s_hum_ok').value),
+        humidity_risky_max_pct: parseFloat(document.getElementById('s_hum_risky').value),
+        temp_ok_min_c: parseFloat(document.getElementById('s_temp_min').value),
+        temp_ok_max_c: parseFloat(document.getElementById('s_temp_max').value),
+      };
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(lim));
+      const notice = document.getElementById('settingsSaved');
+      notice.classList.remove('hidden');
+      setTimeout(() => notice.classList.add('hidden'), 2500);
+    }
+
+    function resetSettings() {
+      localStorage.removeItem(SETTINGS_KEY);
+      populateSettingsForm();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // LEAFLET MAP — Regional Analysis
+    // ═══════════════════════════════════════════════════════════════════
+
+    let map = null;
+    let mapInitialized = false;
+    let drawnRectangle = null;
+    let drawnItems = null;
+    let drawControl = null;
+    let gridMarkers = [];
+
+    function initMap() {
+      if (mapInitialized) return;
+
+      map = L.map('mapContainer').setView([39.0, 35.0], 6);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 18,
+      }).addTo(map);
+
+      // Layer to hold drawn shapes
+      drawnItems = new L.FeatureGroup().addTo(map);
+
+      // Leaflet.draw control — rectangle only
+      drawControl = new L.Control.Draw({
+        edit: { featureGroup: drawnItems, edit: false, remove: false },
+        draw: {
+          polyline: false, polygon: false, circle: false,
+          circlemarker: false, marker: false,
+          rectangle: {
+            shapeOptions: { color: '#00d4ff', weight: 2, fillOpacity: 0.08 },
+          },
+        },
+      });
+      map.addControl(drawControl);
+
+      // When a rectangle is drawn
+      map.on(L.Draw.Event.CREATED, function (e) {
+        if (drawnRectangle) drawnItems.removeLayer(drawnRectangle);
+        drawnRectangle = e.layer;
+        drawnItems.addLayer(drawnRectangle);
+        const btn = document.getElementById('analyzeGridBtn');
+        btn.disabled = false;
+        btn.classList.remove('opacity-40', 'cursor-not-allowed');
+        document.getElementById('regionStatus').textContent =
+          'Bölge seçildi — analiz etmek için butona tıklayın.';
+      });
+
+      // Click on map = single-point popup
+      map.on('click', async function (e) {
+        // Skip if draw toolbar is active
+        if (document.querySelector('.leaflet-draw-toolbar .leaflet-draw-draw-rectangle.leaflet-draw-toolbar-button-enabled')) return;
+        const { lat, lng } = e.latlng;
+        const popup = L.popup()
+          .setLatLng([lat, lng])
+          .setContent(
+            '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff">Yükleniyor...</span>'
+          )
+          .openOn(map);
+
+        try {
+          const res = await fetch('/api/v1/weather/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: lat, lon: lng }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Hata');
+          const cfg = DECISION_CONFIG[data.decision] || DECISION_CONFIG['RISKLI'];
+          const src = data.sources && data.sources[0] ? data.sources[0] : {};
+          const wind = src.wind_speed_knots != null ? src.wind_speed_knots.toFixed(1) : '—';
+          const vis  = src.visibility_km  != null ? src.visibility_km.toFixed(1)  : '—';
+          const temp = src.temperature_c  != null ? src.temperature_c.toFixed(1)  : '—';
+          const hum  = src.humidity_pct   != null ? Math.round(src.humidity_pct)  : '—';
+          popup.setContent(
+            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff;min-width:170px">' +
+            '<p style="font-weight:bold;margin-bottom:5px">' + cfg.label + '</p>' +
+            '<p>📍 ' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</p>' +
+            '<p>💨 Rüzgar: ' + wind + ' kt</p>' +
+            '<p>👁 Görüş: ' + vis + ' km</p>' +
+            '<p>🌡 ' + temp + '°C &nbsp; 💧 ' + hum + '%</p>' +
+            '</div>'
+          );
+        } catch (err) {
+          popup.setContent(
+            '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#ff3d57">⚠ ' + err.message + '</span>'
+          );
+        }
+      });
+
+      mapInitialized = true;
+      map.invalidateSize();
+    }
+
+    function clearGridOverlay() {
+      gridMarkers.forEach(m => m.remove());
+      gridMarkers = [];
+      if (drawnRectangle) {
+        drawnItems.removeLayer(drawnRectangle);
+        drawnRectangle = null;
+      }
+      const btn = document.getElementById('analyzeGridBtn');
+      btn.disabled = true;
+      btn.classList.add('opacity-40', 'cursor-not-allowed');
+      document.getElementById('regionStatus').textContent = '';
+      document.getElementById('gridSummarySection').classList.add('hidden');
+      document.getElementById('gridErrorSection').classList.add('hidden');
+    }
+
+    async function analyzeGrid() {
+      if (!drawnRectangle) return;
+
+      const bounds = drawnRectangle.getBounds();
+      const gridSize = parseInt(document.getElementById('gridSizeSelect').value, 10);
+      const altitudeFt = parseFloat(document.getElementById('altitudeSelect').value);
+      const hours = parseInt(document.getElementById('timeModeSelect').value, 10);
+      const limits = loadSettings();
+
+      // Remove old grid markers
+      gridMarkers.forEach(m => m.remove());
+      gridMarkers = [];
+
+      document.getElementById('gridLoadingSection').classList.remove('hidden');
+      document.getElementById('gridErrorSection').classList.add('hidden');
+      document.getElementById('gridSummarySection').classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/v1/weather/grid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat_min: bounds.getSouth(),
+            lat_max: bounds.getNorth(),
+            lon_min: bounds.getWest(),
+            lon_max: bounds.getEast(),
+            grid_size: gridSize,
+            altitude_ft: altitudeFt,
+            hours: hours,
+            limits: limits,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Bölge analizi başarısız');
+
+        const colorMap = {
+          'UYGUN': '#00ff88',
+          'RISKLI': '#ffb800',
+          'UYGUN_DEGIL': '#ff3d57',
+        };
+        const PRECIP_LABELS_LOCAL = { 0: 'Yok', 1: 'Hafif', 2: 'Orta/Şiddetli' };
+
+        data.points.forEach(pt => {
+          const color = colorMap[pt.decision] || '#00d4ff';
+          const decCfg = DECISION_CONFIG[pt.decision] || DECISION_CONFIG['RISKLI'];
+          const marker = L.circleMarker([pt.lat, pt.lon], {
+            radius: gridSize === 25 ? 9 : 6,
+            fillColor: color,
+            color: '#0a0e1a',
+            fillOpacity: 0.75,
+            weight: 1,
+          }).addTo(map);
+          marker.bindPopup(
+            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff;min-width:170px">' +
+            '<p style="font-weight:bold;margin-bottom:5px">' + decCfg.label + '</p>' +
+            '<p>📍 ' + pt.lat.toFixed(4) + ', ' + pt.lon.toFixed(4) + '</p>' +
+            '<p>💨 ' + pt.wind_speed_knots.toFixed(1) + ' kt</p>' +
+            '<p>👁 ' + pt.visibility_km.toFixed(1) + ' km</p>' +
+            '<p>🌡 ' + pt.temperature_c.toFixed(1) + '°C &nbsp; 💧 ' + Math.round(pt.humidity_pct) + '%</p>' +
+            '<p>🌧 ' + (PRECIP_LABELS_LOCAL[pt.precipitation_level] || '—') + '</p>' +
+            (pt.cloud_base_ft != null ? '<p>☁ Bulut tabanı: ' + Math.round(pt.cloud_base_ft) + ' ft</p>' : '') +
+            '</div>'
+          );
+          gridMarkers.push(marker);
+        });
+
+        // Update summary panel
+        const s = data.summary;
+        const total = s.total || 1;
+        document.getElementById('summaryUygun').textContent = s.UYGUN;
+        document.getElementById('summaryRiskli').textContent = s.RISKLI;
+        document.getElementById('summaryUygunDegil').textContent = s.UYGUN_DEGIL;
+        document.getElementById('summaryBar').innerHTML =
+          '<div style="width:' + (s.UYGUN / total * 100).toFixed(1) + '%;background:#00ff88;height:100%"></div>' +
+          '<div style="width:' + (s.RISKLI / total * 100).toFixed(1) + '%;background:#ffb800;height:100%"></div>' +
+          '<div style="width:' + (s.UYGUN_DEGIL / total * 100).toFixed(1) + '%;background:#ff3d57;height:100%"></div>';
+        document.getElementById('summaryPercent').textContent =
+          s.total + ' nokta — Uygun: ' + (s.UYGUN / total * 100).toFixed(0) + '%';
+        document.getElementById('gridSummarySection').classList.remove('hidden');
+        document.getElementById('regionStatus').textContent = s.total + ' nokta analiz edildi.';
+
+      } catch (err) {
+        document.getElementById('gridErrorMsg').textContent = err.message;
+        document.getElementById('gridErrorSection').classList.remove('hidden');
+      } finally {
+        document.getElementById('gridLoadingSection').classList.add('hidden');
+      }
+    }
+
   </script>
 </body>
 </html>
