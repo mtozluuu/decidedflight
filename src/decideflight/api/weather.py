@@ -98,6 +98,7 @@ class WeatherReportResponse(BaseModel):
     sources: list[WeatherSourceSchema]
     decision: str
     decision_detail: str
+    confidence_score: int
     parameters: list[ParameterResultSchema]
     created_at: datetime
 
@@ -191,6 +192,7 @@ async def create_weather_report(
         ],
         decision=decision_result.decision,
         decision_detail=decision_result.detail,
+        confidence_score=decision_result.confidence_score,
         parameters=[
             ParameterResultSchema(
                 name=p.name,

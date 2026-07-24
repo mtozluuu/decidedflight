@@ -139,6 +139,26 @@ class TestDecisionEngine:
         result = make_decision([_make_source()])
         assert len(result.parameters) == 7
 
+    def test_metar_source_adds_detail_and_confidence_bonus(self):
+        metar_source = _make_source(
+            source="METAR (AVWX)",
+            wind_knots=15.0,
+            temp_c=25.0,
+            vis_km=10.0,
+            cloud_base=3000.0,
+        )
+        metar_source.raw = {
+            "raw_metar": "LTFM 241200Z 18015KT 9999 FEW030 25/14 Q1013",
+            "visibility_text": "9999m (mükemmel)",
+            "taf_summary_next_6h": "BECMG 18020KT",
+            "metar": {"wind_direction": {"value": 180}},
+        }
+        result = make_decision([metar_source])
+
+        assert "METAR (Resmi Havacılık Gözlemi)" in result.detail
+        assert "TAF (Terminal Hava Tahmini - Sonraki 6 saat)" in result.detail
+        assert result.confidence_score == 100
+
 
 # ---------------------------------------------------------------------------
 # PDF generation smoke test
@@ -269,6 +289,7 @@ class TestWeatherReportAPI:
                 json={"lat": 41.0, "lon": 28.9},
             )
         body = response.json()
+        assert "confidence_score" in body
         assert len(body["parameters"]) == 7
         param_names = [p["name"] for p in body["parameters"]]
         assert "Rüzgar hızı" in param_names
