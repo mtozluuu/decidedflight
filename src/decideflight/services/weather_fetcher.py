@@ -78,6 +78,20 @@ def _m_to_km(m: float) -> float:
     return m / 1000.0
 
 
+def _dew_point_c(temp_c: float, rh_pct: float) -> float | None:
+    """Return estimated dew point (°C) using the Magnus formula.
+
+    Returns *None* when *rh_pct* is not a physically meaningful value
+    (i.e. ≤ 0 or > 100), so that callers can skip cloud-base estimation
+    rather than propagating a nonsensical result.
+    """
+    if rh_pct <= 0 or rh_pct > 100:
+        return None
+    a, b = 17.625, 243.04
+    alpha = math.log(rh_pct / 100.0) + (a * temp_c) / (b + temp_c)
+    return b * alpha / (a - alpha)
+
+
 def _cloud_base_ft(temp_c: float, dew_point_c: float) -> float:
     """Estimate cloud base AGL in feet from temperature / dew-point spread."""
     spread = max(temp_c - dew_point_c, 0.0)
@@ -204,11 +218,9 @@ async def _fetch_owm(
     cloud_pct = data.get("clouds", {}).get("all", 0.0)
 
     # Estimate dew point from Magnus formula
-    a, b = 17.625, 243.04
-    alpha = math.log(rh / 100.0) + (a * temp_c) / (b + temp_c)
-    dew_c = b * alpha / (a - alpha)
-    base_ft = _cloud_base_ft(temp_c, dew_c)
-    ceiling_ft = (base_ft + 200.0) if cloud_pct > 50 else None
+    dew_c = _dew_point_c(temp_c, rh)
+    base_ft = _cloud_base_ft(temp_c, dew_c) if dew_c is not None else None
+    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct > 50) else None
 
     return WeatherSourceData(
         source="OpenWeatherMap",
@@ -258,11 +270,9 @@ async def _fetch_weatherapi(
     cloud_pct = cur.get("cloud", 0.0)
 
     # Estimate dew point
-    a, b = 17.625, 243.04
-    alpha = math.log(max(rh, 1) / 100.0) + (a * temp_c) / (b + temp_c)
-    dew_c = b * alpha / (a - alpha)
-    base_ft = _cloud_base_ft(temp_c, dew_c)
-    ceiling_ft = (base_ft + 200.0) if cloud_pct > 50 else None
+    dew_c = _dew_point_c(temp_c, rh)
+    base_ft = _cloud_base_ft(temp_c, dew_c) if dew_c is not None else None
+    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct > 50) else None
 
     return WeatherSourceData(
         source="WeatherAPI",
@@ -322,12 +332,10 @@ async def _fetch_windy(
     mclouds = _first("mclouds-surface")
 
     # Estimate dew point
-    a, b = 17.625, 243.04
-    alpha = math.log(max(rh, 1) / 100.0) + (a * temp_c) / (b + temp_c)
-    dew_c = b * alpha / (a - alpha)
-    base_ft = _cloud_base_ft(temp_c, dew_c)
+    dew_c = _dew_point_c(temp_c, rh)
+    base_ft = _cloud_base_ft(temp_c, dew_c) if dew_c is not None else None
     cloud_pct = max(lclouds, mclouds)
-    ceiling_ft = (base_ft + 200.0) if cloud_pct > 50 else None
+    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct > 50) else None
 
     return WeatherSourceData(
         source="Windy",
