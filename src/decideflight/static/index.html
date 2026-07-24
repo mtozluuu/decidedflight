@@ -153,11 +153,11 @@
     <div class="max-w-6xl mx-auto flex items-start justify-between gap-4">
       <div>
         <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest">◈ DECIDEFLIGHT</p>
-        <p class="mono text-[10px] sm:text-xs text-cyan-100/60 mt-1">AVIATION WEATHER DECISION CORE</p>
+        <p class="mono text-[10px] sm:text-xs text-cyan-100/60 mt-1">UÇUŞ HAVA KOŞULU KARAR ÇEKİRDEĞİ</p>
       </div>
-      <div class="text-right" role="timer" aria-label="Universal Coordinated Time">
+      <div class="text-right" role="timer" aria-label="Eşgüdümlü Evrensel Zaman">
         <p class="mono text-[10px] text-green-300/70 tracking-wider">UTC</p>
-        <p id="utcClock" aria-label="Current UTC time" class="mono text-sm sm:text-base text-green-300">--:--:--</p>
+        <p id="utcClock" aria-label="Güncel UTC saati" class="mono text-sm sm:text-base text-green-300">--:--:--</p>
       </div>
     </div>
     <div class="max-w-6xl mx-auto mt-3 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent"></div>
@@ -165,8 +165,8 @@
 
   <main class="max-w-6xl mx-auto px-4 pb-8 space-y-6">
     <section class="hud-card p-6 sm:p-8 text-center">
-      <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">DRONE FLIGHT WEATHER ANALYSIS</h1>
-      <p class="mono text-xs sm:text-sm text-cyan-100/75 mt-3">SELECT COORDINATES OR CITY — WORLDWIDE COVERAGE</p>
+      <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">DRONE UÇUŞ HAVA ANALİZİ</h1>
+      <p class="mono text-xs sm:text-sm text-cyan-100/75 mt-3">KONUM VEYA KOORDİNAT GİRİN — DÜNYA GENELİ KAPSAM</p>
 
       <div class="mt-6 flex flex-col sm:flex-row gap-3">
         <div class="relative flex-1">
@@ -174,7 +174,8 @@
           <input
             id="locationInput"
             type="text"
-            placeholder="ENTER LOCATION..."
+            placeholder="KONUM GİRİN..."
+            aria-label="Konum veya koordinat girişi"
             class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md pl-9 pr-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
           />
         </div>
@@ -182,21 +183,42 @@
           id="reportBtn"
           onclick="generateReport()"
           class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-6 py-3 text-sm tracking-wider hover:shadow-[0_0_20px_rgba(0,212,255,0.45)] transition"
-        >[ ANALYZE ]</button>
+        >[ ANALİZ ET ]</button>
       </div>
 
-      <div class="mt-4 flex flex-wrap justify-center gap-2 text-xs">
-        <button class="chip px-2.5 py-1 rounded-sm" onclick="setLocation('Istanbul')">[ ISTANBUL ]</button>
-        <button class="chip px-2.5 py-1 rounded-sm" onclick="setLocation('New York')">[ NEW YORK ]</button>
-        <button class="chip px-2.5 py-1 rounded-sm" onclick="setLocation('Tokyo')">[ TOKYO ]</button>
-        <button class="chip px-2.5 py-1 rounded-sm" onclick="setLocation('Dubai')">[ DUBAI ]</button>
+      <div class="mt-4 grid sm:grid-cols-2 gap-3 text-left">
+        <div>
+          <label for="countrySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ÜLKE SEÇİMİ</label>
+          <select
+            id="countrySelect"
+            aria-label="Ülke seçimi"
+            class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+            disabled
+          >
+            <option value="">Ülke verisi yükleniyor...</option>
+          </select>
+        </div>
+        <div>
+          <label for="citySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ŞEHİR SEÇİMİ</label>
+          <select
+            id="citySelect"
+            aria-label="Şehir seçimi"
+            class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+            disabled
+          >
+            <option value="">Önce ülke seçin</option>
+          </select>
+        </div>
       </div>
+
+      <p id="cityDataStatus" class="mono text-[11px] text-cyan-100/60 mt-3">Şehir verisi hazırlanıyor...</p>
+      <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
     </section>
 
     <div id="loadingSection" role="status" aria-live="polite" aria-busy="true" class="hidden hud-card py-10 px-6 text-center">
-      <div class="flex justify-center"><div class="radar" aria-label="Loading weather data"></div></div>
-      <p class="mono text-green-300 mt-4 blink">ACQUIRING WEATHER DATA...</p>
-      <p class="mono text-[11px] text-cyan-100/60 mt-3">CONNECTING TO SOURCES: OPEN-METEO ● METAR ● OWM ● WEATHERAPI</p>
+      <div class="flex justify-center"><div class="radar" aria-label="Hava verisi yükleniyor"></div></div>
+      <p class="mono text-green-300 mt-4 blink">HAVA VERİSİ TOPLANIYOR...</p>
+      <p class="mono text-[11px] text-cyan-100/60 mt-3">KAYNAKLARA BAĞLANILIYOR: OPEN-METEO ● METAR ● OWM ● WEATHERAPI</p>
     </div>
 
     <div id="errorSection" class="hidden hud-card px-5 py-4 border-red-500/40 text-red-300 mono text-sm">
@@ -214,21 +236,21 @@
         <div class="grid md:grid-cols-[220px_1fr] gap-6 items-center">
           <div class="text-center">
             <div class="relative w-40 h-40 mx-auto">
-              <svg class="w-40 h-40 -rotate-90" role="img" aria-label="Confidence score ring" viewBox="0 0 120 120">
+              <svg class="w-40 h-40 -rotate-90" role="img" aria-label="Güven puanı göstergesi" viewBox="0 0 120 120">
                 <circle cx="60" cy="60" r="52" stroke="rgba(14,165,233,0.25)" stroke-width="8" fill="none"></circle>
                 <circle id="confidenceRing" cx="60" cy="60" r="52" stroke="#00d4ff" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="0" stroke-dashoffset="0"></circle>
               </svg>
               <div class="absolute inset-0 flex flex-col items-center justify-center">
                 <p id="confidencePercent" class="mono text-3xl font-extrabold text-cyan-300">0%</p>
-                <p class="mono text-[10px] text-cyan-100/60 tracking-widest">CONFIDENCE</p>
-                <span id="confidenceAria" class="sr-only" aria-live="polite">Confidence score 0 percent</span>
+                <p class="mono text-[10px] text-cyan-100/60 tracking-widest">GÜVEN</p>
+                <span id="confidenceAria" class="sr-only" aria-live="polite">Güven puanı yüzde 0</span>
               </div>
             </div>
             <p id="confidenceLabel" class="mono text-xs text-cyan-100/60 mt-2"></p>
           </div>
 
           <div>
-            <h3 class="mono text-cyan-300 text-sm mb-2">◈ ANALYSIS SUMMARY</h3>
+            <h3 class="mono text-cyan-300 text-sm mb-2">◈ ANALİZ ÖZETİ</h3>
             <p id="decisionDetail" class="text-sm leading-relaxed text-cyan-100/85 whitespace-pre-line"></p>
             <div id="confidenceBar" class="hidden"></div>
           </div>
@@ -237,24 +259,24 @@
 
       <div class="grid lg:grid-cols-2 gap-4 hud-grid">
         <div id="riskCard" class="hud-card p-5 hidden">
-          <h3 class="mono text-sm mb-3 text-amber-300">⚠ RISK ASSESSMENT</h3>
+          <h3 class="mono text-sm mb-3 text-amber-300">⚠ RİSK DEĞERLENDİRMESİ</h3>
           <ul id="riskList" class="space-y-2 text-sm"></ul>
         </div>
         <div id="recCard" class="hud-card p-5 hidden">
-          <h3 class="mono text-sm mb-3 text-cyan-300">◈ RECOMMENDATIONS</h3>
+          <h3 class="mono text-sm mb-3 text-cyan-300">◈ ÖNERİLER</h3>
           <ul id="recList" class="space-y-2 text-sm"></ul>
         </div>
       </div>
 
       <div class="hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">◈ FLIGHT PARAMETERS</h3>
+        <h3 class="mono text-sm text-cyan-300 mb-4">◈ UÇUŞ PARAMETRELERİ</h3>
         <div class="overflow-x-auto">
           <table class="w-full text-sm mono">
             <thead>
               <tr class="text-cyan-100/60 border-b border-cyan-400/20 text-left">
-                <th class="pb-2 font-semibold">PARAMETER</th>
-                <th class="pb-2 font-semibold">VALUE</th>
-                <th class="pb-2 font-semibold">STATUS</th>
+                <th class="pb-2 font-semibold">PARAMETRE</th>
+                <th class="pb-2 font-semibold">DEĞER</th>
+                <th class="pb-2 font-semibold">DURUM</th>
               </tr>
             </thead>
             <tbody id="parametersTable"></tbody>
@@ -263,51 +285,51 @@
       </div>
 
       <div class="hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">◈ DATA SOURCES</h3>
+        <h3 class="mono text-sm text-cyan-300 mb-4">◈ VERİ KAYNAKLARI</h3>
         <div id="sourcesTable" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
       </div>
 
       <div class="hud-card p-6">
         <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
           <div id="feedbackSection">
-            <p class="mono text-sm text-cyan-200 mb-3">◈ MISSION DEBRIEF — WAS THIS ASSESSMENT CORRECT?</p>
+            <p class="mono text-sm text-cyan-200 mb-3">◈ GÖREV GERİ BİLDİRİMİ — BU DEĞERLENDİRME DOĞRU MUYDU?</p>
             <div id="feedbackButtons" class="flex flex-wrap gap-3">
               <button
                 onclick="submitFeedback(true)"
                 class="mono border border-green-400/70 text-green-300 hover:bg-green-400/10 rounded-md px-4 py-2 text-xs tracking-wider"
-              >[ CONFIRMED ]</button>
+              >[ DOĞRU ]</button>
               <button
                 onclick="submitFeedback(false)"
                 class="mono border border-red-400/70 text-red-300 hover:bg-red-400/10 rounded-md px-4 py-2 text-xs tracking-wider"
-              >[ INCORRECT ]</button>
+              >[ YANLIŞ ]</button>
             </div>
             <div id="feedbackComment" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
               <input
                 id="commentInput"
                 type="text"
-                placeholder="Optional note..."
+                placeholder="Opsiyonel not..."
                 class="mono flex-1 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
               />
               <button
                 onclick="confirmFeedback()"
                 class="mono bg-cyan-300 text-slate-950 font-semibold rounded-md px-4 py-2 text-xs"
-              >[ SUBMIT ]</button>
+              >[ GÖNDER ]</button>
             </div>
-            <p id="feedbackThanks" class="hidden mono text-xs text-green-300 mt-2">✓ FEEDBACK RECORDED</p>
+            <p id="feedbackThanks" class="hidden mono text-xs text-green-300 mt-2">✓ GERİ BİLDİRİM KAYDEDİLDİ</p>
           </div>
 
           <button
             id="pdfBtn"
             onclick="downloadPDF()"
             class="mono border border-slate-300/35 text-slate-200 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs self-start"
-          >[ EXPORT REPORT ]</button>
+          >[ RAPORU İNDİR ]</button>
         </div>
       </div>
     </section>
   </main>
 
   <footer class="text-center mono text-[10px] text-slate-500 pb-6 px-4">
-    DECIDEFLIGHT SYSTEM v2.0 — WORLDWIDE DRONE WEATHER INTELLIGENCE
+    DECIDEFLIGHT SİSTEMİ v2.0 — KÜRESEL DRONE HAVA İSTİHBARATI
   </footer>
 
   <script>
@@ -318,6 +340,7 @@
     const CONFIDENCE_CAUTION_THRESHOLD_PCT = 40;
     const CONFIDENCE_RING_RADIUS = 52;
     let cachedHudColors = null;
+    let cityDataset = [];
 
     function getHudColors() {
       if (cachedHudColors) return cachedHudColors;
@@ -330,28 +353,28 @@
       return cachedHudColors;
     }
 
-    const PRECIP_LABELS = { 0: 'None', 1: 'Light', 2: 'Moderate/Heavy' };
+    const PRECIP_LABELS = { 0: 'Yok', 1: 'Hafif', 2: 'Orta/Şiddetli' };
     const DECISION_CONFIG = {
       'UYGUN': {
-        label: '✦ FLIGHT AUTHORIZED',
+        label: '✦ UÇUŞA UYGUN',
         banner: 'border border-green-400/40 text-green-300 shadow-[0_0_24px_rgba(0,255,136,0.25)]',
         pulse: false,
       },
       'RISKLI': {
-        label: '⚠ CAUTION — REVIEW CONDITIONS',
+        label: '⚠ DİKKAT — KOŞULLARI GÖZDEN GEÇİRİN',
         banner: 'border border-amber-400/45 text-amber-300 shadow-[0_0_24px_rgba(255,184,0,0.24)]',
         pulse: false,
       },
       'UYGUN_DEGIL': {
-        label: '✕ FLIGHT NOT AUTHORIZED',
+        label: '✕ UÇUŞA UYGUN DEĞİL',
         banner: 'border border-red-400/45 text-red-300 shadow-[0_0_26px_rgba(255,61,87,0.32)]',
         pulse: true,
       },
     };
     const PARAM_DECISION_BADGE = {
-      'UYGUN': '<span class="text-[11px] text-green-300">[AUTHORIZED]</span>',
-      'RISKLI': '<span class="text-[11px] text-amber-300">[CAUTION]</span>',
-      'UYGUN_DEGIL': '<span class="text-[11px] text-red-300">[RESTRICTED]</span>',
+      'UYGUN': '<span class="text-[11px] text-green-300">[UYGUN]</span>',
+      'RISKLI': '<span class="text-[11px] text-amber-300">[RİSKLİ]</span>',
+      'UYGUN_DEGIL': '<span class="text-[11px] text-red-300">[UYGUN DEĞİL]</span>',
     };
 
     function setLocation(name) {
@@ -428,7 +451,7 @@
         percent.textContent = `${value}%`;
         ring.style.strokeDashoffset = `${circumference * (1 - value / 100)}`;
         if (progress >= 1) {
-          ariaText.textContent = `Confidence score ${value} percent`;
+          ariaText.textContent = `Güven puanı yüzde ${value}`;
         }
         if (progress < 1) requestAnimationFrame(step);
       }
@@ -441,6 +464,103 @@
       const mm = String(now.getUTCMinutes()).padStart(2, '0');
       const ss = String(now.getUTCSeconds()).padStart(2, '0');
       document.getElementById('utcClock').textContent = `${hh}:${mm}:${ss}`;
+    }
+
+    function updateCityDataStatus(message, isError = false) {
+      const statusEl = document.getElementById('cityDataStatus');
+      statusEl.textContent = message;
+      statusEl.className = `mono text-[11px] mt-3 ${isError ? 'text-red-300' : 'text-cyan-100/60'}`;
+    }
+
+    function populateCountrySelect() {
+      const countrySelect = document.getElementById('countrySelect');
+      countrySelect.innerHTML = '<option value="">Ülke seçin</option>';
+
+      cityDataset.forEach(country => {
+        const option = document.createElement('option');
+        option.value = country.code || country.name;
+        option.textContent = country.name;
+        countrySelect.appendChild(option);
+      });
+
+      countrySelect.disabled = false;
+    }
+
+    function getSelectedCountry() {
+      const countrySelect = document.getElementById('countrySelect');
+      const selected = countrySelect.value;
+      if (!selected) return null;
+      return cityDataset.find(c => (c.code || c.name) === selected) || null;
+    }
+
+    function populateCitySelect(country) {
+      const citySelect = document.getElementById('citySelect');
+      citySelect.innerHTML = '';
+
+      if (!country) {
+        citySelect.disabled = true;
+        citySelect.innerHTML = '<option value="">Önce ülke seçin</option>';
+        return;
+      }
+
+      citySelect.disabled = false;
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Şehir seçin';
+      citySelect.appendChild(placeholder);
+
+      country.cities.forEach(cityName => {
+        const option = document.createElement('option');
+        option.value = cityName;
+        option.textContent = cityName;
+        citySelect.appendChild(option);
+      });
+    }
+
+    async function loadCityDataset() {
+      try {
+        const response = await fetch('/static/data/cities.json');
+        if (!response.ok) {
+          throw new Error('Şehir verisi indirilemedi.');
+        }
+
+        const payload = await response.json();
+        const countries = Array.isArray(payload.countries) ? payload.countries : [];
+        const normalized = countries
+          .filter(item => item && typeof item.name === 'string' && Array.isArray(item.cities))
+          .map(item => {
+            const normalizedName = item.name.trim();
+            const normalizedQueryName = typeof item.queryName === 'string'
+              ? item.queryName.trim()
+              : '';
+
+            return {
+              code: item.code,
+              name: normalizedName,
+              queryName: normalizedQueryName || normalizedName,
+              cities: item.cities
+                .filter(city => typeof city === 'string' && city.trim())
+                .map(city => city.trim()),
+            };
+          })
+          .filter(item => item.name && item.cities.length > 0)
+          .sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+
+        if (normalized.length === 0) {
+          throw new Error('Şehir verisi boş geldi.');
+        }
+
+        cityDataset = normalized;
+        populateCountrySelect();
+        updateCityDataStatus('Dünya genelindeki şehir verisi yüklendi. Ülke ve şehir seçebilirsiniz.');
+      } catch (error) {
+        document.getElementById('countrySelect').disabled = true;
+        document.getElementById('citySelect').disabled = true;
+        updateCityDataStatus(
+          `${error.message} Manuel konum veya koordinat girmeye devam edebilirsiniz.`,
+          true,
+        );
+      }
     }
 
     async function generateReport() {
@@ -504,16 +624,16 @@
       }
 
       document.getElementById('decisionText').textContent = cfg.label;
-      document.getElementById('locationLabel').textContent = `LOCATION: ${data.location}  (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
+      document.getElementById('locationLabel').textContent = `KONUM: ${data.location}  (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
       document.getElementById('createdAt').textContent =
-        'REPORT TIME: ' + new Date(data.created_at).toLocaleString('en-US');
+        'RAPOR ZAMANI: ' + new Date(data.created_at).toLocaleString('tr-TR');
 
       document.getElementById('decisionDetail').textContent = data.decision_detail;
 
       const conf = Number.isFinite(data.confidence_score)
         ? data.confidence_score
         : computeConfidence(data.parameters);
-      document.getElementById('confidenceLabel').textContent = `FLIGHT RELIABILITY INDEX: ${conf}%`;
+      document.getElementById('confidenceLabel').textContent = `UÇUŞ GÜVEN ENDEKSİ: ${conf}%`;
       animateConfidence(conf);
 
       const badParams = data.parameters.filter(p => p.decision !== 'UYGUN');
@@ -551,12 +671,12 @@
         <div class="source-card mono">
           <p class="text-cyan-300 font-bold mb-2">${formatSourceName(s.source)}</p>
           <div class="source-grid text-cyan-100/75">
-            <p>WIND: <span class="text-cyan-100">${s.wind_speed_knots.toFixed(1)} kt</span></p>
-            <p>VIS: <span class="text-cyan-100">${s.visibility_km.toFixed(1)} km</span></p>
-            <p>PRECIP: <span class="text-cyan-100">${PRECIP_LABELS[s.precipitation_level] ?? s.precipitation_level}</span></p>
-            <p>TEMP: <span class="text-cyan-100">${s.temperature_c.toFixed(1)} °C</span></p>
-            <p>HUM: <span class="text-cyan-100">${s.humidity_pct.toFixed(0)}%</span></p>
-            <p>CLOUD BASE: <span class="text-cyan-100">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'} ft</span></p>
+            <p>RÜZGAR: <span class="text-cyan-100">${s.wind_speed_knots.toFixed(1)} kt</span></p>
+            <p>GÖRÜŞ: <span class="text-cyan-100">${s.visibility_km.toFixed(1)} km</span></p>
+            <p>YAĞIŞ: <span class="text-cyan-100">${PRECIP_LABELS[s.precipitation_level] ?? s.precipitation_level}</span></p>
+            <p>SICAKLIK: <span class="text-cyan-100">${s.temperature_c.toFixed(1)} °C</span></p>
+            <p>NEM: <span class="text-cyan-100">${s.humidity_pct.toFixed(0)}%</span></p>
+            <p>BULUT TABANI: <span class="text-cyan-100">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'} ft</span></p>
           </div>
         </div>`).join('');
 
@@ -607,12 +727,27 @@
       window.open(`/api/v1/weather/report/${currentReportId}/pdf`, '_blank');
     }
 
+    document.getElementById('countrySelect').addEventListener('change', () => {
+      const country = getSelectedCountry();
+      populateCitySelect(country);
+    });
+
+    document.getElementById('citySelect').addEventListener('change', (event) => {
+      const city = event.target.value;
+      const country = getSelectedCountry();
+      if (city && country) {
+        setLocation(`${city}, ${country.queryName}`);
+      }
+    });
+
     updateUtcClock();
     setInterval(updateUtcClock, 1000);
 
     document.getElementById('locationInput').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') generateReport();
     });
+
+    loadCityDataset();
   </script>
 </body>
 </html>

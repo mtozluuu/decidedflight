@@ -15,6 +15,9 @@ def test_root_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     # Root now serves the web UI (index.html) when the static directory exists
     assert "text/html" in response.headers["content-type"]
+    assert "DRONE UÇUŞ HAVA ANALİZİ" in response.text
+    assert "id=\"countrySelect\"" in response.text
+    assert "/static/data/cities.json" in response.text
 
 
 def test_health_endpoint(client: TestClient) -> None:
