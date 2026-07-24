@@ -14,6 +14,7 @@ Sources without a configured API key are silently skipped.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 from dataclasses import dataclass, field
@@ -69,6 +70,49 @@ class AirQualityData:
     pm25: float | None = None
     pm10: float | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+
+# ---------------------------------------------------------------------------
+# Retry helper
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    params: dict[str, Any],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+) -> httpx.Response:
+    """GET *url* with exponential back-off on 429 Too Many Requests.
+
+    Delays: 1 s, 2 s, 4 s (base_delay * 2^attempt).
+    On non-429 HTTP errors the exception is re-raised immediately.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            resp = await client.get(url, params=params, timeout=_TIMEOUT)
+            resp.raise_for_status()
+            return resp
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429 and attempt < max_retries:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    "Open-Meteo rate limited (429) – attempt %d/%d; "
+                    "retrying in %.1fs",
+                    attempt + 1,
+                    max_retries + 1,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                last_exc = exc
+            else:
+                raise
+    # Reached only when all retries were exhausted on 429
+    raise last_exc if last_exc is not None else RuntimeError(  # pragma: no cover
+        "Open-Meteo rate limit retries exhausted"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -214,8 +258,7 @@ async def _fetch_open_meteo(
         "timezone": "UTC",
     }
     try:
-        resp = await client.get(url, params=params, timeout=_TIMEOUT)
-        resp.raise_for_status()
+        resp = await _fetch_with_retry(client, url, params)
         data = resp.json()
     except Exception as exc:
         logger.warning("Open-Meteo fetch failed: %s", exc)
@@ -546,17 +589,16 @@ async def _fetch_air_quality(
     client: httpx.AsyncClient,
 ) -> AirQualityData | None:
     try:
-        resp = await client.get(
+        resp = await _fetch_with_retry(
+            client,
             "https://air-quality-api.open-meteo.com/v1/air-quality",
-            params={
+            {
                 "latitude": lat,
                 "longitude": lon,
                 "current": "european_aqi,pm2_5,pm10",
                 "timezone": "UTC",
             },
-            timeout=_TIMEOUT,
         )
-        resp.raise_for_status()
         data = resp.json()
     except Exception as exc:
         logger.warning("Open-Meteo air-quality fetch failed: %s", exc)
