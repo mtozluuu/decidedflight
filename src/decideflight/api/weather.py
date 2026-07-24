@@ -17,7 +17,7 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -32,14 +32,17 @@ from decideflight.models.weather_report import WeatherReport
 from decideflight.services.ai_decision_engine import (
     AIDecisionResult,
     build_feedback_context,
+    chat_about_report,
     make_ai_decision,
 )
-from decideflight.services.decision_engine import make_decision
+from decideflight.services.decision_engine import DecisionResult, make_decision
 from decideflight.services.geocoding import geocode_city
 from decideflight.services.report_generator import generate_pdf
 from decideflight.services.trend_analyzer import fetch_wind_trend
 from decideflight.services.weather_fetcher import (
+    AirQualityData,
     WeatherSourceData,
+    fetch_air_quality,
     fetch_all_sources,
 )
 
@@ -121,6 +124,10 @@ class WeatherReportResponse(BaseModel):
     risk_factors: list[str] | None = None
     recommendations: list[str] | None = None
     wind_trend: str | None = None
+    parameter_weights: dict[str, int] | None = None
+    aqi_score: int | None = None
+    pm25: float | None = None
+    pm10: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -163,24 +170,28 @@ async def create_weather_report(
                 detail="Geocoding service unavailable.",
             ) from exc
 
-    # 2. Fetch weather data
+    # 2. Fetch weather data and side-context
     try:
-        sources: list[WeatherSourceData] = await fetch_all_sources(lat, lon)
+        sources_result, wind_trend_obj, air_quality = await asyncio.gather(
+            fetch_all_sources(lat, lon),
+            fetch_wind_trend(lat, lon),
+            fetch_air_quality(lat, lon),
+        )
+        sources = list(sources_result)
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
 
-    # 3. Fetch wind trend (non-blocking — failure just omits trend)
-    wind_trend_obj = await fetch_wind_trend(lat, lon)
+    # 3. Wind trend / AQI are best-effort side context
     wind_trend_str = wind_trend_obj.description if wind_trend_obj else ""
 
     # 4. Get feedback context from DB (Feature 4)
     feedback_ctx = build_feedback_context(db)
 
     # 5. Evaluate decision (AI if key present, rule-based fallback)
-    decision_result = await make_ai_decision(
+    ai_kwargs: dict[str, Any] = dict(
         sources=sources,
         location=location_name,
         lat=lat,
@@ -188,13 +199,14 @@ async def create_weather_report(
         feedback_context=feedback_ctx,
         wind_trend=wind_trend_str,
     )
+    if air_quality is not None:
+        ai_kwargs["air_quality"] = air_quality
+    decision_result = await make_ai_decision(**ai_kwargs)
 
     # 6. Persist report
-    ai_data: str | None = None
-    if isinstance(decision_result, AIDecisionResult) and (
-        decision_result.summary or decision_result.detailed_analysis
-    ):
-        ai_data = json.dumps(
+    ai_payload: dict[str, Any] = {}
+    if isinstance(decision_result, AIDecisionResult):
+        ai_payload.update(
             {
                 "confidence": decision_result.confidence,
                 "summary": decision_result.summary,
@@ -202,9 +214,18 @@ async def create_weather_report(
                 "risk_factors": decision_result.risk_factors,
                 "recommendations": decision_result.recommendations,
                 "parameter_assessments": decision_result.parameter_assessments,
-            },
-            ensure_ascii=False,
+                "parameter_weights": decision_result.parameter_weights,
+            }
         )
+    if air_quality is not None:
+        ai_payload.update(
+            {
+                "aqi_score": air_quality.aqi_score,
+                "pm25": air_quality.pm25,
+                "pm10": air_quality.pm10,
+            }
+        )
+    ai_data = json.dumps(ai_payload, ensure_ascii=False) if ai_payload else None
 
     sources_json = json.dumps(
         [{k: v for k, v in asdict(s).items() if k != "raw"} for s in sources]
@@ -229,12 +250,15 @@ async def create_weather_report(
     ai_detailed: str | None = None
     ai_risks: list[str] | None = None
     ai_recs: list[str] | None = None
-    if isinstance(decision_result, AIDecisionResult) and decision_result.summary:
-        ai_confidence = decision_result.confidence
-        ai_summary = decision_result.summary
-        ai_detailed = decision_result.detailed_analysis
-        ai_risks = decision_result.risk_factors
-        ai_recs = decision_result.recommendations
+    ai_parameter_weights: dict[str, int] | None = None
+    if isinstance(decision_result, AIDecisionResult):
+        ai_parameter_weights = decision_result.parameter_weights or None
+        if decision_result.summary:
+            ai_confidence = decision_result.confidence
+            ai_summary = decision_result.summary
+            ai_detailed = decision_result.detailed_analysis
+            ai_risks = decision_result.risk_factors
+            ai_recs = decision_result.recommendations
 
     return WeatherReportResponse(
         report_id=report.id,
@@ -272,6 +296,10 @@ async def create_weather_report(
         risk_factors=ai_risks,
         recommendations=ai_recs,
         wind_trend=wind_trend_str if wind_trend_str else None,
+        parameter_weights=ai_parameter_weights,
+        aqi_score=decision_result.aqi_score,
+        pm25=decision_result.pm25,
+        pm10=decision_result.pm10,
     )
 
 
@@ -392,6 +420,557 @@ async def submit_feedback(
         correct=fb.correct,
         created_at=fb.created_at,
     )
+
+
+def _load_report_sources(report: WeatherReport) -> list[WeatherSourceData]:
+    raw_sources: list[dict[str, Any]] = json.loads(report.sources_data)
+    return [
+        WeatherSourceData(
+            source=source["source"],
+            wind_speed_knots=source["wind_speed_knots"],
+            temperature_c=source["temperature_c"],
+            humidity_pct=source["humidity_pct"],
+            visibility_km=source["visibility_km"],
+            precipitation_level=source["precipitation_level"],
+            cloud_base_ft=source.get("cloud_base_ft"),
+            cloud_ceiling_ft=source.get("cloud_ceiling_ft"),
+            reliability_weight=source.get("reliability_weight", 1.0),
+            raw=source.get("raw", {}),
+        )
+        for source in raw_sources
+    ]
+
+
+def _load_ai_payload(report: WeatherReport) -> dict[str, Any]:
+    if not report.ai_analysis_data:
+        return {}
+    try:
+        payload = json.loads(report.ai_analysis_data)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_air_quality(report: WeatherReport) -> AirQualityData | None:
+    payload = _load_ai_payload(report)
+    aqi_score = payload.get("aqi_score")
+    if aqi_score is None:
+        return None
+    try:
+        return AirQualityData(
+            aqi_score=int(aqi_score),
+            pm25=payload.get("pm25"),
+            pm10=payload.get("pm10"),
+            raw=payload,
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_report_decision(
+    report: WeatherReport,
+) -> tuple[DecisionResult, dict[str, Any]]:
+    sources = _load_report_sources(report)
+    ai_payload = _load_ai_payload(report)
+    air_quality = _load_air_quality(report)
+    return make_decision(sources, air_quality=air_quality), ai_payload
+
+
+def _build_point_source(hour_data: dict[str, Any]) -> WeatherSourceData:
+    return WeatherSourceData(
+        source="Open-Meteo Forecast",
+        wind_speed_knots=float(hour_data["wind_speed_knots"]),
+        temperature_c=float(hour_data["temperature_c"]),
+        humidity_pct=float(hour_data["humidity_pct"]),
+        visibility_km=float(hour_data["visibility_km"]),
+        precipitation_level=int(hour_data["precipitation_level"]),
+        cloud_base_ft=hour_data.get("cloud_base_ft"),
+        cloud_ceiling_ft=hour_data.get("cloud_ceiling_ft"),
+    )
+
+
+class ReportChatRequest(BaseModel):
+    message: str
+
+
+class ReportChatResponse(BaseModel):
+    reply: str
+
+
+class ForecastHourSchema(BaseModel):
+    offset: int
+    decision: str
+    wind_kt: float
+    temperature_c: float
+    humidity_pct: float
+    visibility_km: float
+    cloud_base_ft: float | None = None
+    precipitation_level: int
+
+
+class ForecastChangeResponse(BaseModel):
+    hours: list[ForecastHourSchema]
+
+
+class NotamResponse(BaseModel):
+    notams: list[dict[str, Any]]
+    disclaimer: str
+
+
+class FlightPlanRequest(BaseModel):
+    lat: float
+    lon: float
+    date_offset: int
+    start_hour: int
+    end_hour: int
+
+    @model_validator(mode="after")
+    def _validate(self) -> "FlightPlanRequest":
+        if self.date_offset not in (0, 1):
+            raise ValueError("date_offset 0 veya 1 olmalıdır.")
+        if not (0 <= self.start_hour <= 23 and 0 <= self.end_hour <= 23):
+            raise ValueError("Saatler 0 ile 23 arasında olmalıdır.")
+        if self.end_hour < self.start_hour:
+            raise ValueError("Bitiş saati başlangıç saatinden küçük olamaz.")
+        return self
+
+
+class FlightPlanHourSchema(BaseModel):
+    hour: int
+    decision: str
+    wind_kt: float
+    temperature_c: float
+    humidity_pct: float
+    visibility_km: float
+    cloud_base_ft: float | None = None
+    precipitation_level: int
+
+
+class FlightPlanBestWindowSchema(BaseModel):
+    start_hour: int
+    end_hour: int
+    length: int
+
+
+class FlightPlanResponse(BaseModel):
+    hours: list[FlightPlanHourSchema]
+    best_window: FlightPlanBestWindowSchema | None = None
+
+
+class HistoryItemSchema(BaseModel):
+    report_id: int
+    location: str
+    decision: str
+    confidence_score: int
+    created_at: datetime
+    lat: float
+    lon: float
+
+
+class HistoryResponse(BaseModel):
+    reports: list[HistoryItemSchema]
+
+
+class SeasonalRequest(BaseModel):
+    lat: float
+    lon: float
+
+
+class SeasonalMonthSchema(BaseModel):
+    month: str
+    avg_wind_kt: float
+    avg_visibility_km: float
+    suitability_score: int
+    decision: str
+
+
+class SeasonalResponse(BaseModel):
+    months: list[SeasonalMonthSchema]
+
+
+_MONTHS_TR = [
+    "Ocak",
+    "Şubat",
+    "Mart",
+    "Nisan",
+    "Mayıs",
+    "Haziran",
+    "Temmuz",
+    "Ağustos",
+    "Eylül",
+    "Ekim",
+    "Kasım",
+    "Aralık",
+]
+
+
+async def _fetch_open_meteo_hourly(
+    lat: float,
+    lon: float,
+    *,
+    timezone_name: str = "auto",
+    forecast_days: int = 2,
+) -> dict[str, Any]:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": (
+                    "temperature_2m,relative_humidity_2m,dew_point_2m,"
+                    "wind_speed_10m,precipitation,visibility,cloud_cover"
+                ),
+                "wind_speed_unit": "kmh",
+                "timezone": timezone_name,
+                "forecast_days": forecast_days,
+            },
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+def _hourly_row_from_payload(
+    payload: dict[str, Any], index: int
+) -> dict[str, Any] | None:
+    hourly = payload.get("hourly", {})
+    times = hourly.get("time", [])
+    if len(times) <= index:
+        return None
+
+    def _value(key: str, default: float | None = None) -> float | None:
+        values = hourly.get(key, [])
+        if len(values) <= index or values[index] is None:
+            return default
+        return float(values[index])
+
+    temp_c = _value("temperature_2m")
+    if temp_c is None:
+        return None
+
+    dew_c = _value("dew_point_2m")
+    cloud_cover = _value("cloud_cover", 0.0) or 0.0
+    base_ft: float | None = None
+    if dew_c is not None:
+        spread = max(temp_c - dew_c, 0.0)
+        base_ft = spread * 122.5 * 3.28084
+
+    return {
+        "time": times[index],
+        "wind_speed_knots": ((_value("wind_speed_10m", 0.0) or 0.0) * 0.539957),
+        "temperature_c": temp_c,
+        "humidity_pct": _value("relative_humidity_2m", 0.0) or 0.0,
+        "visibility_km": ((_value("visibility", 10000.0) or 10000.0) / 1000.0),
+        "cloud_base_ft": base_ft,
+        "cloud_ceiling_ft": (
+            base_ft + 200.0 if base_ft is not None and cloud_cover > 50 else None
+        ),
+        "precipitation_level": (
+            0
+            if ((_value("precipitation", 0.0) or 0.0) <= 0)
+            else 1 if ((_value("precipitation", 0.0) or 0.0) < 2.5) else 2
+        ),
+    }
+
+
+def _best_window(
+    hours: list[FlightPlanHourSchema],
+) -> FlightPlanBestWindowSchema | None:
+    best: FlightPlanBestWindowSchema | None = None
+    current_start: int | None = None
+
+    for hour in hours + [
+        FlightPlanHourSchema(
+            hour=-1,
+            decision="BREAK",
+            wind_kt=0.0,
+            temperature_c=0.0,
+            humidity_pct=0.0,
+            visibility_km=0.0,
+            precipitation_level=0,
+        )
+    ]:
+        if hour.decision == "UYGUN":
+            if current_start is None:
+                current_start = hour.hour
+            continue
+        if current_start is None:
+            continue
+        length = (
+            hour.hour - current_start
+            if hour.hour >= 0
+            else (hours[-1].hour - current_start + 1)
+        )
+        candidate = FlightPlanBestWindowSchema(
+            start_hour=current_start,
+            end_hour=(hour.hour - 1) if hour.hour >= 0 else hours[-1].hour,
+            length=length,
+        )
+        if best is None or candidate.length > best.length:
+            best = candidate
+        current_start = None
+    return best
+
+
+@router.post(
+    "/report/{report_id}/chat",
+    response_model=ReportChatResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Bir hava raporu hakkında yapay zeka sohbeti yap",
+)
+async def report_chat(
+    report_id: int,
+    body: ReportChatRequest,
+    db: Session = Depends(get_db),
+) -> ReportChatResponse:
+    report: WeatherReport | None = db.get(WeatherReport, report_id)
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {report_id} not found.",
+        )
+    if not body.message.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Mesaj boş olamaz.",
+        )
+
+    sources = _load_report_sources(report)
+    decision_result, ai_payload = _build_report_decision(report)
+    reply = await chat_about_report(
+        report_id=report_id,
+        location=report.location,
+        report_created_at=report.created_at,
+        sources=sources,
+        decision_result=decision_result,
+        message=body.message.strip(),
+        ai_summary=str(ai_payload.get("summary") or ""),
+    )
+    return ReportChatResponse(reply=reply)
+
+
+@router.post(
+    "/report/{report_id}/forecast-change",
+    response_model=ForecastChangeResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Sonraki 6 saatlik karar değişimini tahmin et",
+)
+async def forecast_change(
+    report_id: int,
+    db: Session = Depends(get_db),
+) -> ForecastChangeResponse:
+    report: WeatherReport | None = db.get(WeatherReport, report_id)
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {report_id} not found.",
+        )
+
+    async with httpx.AsyncClient() as client:
+        results = await asyncio.gather(
+            *[
+                _fetch_grid_point_weather(
+                    report.lat, report.lon, 1000.0, offset, client
+                )
+                for offset in range(1, 7)
+            ]
+        )
+
+    hours: list[ForecastHourSchema] = []
+    air_quality = _load_air_quality(report)
+    for offset, result in enumerate(results, start=1):
+        if result is None:
+            continue
+        decision = make_decision([_build_point_source(result)], air_quality=air_quality)
+        hours.append(
+            ForecastHourSchema(
+                offset=offset,
+                decision=decision.decision,
+                wind_kt=round(float(result["wind_speed_knots"]), 1),
+                temperature_c=round(float(result["temperature_c"]), 1),
+                humidity_pct=round(float(result["humidity_pct"]), 1),
+                visibility_km=round(float(result["visibility_km"]), 1),
+                cloud_base_ft=result.get("cloud_base_ft"),
+                precipitation_level=int(result["precipitation_level"]),
+            )
+        )
+
+    if not hours:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Tahmin verisi alınamadı.",
+        )
+    return ForecastChangeResponse(hours=hours)
+
+
+@router.get(
+    "/notam",
+    response_model=NotamResponse,
+    status_code=status.HTTP_200_OK,
+    summary="NOTAM yer tutucu yanıtı",
+)
+async def get_notam_placeholder(lat: float, lon: float) -> NotamResponse:
+    return NotamResponse(
+        notams=[],
+        disclaimer=(
+            "NOTAM verisi yakında eklenecek. Resmi NOTAM kontrolü için "
+            "ops.faa.gov veya HHMB'yi ziyaret edin."
+        ),
+    )
+
+
+@router.post(
+    "/flight-plan",
+    response_model=FlightPlanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Saatlik uçuş planı penceresi oluştur",
+)
+async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
+    try:
+        payload = await _fetch_open_meteo_hourly(body.lat, body.lon)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Uçuş planı verisi alınamadı.",
+        ) from exc
+
+    base_date = datetime.now(timezone.utc).date() + timedelta(days=body.date_offset)
+    hours: list[FlightPlanHourSchema] = []
+    for idx, time_text in enumerate(payload.get("hourly", {}).get("time", [])):
+        timestamp = datetime.fromisoformat(time_text)
+        if timestamp.date() != base_date:
+            continue
+        if not (body.start_hour <= timestamp.hour <= body.end_hour):
+            continue
+        row = _hourly_row_from_payload(payload, idx)
+        if row is None:
+            continue
+        decision = make_decision([_build_point_source(row)])
+        hours.append(
+            FlightPlanHourSchema(
+                hour=timestamp.hour,
+                decision=decision.decision,
+                wind_kt=round(float(row["wind_speed_knots"]), 1),
+                temperature_c=round(float(row["temperature_c"]), 1),
+                humidity_pct=round(float(row["humidity_pct"]), 1),
+                visibility_km=round(float(row["visibility_km"]), 1),
+                cloud_base_ft=row.get("cloud_base_ft"),
+                precipitation_level=int(row["precipitation_level"]),
+            )
+        )
+
+    if not hours:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Seçilen saat aralığı için veri bulunamadı.",
+        )
+
+    return FlightPlanResponse(hours=hours, best_window=_best_window(hours))
+
+
+@router.get(
+    "/history",
+    response_model=HistoryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Son hava raporlarını listele",
+)
+async def weather_history(
+    limit: int = 30,
+    db: Session = Depends(get_db),
+) -> HistoryResponse:
+    limit = max(1, min(limit, 100))
+    reports = (
+        db.query(WeatherReport)
+        .order_by(WeatherReport.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    items: list[HistoryItemSchema] = []
+    for report in reports:
+        decision_result, ai_payload = _build_report_decision(report)
+        confidence = ai_payload.get("confidence")
+        if confidence is None:
+            confidence = decision_result.confidence_score
+        items.append(
+            HistoryItemSchema(
+                report_id=report.id,
+                location=report.location,
+                decision=report.decision,
+                confidence_score=int(confidence),
+                created_at=report.created_at,
+                lat=report.lat,
+                lon=report.lon,
+            )
+        )
+    return HistoryResponse(reports=items)
+
+
+@router.post(
+    "/seasonal",
+    response_model=SeasonalResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Mevsimsel uçuş uygunluğu analizi oluştur",
+)
+async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
+    year = datetime.now(timezone.utc).year
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://climate-api.open-meteo.com/v1/climate",
+                params={
+                    "latitude": body.lat,
+                    "longitude": body.lon,
+                    "monthly": "wind_speed_10m,visibility",
+                    "start_date": f"{year}-01",
+                    "end_date": f"{year}-12",
+                },
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Mevsimsel veri alınamadı.",
+        ) from exc
+
+    monthly = payload.get("monthly", {})
+    winds = monthly.get("wind_speed_10m", [])
+    visibilities = monthly.get("visibility", [])
+    months: list[SeasonalMonthSchema] = []
+    for index, month_name in enumerate(_MONTHS_TR):
+        wind_kmh = float(winds[index]) if len(winds) > index else 0.0
+        visibility_km = (
+            float(visibilities[index]) if len(visibilities) > index else 10.0
+        )
+        source = WeatherSourceData(
+            source="Open-Meteo Climate",
+            wind_speed_knots=wind_kmh * 0.539957,
+            temperature_c=20.0,
+            humidity_pct=60.0,
+            visibility_km=visibility_km,
+            precipitation_level=0,
+            cloud_base_ft=None,
+            cloud_ceiling_ft=None,
+        )
+        decision = make_decision([source])
+        suitability = {
+            "UYGUN": 85,
+            "RISKLI": 55,
+            "UYGUN_DEGIL": 25,
+        }[decision.decision]
+        months.append(
+            SeasonalMonthSchema(
+                month=month_name,
+                avg_wind_kt=round(source.wind_speed_knots, 1),
+                avg_visibility_km=round(visibility_km, 1),
+                suitability_score=suitability,
+                decision=decision.decision,
+            )
+        )
+    return SeasonalResponse(months=months)
 
 
 # ---------------------------------------------------------------------------

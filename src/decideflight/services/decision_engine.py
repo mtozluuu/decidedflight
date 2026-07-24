@@ -15,6 +15,7 @@ from typing import Callable
 
 from decideflight.config import settings
 from decideflight.services.weather_fetcher import (
+    AirQualityData,
     PRECIP_HEAVY,
     PRECIP_LIGHT,
     PRECIP_NONE,
@@ -103,6 +104,16 @@ def _eval_cloud_ceiling(ft: float | None) -> str:
     return UYGUN_DEGIL
 
 
+def _eval_aqi(aqi_score: float | None) -> str:
+    if aqi_score is None:
+        return UYGUN
+    if aqi_score > 150:
+        return UYGUN_DEGIL
+    if aqi_score > 100:
+        return RISKLI
+    return UYGUN
+
+
 # ---------------------------------------------------------------------------
 # Aggregation helpers
 # ---------------------------------------------------------------------------
@@ -158,6 +169,9 @@ class DecisionResult:
     avg_cloud_base_ft: float | None
     avg_cloud_ceiling_ft: float | None
     confidence_score: int
+    aqi_score: int | None = None
+    pm25: float | None = None
+    pm10: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +179,10 @@ class DecisionResult:
 # ---------------------------------------------------------------------------
 
 
-def make_decision(sources: list[WeatherSourceData]) -> DecisionResult:
+def make_decision(
+    sources: list[WeatherSourceData],
+    air_quality: AirQualityData | None = None,
+) -> DecisionResult:
     """Aggregate *sources* and return a ``DecisionResult``."""
 
     def _weighted_pairs(
@@ -225,6 +242,14 @@ def make_decision(sources: list[WeatherSourceData]) -> DecisionResult:
             decision=_eval_cloud_ceiling(avg_cloud_ceiling),
         ),
     ]
+    if air_quality is not None:
+        params.append(
+            ParameterResult(
+                name="Hava kalitesi",
+                value=f"Avrupa AQI {air_quality.aqi_score}",
+                decision=_eval_aqi(air_quality.aqi_score),
+            )
+        )
 
     worst_score = max(_SCORE[p.decision] for p in params)
     overall = _LABEL[worst_score]
@@ -289,4 +314,7 @@ def make_decision(sources: list[WeatherSourceData]) -> DecisionResult:
         avg_cloud_base_ft=avg_cloud_base,
         avg_cloud_ceiling_ft=avg_cloud_ceiling,
         confidence_score=confidence_score,
+        aqi_score=air_quality.aqi_score if air_quality is not None else None,
+        pm25=air_quality.pm25 if air_quality is not None else None,
+        pm10=air_quality.pm10 if air_quality is not None else None,
     )

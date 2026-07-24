@@ -29,11 +29,15 @@ from decideflight.services.decision_engine import (
     DecisionResult,
     make_decision,
 )
-from decideflight.services.weather_fetcher import WeatherSourceData
+from decideflight.services.weather_fetcher import AirQualityData, WeatherSourceData
 
 logger = logging.getLogger(__name__)
 
 MAX_FEEDBACK_CONTEXT = 20
+MAX_CHAT_MESSAGES = 10
+MIN_PARAMETER_WEIGHT = 0
+MAX_PARAMETER_WEIGHT = 100
+_REPORT_CHAT_HISTORY: dict[int, list[dict[str, str]]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +89,7 @@ class AIDecisionResult(DecisionResult):
     risk_factors: list[str] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
     parameter_assessments: dict[str, Any] = field(default_factory=dict)
+    parameter_weights: dict[str, int] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +176,7 @@ async def make_ai_decision(
     lon: float,
     feedback_context: str = "",
     wind_trend: str = "",
+    air_quality: AirQualityData | None = None,
 ) -> AIDecisionResult:
     """Call GPT-4o for a drone flight decision analysis.
 
@@ -191,7 +197,7 @@ async def make_ai_decision(
         Human-readable wind trend string, e.g. "Son 6 saatte rüzgar: 2.3 kt/h artıyor"
     """
     # Always compute the rule-based result as the fallback/baseline
-    rule_result = make_decision(sources)
+    rule_result = make_decision(sources, air_quality=air_quality)
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key or _AsyncOpenAI is None:
@@ -200,7 +206,14 @@ async def make_ai_decision(
     try:
         client = _AsyncOpenAI(api_key=api_key)
         prompt = _build_system_prompt(
-            sources, location, lat, lon, feedback_context, wind_trend, rule_result
+            sources,
+            location,
+            lat,
+            lon,
+            feedback_context,
+            wind_trend,
+            rule_result,
+            air_quality,
         )
 
         response = await client.chat.completions.create(
@@ -243,12 +256,16 @@ def _wrap_rule_result(rule_result: DecisionResult) -> AIDecisionResult:
         avg_cloud_base_ft=rule_result.avg_cloud_base_ft,
         avg_cloud_ceiling_ft=rule_result.avg_cloud_ceiling_ft,
         confidence_score=rule_result.confidence_score,
+        aqi_score=rule_result.aqi_score,
+        pm25=rule_result.pm25,
+        pm10=rule_result.pm10,
         confidence=rule_result.confidence_score,
         summary="",
         detailed_analysis="",
         risk_factors=[],
         recommendations=[],
         parameter_assessments={},
+        parameter_weights={},
     )
 
 
@@ -275,13 +292,41 @@ def _parse_gpt_response(
         avg_cloud_base_ft=rule_result.avg_cloud_base_ft,
         avg_cloud_ceiling_ft=rule_result.avg_cloud_ceiling_ft,
         confidence_score=confidence,
+        aqi_score=rule_result.aqi_score,
+        pm25=rule_result.pm25,
+        pm10=rule_result.pm10,
         confidence=confidence,
         summary=str(parsed.get("ozet", "")),
         detailed_analysis=str(parsed.get("detayli_analiz", "")),
         risk_factors=list(parsed.get("risk_faktorleri", [])),
         recommendations=list(parsed.get("tavsiyeler", [])),
         parameter_assessments=dict(parsed.get("parametre_degerlendirmeleri", {})),
+        parameter_weights=_parse_parameter_weights(parsed.get("parameter_weights")),
     )
+
+
+def _parse_parameter_weights(raw: Any) -> dict[str, int]:
+    expected = (
+        "wind",
+        "visibility",
+        "humidity",
+        "temperature",
+        "precipitation",
+        "cloud_base",
+    )
+    if not isinstance(raw, dict):
+        return {}
+    parsed: dict[str, int] = {}
+    for key in expected:
+        value = raw.get(key)
+        try:
+            parsed[key] = max(
+                MIN_PARAMETER_WEIGHT,
+                min(MAX_PARAMETER_WEIGHT, int(float(value))),
+            )
+        except (TypeError, ValueError):
+            continue
+    return parsed
 
 
 def _build_system_prompt(
@@ -292,6 +337,7 @@ def _build_system_prompt(
     feedback_context: str,
     wind_trend: str,
     rule_result: DecisionResult,
+    air_quality: AirQualityData | None,
 ) -> str:
     """Build the full GPT-4o system prompt in Turkish."""
     location_context = _build_location_context(location, lat, lon)
@@ -317,6 +363,14 @@ def _build_system_prompt(
         )
 
     weather_summary = "\n\n".join(weather_lines)
+    air_quality_section = ""
+    if air_quality is not None:
+        air_quality_section = (
+            "\nHAVA KALİTESİ:\n"
+            f"  Avrupa AQI: {air_quality.aqi_score}\n"
+            f"  PM2.5: {air_quality.pm25 if air_quality.pm25 is not None else 'N/A'}\n"
+            f"  PM10: {air_quality.pm10 if air_quality.pm10 is not None else 'N/A'}"
+        )
 
     avg_section = (
         f"Ortalamalar (ağırlıklı):\n"
@@ -345,6 +399,14 @@ def _build_system_prompt(
   "detayli_analiz": "Kapsamlı Türkçe analiz paragrafı",
   "risk_faktorleri": ["Risk 1", "Risk 2", ...],
   "tavsiyeler": ["Tavsiye 1", "Tavsiye 2", ...],
+  "parameter_weights": {
+    "wind": 0-100,
+    "visibility": 0-100,
+    "humidity": 0-100,
+    "temperature": 0-100,
+    "precipitation": 0-100,
+    "cloud_base": 0-100
+  },
   "parametre_degerlendirmeleri": {
     "ruzgar": "değerlendirme",
     "nem": "değerlendirme",
@@ -363,6 +425,7 @@ KONUM BİLGİSİ:
 
 HAVA VERİLERİ:
 {weather_summary}
+{air_quality_section}
 
 {avg_section}
 {rule_decision_section}{trend_section}
@@ -379,5 +442,122 @@ KURALLAR:
 - guven_skoru 0-100 arasında tam sayı olacak
 - risk_faktorleri en az 1, en fazla 5 madde içerecek
 - tavsiyeler en az 1, en fazla 5 madde içerecek
+- parameter_weights alanındaki tüm sayılar 0 ile 100 arasında tam sayı olacak
 - Konum ve mevsim bağlamını dikkate al (tropikal bölgede muson, kıyıda deniz esintisi)
 - Geçmiş geri bildirim varsa, benzer koşullardaki önceki hatalardan öğren"""
+
+
+def _build_chat_context(
+    location: str,
+    report_created_at: datetime,
+    sources: list[WeatherSourceData],
+    decision_result: DecisionResult,
+    ai_summary: str,
+) -> str:
+    source_lines = []
+    for source in sources:
+        source_lines.append(
+            f"- {source.source}: rüzgar {source.wind_speed_knots:.1f} kt, "
+            f"görüş {source.visibility_km:.1f} km, "
+            f"sıcaklık {source.temperature_c:.1f} °C, "
+            f"nem %{source.humidity_pct:.0f}, "
+            f"yağış seviyesi {source.precipitation_level}"
+        )
+    params_text = "\n".join(
+        f"- {param.name}: {param.value} ({param.decision})"
+        for param in decision_result.parameters
+    )
+    summary_section = f"\nAI özeti: {ai_summary}" if ai_summary else ""
+    return (
+        "Sen DecideFlight içinde rapor bazlı sohbet yapan bir uçuş hava uzmanısın.\n"
+        "Yanıtların kısa, Türkçe ve bağlama dayalı olmalı.\n"
+        f"Rapor zamanı: {report_created_at.isoformat()}\n"
+        f"Konum: {location}\n"
+        f"Nihai karar: {decision_result.decision}\n"
+        f"Karar özeti: {decision_result.detail}\n"
+        f"Parametreler:\n{params_text}\n"
+        f"Kaynaklar:\n" + "\n".join(source_lines) + summary_section
+    )
+
+
+def _fallback_chat_reply(
+    message: str,
+    decision_result: DecisionResult,
+    ai_summary: str,
+) -> str:
+    lowered = message.lower()
+    if "rüzgar" in lowered:
+        return (
+            "Rüzgar tarafında mevcut değerlendirme "
+            f"{decision_result.avg_wind_knots:.1f} kt. "
+            f"Genel karar şu an {decision_result.decision}."
+        )
+    if "güven" in lowered or "güvenli" in lowered:
+        return (
+            f"Bu rapora göre genel karar {decision_result.decision}. "
+            "Uçuş öncesinde sahadaki anlık koşulları yeniden doğrulayın."
+        )
+    if "ne zaman" in lowered:
+        return (
+            "Zaman bazlı ayrıntı için alt bölümdeki tahmin ve "
+            "uçuş planlama panellerini kullanabilirsiniz."
+        )
+    if ai_summary:
+        return ai_summary
+    return (
+        f"Bu raporda genel karar {decision_result.decision}. "
+        "Detaylı parametreleri aşağıdaki analiz panellerinden inceleyebilirsiniz."
+    )
+
+
+async def chat_about_report(
+    report_id: int,
+    location: str,
+    report_created_at: datetime,
+    sources: list[WeatherSourceData],
+    decision_result: DecisionResult,
+    message: str,
+    ai_summary: str = "",
+) -> str:
+    history = list(_REPORT_CHAT_HISTORY.get(report_id, []))
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+
+    if not api_key or _AsyncOpenAI is None:
+        reply = _fallback_chat_reply(message, decision_result, ai_summary)
+    else:
+        try:
+            client = _AsyncOpenAI(api_key=api_key)
+            response = await client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": _build_chat_context(
+                            location,
+                            report_created_at,
+                            sources,
+                            decision_result,
+                            ai_summary,
+                        ),
+                    },
+                    *history,
+                    {"role": "user", "content": message},
+                ],
+                temperature=0.4,
+                max_tokens=500,
+            )
+            reply = (response.choices[0].message.content or "").strip()
+            if not reply:
+                reply = _fallback_chat_reply(message, decision_result, ai_summary)
+        except Exception as exc:
+            logger.warning("GPT-4o chat failed, falling back: %s", exc)
+            reply = _fallback_chat_reply(message, decision_result, ai_summary)
+
+    history.extend(
+        [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": reply},
+        ]
+    )
+    _REPORT_CHAT_HISTORY[report_id] = history[-MAX_CHAT_MESSAGES:]
+    return reply

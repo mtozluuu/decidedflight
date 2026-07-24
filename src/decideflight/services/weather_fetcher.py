@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 _TIMEOUT = 15.0
+_MISSING_VALUE_SENTINEL = -9999
+_MISSING_VALUE_SENTINEL_STR = str(_MISSING_VALUE_SENTINEL)
 
 # Precipitation level constants
 PRECIP_NONE = 0
@@ -59,6 +61,16 @@ class WeatherSourceData:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
+@dataclass
+class AirQualityData:
+    """Normalised air-quality observation."""
+
+    aqi_score: int
+    pm25: float | None = None
+    pm10: float | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+
 # ---------------------------------------------------------------------------
 # Unit helpers
 # ---------------------------------------------------------------------------
@@ -82,6 +94,67 @@ def _m_to_ft(m: float) -> float:
 
 def _m_to_km(m: float) -> float:
     return m / 1000.0
+
+
+def _to_float(value: Any) -> float | None:
+    if value in (None, "", _MISSING_VALUE_SENTINEL, _MISSING_VALUE_SENTINEL_STR):
+        return None
+    if isinstance(value, str):
+        value = value.strip().replace(",", ".")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pick_first_number(payload: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, list):
+            for item in value:
+                parsed = _to_float(item)
+                if parsed is not None:
+                    return parsed
+            continue
+        parsed = _to_float(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _pick_payload_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("records", "result", "data", "items", "hourlyForecast"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return [payload]
+
+
+def _pick_closest_row(
+    rows: list[dict[str, Any]],
+    lat: float,
+    lon: float,
+) -> dict[str, Any] | None:
+    if not rows:
+        return None
+
+    def _distance(row: dict[str, Any]) -> float:
+        row_lat = _pick_first_number(row, "lat", "latitude", "enlem")
+        row_lon = _pick_first_number(row, "lon", "longitude", "boylam")
+        if row_lat is None or row_lon is None:
+            return float("inf")
+        return (row_lat - lat) ** 2 + (row_lon - lon) ** 2
+
+    best = min(rows, key=_distance)
+    return best if _distance(best) != float("inf") else rows[0]
+
+
+def _is_turkey(lat: float, lon: float) -> bool:
+    return 36.0 <= lat <= 42.0 and 26.0 <= lon <= 45.0
 
 
 def _dew_point_c(temp_c: float, rh_pct: float) -> float | None:
@@ -293,6 +366,77 @@ async def _fetch_weatherapi(
     )
 
 
+async def _fetch_mgm(
+    lat: float,
+    lon: float,
+    client: httpx.AsyncClient,
+) -> WeatherSourceData | None:
+    if not _is_turkey(lat, lon):
+        return None
+
+    try:
+        current_resp = await client.get(
+            "https://servis.mgm.gov.tr/web/sondurumlar",
+            timeout=_TIMEOUT,
+        )
+        current_resp.raise_for_status()
+        current_rows = _pick_payload_rows(current_resp.json())
+    except Exception as exc:
+        logger.warning("MGM current conditions fetch failed: %s", exc)
+        return None
+
+    current_row = _pick_closest_row(current_rows, lat, lon)
+    if current_row is None:
+        return None
+
+    hourly_row: dict[str, Any] | None = None
+    station_id = current_row.get("istNo") or current_row.get("istno")
+    try:
+        hourly_resp = await client.get(
+            "https://servis.mgm.gov.tr/web/tahminler/saatlik",
+            params={"istno": station_id} if station_id is not None else None,
+            timeout=_TIMEOUT,
+        )
+        hourly_resp.raise_for_status()
+        hourly_row = _pick_closest_row(_pick_payload_rows(hourly_resp.json()), lat, lon)
+    except Exception as exc:
+        logger.warning("MGM hourly forecast fetch failed: %s", exc)
+
+    merged = dict(hourly_row or {})
+    merged.update(current_row)
+
+    wind_ms = _pick_first_number(merged, "ruzgarHiz", "windSpeed") or 0.0
+    temp_c = _pick_first_number(merged, "sicaklik", "temperature") or 20.0
+    humidity = _pick_first_number(merged, "nem", "humidity") or 0.0
+    visibility_m = _pick_first_number(merged, "gorus", "visibility") or 10000.0
+    precip_mm = (
+        _pick_first_number(
+            merged,
+            "yagis1Saat",
+            "yagis00Now",
+            "yagis10Dk",
+            "precipitation",
+        )
+        or 0.0
+    )
+
+    dew_c = _dew_point_c(temp_c, humidity)
+    base_ft = _cloud_base_ft(temp_c, dew_c) if dew_c is not None else None
+
+    return WeatherSourceData(
+        source="MGM (Türkiye)",
+        wind_speed_knots=_ms_to_knots(wind_ms),
+        temperature_c=temp_c,
+        humidity_pct=humidity,
+        visibility_km=_m_to_km(visibility_m),
+        precipitation_level=_precip_level(precip_mm),
+        cloud_base_ft=base_ft,
+        cloud_ceiling_ft=base_ft + 200.0 if base_ft is not None else None,
+        reliability_weight=1.15,
+        raw=merged,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Windy Point Forecast API
 # ---------------------------------------------------------------------------
@@ -396,6 +540,45 @@ async def _fetch_metar_avwx(
     )
 
 
+async def _fetch_air_quality(
+    lat: float,
+    lon: float,
+    client: httpx.AsyncClient,
+) -> AirQualityData | None:
+    try:
+        resp = await client.get(
+            "https://air-quality-api.open-meteo.com/v1/air-quality",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current": "european_aqi,pm2_5,pm10",
+                "timezone": "UTC",
+            },
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("Open-Meteo air-quality fetch failed: %s", exc)
+        return None
+
+    current = data.get("current", {})
+    aqi = _pick_first_number(current, "european_aqi")
+    if aqi is None:
+        hourly = data.get("hourly", {})
+        aqi = _pick_first_number(hourly, "european_aqi")
+        current = hourly
+    if aqi is None:
+        return None
+
+    return AirQualityData(
+        aqi_score=int(round(aqi)),
+        pm25=_pick_first_number(current, "pm2_5"),
+        pm10=_pick_first_number(current, "pm10"),
+        raw=data,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -415,6 +598,7 @@ async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
             await _fetch_open_meteo(lat, lon, client),
             await _fetch_owm(lat, lon, client),
             await _fetch_weatherapi(lat, lon, client),
+            await _fetch_mgm(lat, lon, client),
             await _fetch_windy(lat, lon, client),
             await _fetch_metar_avwx(lat, lon, client),
         ]
@@ -425,3 +609,9 @@ async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
             "All weather sources failed.  Check connectivity and API keys."
         )
     return sources
+
+
+async def fetch_air_quality(lat: float, lon: float) -> AirQualityData | None:
+    """Fetch the current AQI context for the given coordinates."""
+    async with httpx.AsyncClient() as client:
+        return await _fetch_air_quality(lat, lon, client)
