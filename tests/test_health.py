@@ -13,7 +13,8 @@ def test_root_endpoint(client: TestClient) -> None:
     response = client.get("/")
 
     assert response.status_code == 200
-    assert response.json() == {"message": "DecideFlight API is running"}
+    # Root now serves the web UI (index.html) when the static directory exists
+    assert "text/html" in response.headers["content-type"]
 
 
 def test_health_endpoint(client: TestClient) -> None:
