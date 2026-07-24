@@ -427,7 +427,7 @@ async def _fetch_grid_point_weather(
     lat: float,
     lon: float,
     altitude_ft: float,
-    hours: int,  # noqa: ARG001  — future: aggregate over next N hours
+    hours: int,  # noqa: ARG001 -- future: aggregate over next N hours
     client: httpx.AsyncClient,
 ) -> dict[str, Any] | None:
     """Fetch Open-Meteo current weather for one grid point.
@@ -677,7 +677,7 @@ async def analyse_weather_grid(
     if not points:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Belirtilen bolge icin hava verisi alinamadi.",
+            detail="Belirtilen bölge için hava verisi alınamadı.",
         )
 
     n_uygun = sum(1 for p in points if p.decision == _UYGUN)
