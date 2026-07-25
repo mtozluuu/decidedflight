@@ -488,6 +488,51 @@
       <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
     </section>
 
+    <div id="runwayCard" class="hidden hud-card p-6">
+      <h3 class="mono text-sm text-cyan-300 mb-4">◈ PİST &amp; RÜZGAR BİLEŞENLERİ</h3>
+
+      <div class="grid sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="mono text-[11px] text-cyan-100/70 block mb-1">YAKIN HAVALİMANI / PİST</label>
+          <select id="runwaySelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
+            <option value="">Konum seçince otomatik yüklenir...</option>
+          </select>
+        </div>
+        <div>
+          <label class="mono text-[11px] text-cyan-100/70 block mb-1">VEYA MANUEL PİST YÖNÜ (°)</label>
+          <input id="manualRunwayHeading" type="number" min="0" max="360" placeholder="örn: 270"
+            class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+        </div>
+      </div>
+
+      <div id="windComponentResult" class="hidden">
+        <div class="grid grid-cols-3 gap-3 mt-4">
+          <div class="text-center p-3 rounded-lg border border-cyan-400/20 bg-slate-900/40">
+            <p class="mono text-[10px] text-cyan-100/50 mb-1">BAŞ RÜZGARI</p>
+            <p id="headwindVal" class="mono text-xl font-bold text-cyan-300">— kt</p>
+            <span id="headwindBadge" class="mt-1 inline-block"></span>
+          </div>
+          <div class="text-center p-3 rounded-lg border border-cyan-400/20 bg-slate-900/40">
+            <p class="mono text-[10px] text-cyan-100/50 mb-1">YAN RÜZGAR</p>
+            <p id="crosswindVal" class="mono text-xl font-bold text-cyan-300">— kt</p>
+            <span id="crosswindBadge" class="mt-1 inline-block"></span>
+          </div>
+          <div class="text-center p-3 rounded-lg border border-cyan-400/20 bg-slate-900/40">
+            <p class="mono text-[10px] text-cyan-100/50 mb-1">KUYRUK RÜZGARI</p>
+            <p id="tailwindVal" class="mono text-xl font-bold text-cyan-300">— kt</p>
+            <span id="tailwindBadge" class="mt-1 inline-block"></span>
+          </div>
+        </div>
+
+        <!-- Wind rose diagram -->
+        <div class="mt-4 flex justify-center">
+          <canvas id="windRoseCanvas" width="160" height="160"></canvas>
+        </div>
+
+        <p id="windComponentOverall" class="mono text-center text-sm mt-3"></p>
+      </div>
+    </div>
+
     <div id="loadingSection" role="status" aria-live="polite" aria-busy="true" class="hidden hud-card py-14 px-6 text-center">
       <div class="flex justify-center mb-6"><div class="radar" aria-label="Hava verisi yükleniyor"></div></div>
       <p class="mono text-green-300 text-sm blink tracking-widest">HAVA VERİSİ TOPLANIYOR...</p>
@@ -975,6 +1020,43 @@
                 <label for="s_temp_max" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Sıcaklık (≤)</label>
                 <input id="s_temp_max" type="number" step="1" min="20" max="60"
                   class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Wind component limits -->
+          <div>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">RÜZGAR BİLEŞEN LİMİTLERİ (knot)</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label for="s_crosswind_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Yan Rüzgar Uygun (≤)</label>
+                <input id="s_crosswind_ok" type="number" step="1" min="0" max="50" value="15"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs" />
+              </div>
+              <div>
+                <label for="s_crosswind_risky" class="mono text-[11px] text-amber-300/80 block mb-1">Maks. Yan Rüzgar Riskli (≤)</label>
+                <input id="s_crosswind_risky" type="number" step="1" min="0" max="50" value="20"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs" />
+              </div>
+              <div>
+                <label for="s_tailwind_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Kuyruk Rüzgarı Uygun (≤)</label>
+                <input id="s_tailwind_ok" type="number" step="1" min="0" max="30" value="5"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs" />
+              </div>
+              <div>
+                <label for="s_tailwind_risky" class="mono text-[11px] text-amber-300/80 block mb-1">Maks. Kuyruk Rüzgarı Riskli (≤)</label>
+                <input id="s_tailwind_risky" type="number" step="1" min="0" max="30" value="10"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs" />
+              </div>
+              <div>
+                <label for="s_headwind_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Baş Rüzgarı Uygun (≤)</label>
+                <input id="s_headwind_ok" type="number" step="1" min="0" max="60" value="25"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs" />
+              </div>
+              <div>
+                <label for="s_headwind_risky" class="mono text-[11px] text-amber-300/80 block mb-1">Maks. Baş Rüzgarı Riskli (≤)</label>
+                <input id="s_headwind_risky" type="number" step="1" min="0" max="60" value="35"
+                  class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs" />
               </div>
             </div>
           </div>
@@ -1706,6 +1788,10 @@
       hide('feedbackThanks');
       document.getElementById('commentInput').value = '';
 
+      // Reset runway card state for the new analysis
+      document.getElementById('windComponentResult').classList.add('hidden');
+      document.getElementById('runwaySelect').innerHTML = '<option value="">Konum seçince otomatik yüklenir...</option>';
+
       const cfg = DECISION_CONFIG[data.decision] || DECISION_CONFIG['RISKLI'];
       const banner = document.getElementById('decisionBanner');
       const bannerGlow = document.getElementById('decisionGlow');
@@ -1724,6 +1810,9 @@
       updateFavoriteButton();
 
       document.getElementById('decisionDetail').textContent = data.decision_detail;
+
+      // Load nearby runways in background (non-blocking)
+      loadNearbyRunways(data.lat, data.lon);
 
       // Use AI confidence when available, otherwise fall back to score
       const conf = (data.confidence != null)
@@ -1956,6 +2045,9 @@
       if (e.key === 'Enter') generateReport();
     });
 
+    document.getElementById('manualRunwayHeading').addEventListener('change', () => computeWindComponents());
+    document.getElementById('manualRunwayHeading').addEventListener('input', () => computeWindComponents());
+
     loadCityDataset();
     populateHourSelects();
     renderFavorites();
@@ -2012,6 +2104,12 @@
       humidity_risky_max_pct: 95,
       temp_ok_min_c: 0,
       temp_ok_max_c: 40,
+      crosswind_ok_max_knots: 15,
+      crosswind_risky_max_knots: 20,
+      tailwind_ok_max_knots: 5,
+      tailwind_risky_max_knots: 10,
+      headwind_ok_max_knots: 25,
+      headwind_risky_max_knots: 35,
     };
 
     function loadSettings() {
@@ -2037,6 +2135,12 @@
       document.getElementById('s_hum_risky').value = lim.humidity_risky_max_pct;
       document.getElementById('s_temp_min').value = lim.temp_ok_min_c;
       document.getElementById('s_temp_max').value = lim.temp_ok_max_c;
+      document.getElementById('s_crosswind_ok').value = lim.crosswind_ok_max_knots;
+      document.getElementById('s_crosswind_risky').value = lim.crosswind_risky_max_knots;
+      document.getElementById('s_tailwind_ok').value = lim.tailwind_ok_max_knots;
+      document.getElementById('s_tailwind_risky').value = lim.tailwind_risky_max_knots;
+      document.getElementById('s_headwind_ok').value = lim.headwind_ok_max_knots;
+      document.getElementById('s_headwind_risky').value = lim.headwind_risky_max_knots;
     }
 
     function saveSettings() {
@@ -2053,6 +2157,12 @@
         humidity_risky_max_pct: parseFloat(document.getElementById('s_hum_risky').value),
         temp_ok_min_c: parseFloat(document.getElementById('s_temp_min').value),
         temp_ok_max_c: parseFloat(document.getElementById('s_temp_max').value),
+        crosswind_ok_max_knots: parseFloat(document.getElementById('s_crosswind_ok').value),
+        crosswind_risky_max_knots: parseFloat(document.getElementById('s_crosswind_risky').value),
+        tailwind_ok_max_knots: parseFloat(document.getElementById('s_tailwind_ok').value),
+        tailwind_risky_max_knots: parseFloat(document.getElementById('s_tailwind_risky').value),
+        headwind_ok_max_knots: parseFloat(document.getElementById('s_headwind_ok').value),
+        headwind_risky_max_knots: parseFloat(document.getElementById('s_headwind_risky').value),
       };
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(lim));
       const notice = document.getElementById('settingsSaved');
@@ -2063,6 +2173,171 @@
     function resetSettings() {
       localStorage.removeItem(SETTINGS_KEY);
       populateSettingsForm();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // RUNWAY WIND COMPONENT ANALYSIS
+    // ═══════════════════════════════════════════════════════════════════
+
+    async function loadNearbyRunways(lat, lon) {
+      try {
+        const res = await fetch(`/api/v1/weather/runways?lat=${lat}&lon=${lon}`);
+        if (!res.ok) return;
+        const runways = await res.json();
+        const sel = document.getElementById('runwaySelect');
+        sel.innerHTML = '<option value="">Pist seçin (opsiyonel)...</option>';
+        runways.forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.heading_true;
+          opt.dataset.ident = r.runway_ident;
+          opt.dataset.airport = r.airport_icao;
+          opt.textContent = `${r.airport_icao} — RWY ${r.runway_ident} (${r.heading_true.toFixed(0)}°) — ${r.distance_km.toFixed(1)} km`;
+          sel.appendChild(opt);
+        });
+        document.getElementById('runwayCard').classList.remove('hidden');
+        sel.addEventListener('change', () => computeWindComponents());
+      } catch(e) {
+        console.warn('Runway fetch failed', e);
+      }
+    }
+
+    async function computeWindComponents() {
+      const report = currentReportData;
+      if (!report || !report.sources || report.sources.length === 0) return;
+
+      const avgWind = report.sources.reduce((s, src) => s + src.wind_speed_knots, 0) / report.sources.length;
+      const metarSource = report.sources.find(s => s.source && s.source.includes('METAR'));
+      const windDir = metarSource?.wind_direction_deg
+        ?? report.sources.find(s => s.wind_direction_deg != null)?.wind_direction_deg
+        ?? null;
+      if (windDir === null) return;
+
+      const sel = document.getElementById('runwaySelect');
+      const manualInput = document.getElementById('manualRunwayHeading');
+      const heading = parseFloat(sel.value) || parseFloat(manualInput.value);
+      if (!heading) return;
+
+      const s = loadSettings();
+      const body = {
+        wind_direction_deg: windDir,
+        wind_speed_knots: avgWind,
+        runway_heading_deg: heading,
+        crosswind_ok_max: s.crosswind_ok_max_knots ?? 15,
+        crosswind_risky_max: s.crosswind_risky_max_knots ?? 20,
+        tailwind_ok_max: s.tailwind_ok_max_knots ?? 5,
+        tailwind_risky_max: s.tailwind_risky_max_knots ?? 10,
+        headwind_ok_max: s.headwind_ok_max_knots ?? 25,
+        headwind_risky_max: s.headwind_risky_max_knots ?? 35,
+      };
+
+      try {
+        const res = await fetch('/api/v1/weather/wind-components', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderWindComponents(data, windDir, heading);
+      } catch(e) {
+        console.warn('Wind components fetch failed', e);
+      }
+    }
+
+    function renderWindComponents(data, windDirDeg, runwayHdgDeg) {
+      document.getElementById('windComponentResult').classList.remove('hidden');
+
+      const badge = (dec) => `<span class="status-pill ${dec === 'UYGUN' ? 'bg-green-400/12 text-green-300 border-green-400/30' : dec === 'RISKLI' ? 'bg-amber-400/12 text-amber-300 border-amber-400/30' : 'bg-red-400/12 text-red-300 border-red-400/30'}">${dec === 'UYGUN' ? 'UYGUN' : dec === 'RISKLI' ? 'RİSKLİ' : 'UYGUN DEĞİL'}</span>`;
+
+      document.getElementById('headwindVal').textContent = data.headwind_kt > 0 ? `${data.headwind_kt} kt` : '—';
+      document.getElementById('headwindBadge').innerHTML = badge(data.headwind_decision);
+      const sideLabel = data.crosswind_side === 'R' ? 'SAĞ' : data.crosswind_side === 'L' ? 'SOL' : '';
+      document.getElementById('crosswindVal').textContent = data.crosswind_kt > 0
+        ? `${data.crosswind_kt} kt${sideLabel ? ' ' + sideLabel : ''}`
+        : '—';
+      document.getElementById('crosswindBadge').innerHTML = badge(data.crosswind_decision);
+      document.getElementById('tailwindVal').textContent = data.tailwind_kt > 0 ? `${data.tailwind_kt} kt` : '—';
+      document.getElementById('tailwindBadge').innerHTML = badge(data.tailwind_decision);
+
+      const overall = document.getElementById('windComponentOverall');
+      const cfg = { UYGUN: 'text-green-300', RISKLI: 'text-amber-300', UYGUN_DEGIL: 'text-red-300' };
+      overall.className = `mono text-center text-sm mt-3 ${cfg[data.overall_component_decision]}`;
+      overall.textContent = `Bileşen Kararı: ${data.overall_component_decision === 'UYGUN' ? '✦ UYGUN' : data.overall_component_decision === 'RISKLI' ? '⚠ RİSKLİ' : '✕ UYGUN DEĞİL'}`;
+
+      drawWindRose(data, windDirDeg, runwayHdgDeg);
+    }
+
+    function drawWindRose(data, windDirDeg, runwayHdgDeg) {
+      const canvas = document.getElementById('windRoseCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const cx = 80, cy = 80, r = 60;
+      ctx.clearRect(0, 0, 160, 160);
+
+      // Background circle
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,212,255,0.2)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,212,255,0.04)';
+      ctx.fill();
+
+      // Inner circle
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,212,255,0.1)';
+      ctx.stroke();
+
+      // Cardinal labels
+      ctx.fillStyle = 'rgba(0,212,255,0.6)';
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('N', cx, cy - r + 12);
+      ctx.fillText('S', cx, cy + r - 4);
+      ctx.fillText('E', cx + r - 6, cy + 4);
+      ctx.fillText('W', cx - r + 6, cy + 4);
+
+      // Helper: draw arrow from centre in a given compass bearing
+      function drawArrow(bearingDeg, length, color, lineWidth) {
+        const rad = (bearingDeg - 90) * Math.PI / 180;
+        const ex = cx + length * Math.cos(rad);
+        const ey = cy + length * Math.sin(rad);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+        // Arrow head
+        const hRad = Math.PI / 6;
+        const hLen = 7;
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - hLen * Math.cos(rad - hRad), ey - hLen * Math.sin(rad - hRad));
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - hLen * Math.cos(rad + hRad), ey - hLen * Math.sin(rad + hRad));
+        ctx.stroke();
+      }
+
+      // Runway heading arrow (cyan, bidirectional line)
+      if (runwayHdgDeg != null) {
+        const rad = (runwayHdgDeg - 90) * Math.PI / 180;
+        ctx.beginPath();
+        ctx.moveTo(cx - (r - 6) * Math.cos(rad), cy - (r - 6) * Math.sin(rad));
+        ctx.lineTo(cx + (r - 6) * Math.cos(rad), cy + (r - 6) * Math.sin(rad));
+        ctx.strokeStyle = 'rgba(0,212,255,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Wind direction arrow — wind comes FROM windDirDeg, so arrow points INTO the rose
+      if (windDirDeg != null) {
+        // Wind arrives from windDirDeg, so the vector points toward (windDirDeg + 180)
+        drawArrow(windDirDeg + 180, r - 10, 'rgba(0,255,136,0.85)', 2);
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════

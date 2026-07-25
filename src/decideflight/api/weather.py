@@ -36,6 +36,7 @@ from decideflight.services.ai_decision_engine import (
     make_ai_decision,
 )
 from decideflight.services.decision_engine import DecisionResult, make_decision
+from decideflight.services.decision_engine import compute_wind_components
 from decideflight.services.geocoding import geocode_city
 from decideflight.services.report_generator import generate_pdf
 from decideflight.services.trend_analyzer import fetch_wind_trend
@@ -45,6 +46,7 @@ from decideflight.services.weather_fetcher import (
     _fetch_with_retry,
     fetch_air_quality,
     fetch_all_sources,
+    fetch_nearby_runways,
 )
 
 try:
@@ -120,6 +122,7 @@ class WeatherSourceSchema(BaseModel):
     precipitation_level: int
     cloud_base_ft: float | None
     cloud_ceiling_ft: float | None
+    wind_direction_deg: float | None = None
 
 
 class WeatherReportResponse(BaseModel):
@@ -291,6 +294,7 @@ async def create_weather_report(
                 precipitation_level=s.precipitation_level,
                 cloud_base_ft=s.cloud_base_ft,
                 cloud_ceiling_ft=s.cloud_ceiling_ft,
+                wind_direction_deg=s.wind_direction_deg,
             )
             for s in sources
         ],
@@ -353,6 +357,7 @@ async def download_report_pdf(
             precipitation_level=s["precipitation_level"],
             cloud_base_ft=s.get("cloud_base_ft"),
             cloud_ceiling_ft=s.get("cloud_ceiling_ft"),
+            wind_direction_deg=s.get("wind_direction_deg"),
         )
         for s in raw_sources
     ]
@@ -450,6 +455,7 @@ def _load_report_sources(report: WeatherReport) -> list[WeatherSourceData]:
             precipitation_level=source["precipitation_level"],
             cloud_base_ft=source.get("cloud_base_ft"),
             cloud_ceiling_ft=source.get("cloud_ceiling_ft"),
+            wind_direction_deg=source.get("wind_direction_deg"),
             reliability_weight=source.get("reliability_weight", 1.0),
             raw=source.get("raw", {}),
         )
@@ -1665,3 +1671,112 @@ def _rule_based_grid_summary(
     )
 
     return f"{overall} {stats}"
+
+
+# ---------------------------------------------------------------------------
+# Runway wind component schemas and endpoints
+# ---------------------------------------------------------------------------
+
+
+class RunwaySchema(BaseModel):
+    airport_icao: str
+    airport_name: str
+    runway_ident: str
+    heading_true: float
+    distance_km: float
+
+
+class WindComponentRequest(BaseModel):
+    wind_direction_deg: float
+    wind_speed_knots: float
+    runway_heading_deg: float
+    crosswind_ok_max: float = 15.0
+    crosswind_risky_max: float = 20.0
+    tailwind_ok_max: float = 5.0
+    tailwind_risky_max: float = 10.0
+    headwind_ok_max: float = 25.0
+    headwind_risky_max: float = 35.0
+
+
+class WindComponentResponse(BaseModel):
+    headwind_kt: float
+    tailwind_kt: float
+    crosswind_kt: float
+    crosswind_side: str
+    headwind_decision: str
+    crosswind_decision: str
+    tailwind_decision: str
+    overall_component_decision: str
+
+
+def _eval_component(value: float, ok_max: float, risky_max: float) -> str:
+    """Evaluate a wind component value against ok/risky thresholds."""
+    if value <= ok_max:
+        return "UYGUN"
+    if value <= risky_max:
+        return "RISKLI"
+    return "UYGUN_DEGIL"
+
+
+@router.get(
+    "/runways",
+    response_model=list[RunwaySchema],
+    summary="Fetch nearby airport runways",
+)
+async def get_nearby_runways(
+    lat: float,
+    lon: float,
+) -> list[RunwaySchema]:
+    """Return a list of nearby airport runways fetched from the AVWX API.
+
+    If the AVWX key is not configured or the request fails, returns an empty
+    list rather than raising an error.
+    """
+    runways = await fetch_nearby_runways(lat, lon)
+    return [RunwaySchema(**r) for r in runways]
+
+
+@router.post(
+    "/wind-components",
+    response_model=WindComponentResponse,
+    summary="Calculate runway wind components",
+)
+async def calculate_wind_components(
+    body: WindComponentRequest,
+) -> WindComponentResponse:
+    """Calculate headwind, crosswind, and tailwind components for a runway.
+
+    Evaluates each component against the supplied limits and returns a
+    per-component decision (UYGUN / RISKLI / UYGUN_DEGIL) plus an overall
+    decision based on the worst component.
+    """
+    components = compute_wind_components(
+        wind_direction_deg=body.wind_direction_deg,
+        wind_speed_knots=body.wind_speed_knots,
+        runway_heading_deg=body.runway_heading_deg,
+    )
+
+    headwind_dec = _eval_component(
+        components["headwind_kt"], body.headwind_ok_max, body.headwind_risky_max
+    )
+    crosswind_dec = _eval_component(
+        components["crosswind_kt"], body.crosswind_ok_max, body.crosswind_risky_max
+    )
+    tailwind_dec = _eval_component(
+        components["tailwind_kt"], body.tailwind_ok_max, body.tailwind_risky_max
+    )
+
+    _score = {"UYGUN": 0, "RISKLI": 1, "UYGUN_DEGIL": 2}
+    _label = {0: "UYGUN", 1: "RISKLI", 2: "UYGUN_DEGIL"}
+    worst = max(_score[headwind_dec], _score[crosswind_dec], _score[tailwind_dec])
+
+    return WindComponentResponse(
+        headwind_kt=components["headwind_kt"],
+        tailwind_kt=components["tailwind_kt"],
+        crosswind_kt=components["crosswind_kt"],
+        crosswind_side=components["crosswind_side"],
+        headwind_decision=headwind_dec,
+        crosswind_decision=crosswind_dec,
+        tailwind_decision=tailwind_dec,
+        overall_component_decision=_label[worst],
+    )
