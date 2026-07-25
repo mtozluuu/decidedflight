@@ -325,7 +325,7 @@
     <div class="max-w-6xl mx-auto flex items-start justify-between gap-4">
       <div>
         <div class="flex items-center gap-3">
-          <img src="/static/decideflight-icon.svg" alt="DecideFlight simgesi" class="h-8 w-8" />
+          <img src="/static/decideflight-icon.svg" alt="" aria-hidden="true" class="h-8 w-8" />
           <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest">◈ DECIDEFLIGHT</p>
         </div>
         <p class="mono text-[10px] sm:text-xs text-cyan-100/60 mt-1">UÇUŞ HAVA KOŞULU KARAR ÇEKİRDEĞİ</p>
@@ -973,6 +973,7 @@
       'UYGUN_DEGIL': '<span class="status-pill bg-red-400/12 text-red-300 border-red-400/30">UYGUN DEĞİL</span>',
     };
     const SOURCE_RELIABILITY_MAX = 1.8;
+    const DEFAULT_RELIABILITY_WEIGHT = 1.0;
     const FAVORITES_KEY = 'decideflight_favorites';
     let currentReportData = null;
     let deferredInstallPrompt = null;
@@ -1716,7 +1717,7 @@
           <td class="py-2.5 text-cyan-100/70">
             <span class="value-badge ${getDecisionTone(p.decision)}">
               <span class="value-dot" aria-hidden="true"></span>
-              <span>${p.value}</span>
+              <span>${p.value}<span class="sr-only"> — Durum: ${formatDecisionLabel(p.decision)}</span></span>
             </span>
           </td>
           <td class="py-2.5">${PARAM_DECISION_BADGE[p.decision] || p.decision}</td>
@@ -1762,6 +1763,14 @@
       }[decision] || 'param-row-default';
     }
 
+    function formatDecisionLabel(decision) {
+      return {
+        UYGUN: 'Uygun',
+        RISKLI: 'Riskli',
+        UYGUN_DEGIL: 'Uygun değil',
+      }[decision] || decision;
+    }
+
     function formatSourceName(src) {
       const normalized = String(src || '').toLowerCase();
       const names = {
@@ -1790,7 +1799,7 @@
     }
 
     function formatReliabilityPercent(weight) {
-      const normalized = Math.max(0, Math.min(100, Math.round(((weight ?? 1.0) / SOURCE_RELIABILITY_MAX) * 100)));
+      const normalized = Math.max(0, Math.min(100, Math.round(((weight ?? DEFAULT_RELIABILITY_WEIGHT) / SOURCE_RELIABILITY_MAX) * 100)));
       return normalized;
     }
 
