@@ -751,7 +751,7 @@ async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:
                 # Step 2: Fetch runway data for this airport
                 try:
                     apt_resp = await client.get(
-                        f"https://avwx.rest/api/airport/{icao}",
+                        f"https://avwx.rest/api/station/{icao}",
                         headers=headers,
                         timeout=_TIMEOUT,
                     )
