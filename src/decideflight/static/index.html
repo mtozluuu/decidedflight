@@ -325,7 +325,7 @@
     <div class="max-w-6xl mx-auto flex items-start justify-between gap-4">
       <div>
         <div class="flex items-center gap-3">
-          <img src="/static/decideflight-icon.svg" alt="" aria-hidden="true" class="h-8 w-8" />
+          <img src="/static/decideflight-icon.svg" alt="DecideFlight logosu" class="h-8 w-8" />
           <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest">◈ DECIDEFLIGHT</p>
         </div>
         <p class="mono text-[10px] sm:text-xs text-cyan-100/60 mt-1">UÇUŞ HAVA KOŞULU KARAR ÇEKİRDEĞİ</p>
@@ -1719,7 +1719,7 @@
               <span class="value-dot" aria-hidden="true"></span>
               <span>${p.value}</span>
             </span>
-            <span class="sr-only">Durum: ${formatDecisionLabel(p.decision)}</span>
+            <span class="sr-only">Parametre durumu: ${formatDecisionLabel(p.decision)}</span>
           </td>
           <td class="py-2.5">${PARAM_DECISION_BADGE[p.decision] || p.decision}</td>
         </tr>`).join('');
