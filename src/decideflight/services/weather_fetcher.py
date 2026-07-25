@@ -1,23 +1,19 @@
 """Weather fetcher service.
 
-Retrieves current weather data from up to five sources and normalises them
-into ``WeatherSourceData`` objects:
-
-1. **Open-Meteo**  – always attempted (free, no key).
-2. **OpenWeatherMap** – requires ``OPENWEATHERMAP_API_KEY``.
-3. **WeatherAPI**    – requires ``WEATHERAPI_API_KEY``.
-4. **Windy**         – requires ``WINDY_API_KEY``.
-5. **METAR (AVWX)**  – requires ``AVWX_API_KEY``.
-
-Sources without a configured API key are silently skipped.
+Retrieves current weather data from multiple forecast and METAR sources and
+normalises them into ``WeatherSourceData`` objects. Optional sources without a
+configured API key are silently skipped.
 """
 
 from __future__ import annotations
 
 import asyncio
+import csv
 import logging
 import math
 from dataclasses import dataclass, field
+from fractions import Fraction
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -36,6 +32,10 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 15.0
 _MISSING_VALUE_SENTINEL = -9999
 _MISSING_VALUE_SENTINEL_STR = str(_MISSING_VALUE_SENTINEL)
+_OURAIRPORTS_MAX_DISTANCE_KM = 100.0
+_STATIC_DATA_DIR = Path(__file__).resolve().parent.parent / "static" / "data"
+_OURAIRPORTS_AIRPORTS_CSV = _STATIC_DATA_DIR / "airports.csv"
+_OURAIRPORTS_RUNWAYS_CSV = _STATIC_DATA_DIR / "runways.csv"
 
 # Precipitation level constants
 PRECIP_NONE = 0
@@ -71,6 +71,14 @@ class AirQualityData:
     pm25: float | None = None
     pm10: float | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+
+@dataclass(frozen=True)
+class _AirportRecord:
+    icao: str
+    name: str
+    latitude_deg: float
+    longitude_deg: float
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +151,10 @@ def _m_to_km(m: float) -> float:
     return m / 1000.0
 
 
+def _sm_to_km(sm: float) -> float:
+    return sm * 1.609344
+
+
 def _to_float(value: Any) -> float | None:
     if value in (None, "", _MISSING_VALUE_SENTINEL, _MISSING_VALUE_SENTINEL_STR):
         return None
@@ -152,6 +164,38 @@ def _to_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _to_icao(value: Any) -> str:
+    ident = str(value or "").strip().upper()
+    if len(ident) == 4 and ident.isalpha():
+        return ident
+    return ""
+
+
+def _parse_number(value: Any) -> float | None:
+    parsed = _to_float(value)
+    if parsed is not None:
+        return parsed
+
+    if value in (None, ""):
+        return None
+
+    total = 0.0
+    found = False
+    for part in str(value).replace("+", " ").replace("SM", " ").split():
+        try:
+            total += float(Fraction(part))
+            found = True
+            continue
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+        try:
+            total += float(part)
+            found = True
+        except (TypeError, ValueError):
+            continue
+    return total if found else None
 
 
 def _pick_first_number(payload: dict[str, Any], *keys: str) -> float | None:
@@ -179,6 +223,140 @@ def _pick_payload_rows(payload: Any) -> list[dict[str, Any]]:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
     return [payload]
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius_km = 6371.0
+    lat1_rad = math.radians(lat1)
+    lon1_rad = math.radians(lon1)
+    lat2_rad = math.radians(lat2)
+    lon2_rad = math.radians(lon2)
+    d_lat = lat2_rad - lat1_rad
+    d_lon = lon2_rad - lon1_rad
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(d_lon / 2) ** 2
+    )
+    return radius_km * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _load_ourairports_airports() -> list[_AirportRecord]:
+    airports: list[_AirportRecord] = []
+    try:
+        with _OURAIRPORTS_AIRPORTS_CSV.open(
+            newline="",
+            encoding="utf-8",
+        ) as csv_file:
+            reader = csv.DictReader(csv_file)
+            for row in reader:
+                icao = _to_icao(row.get("ident"))
+                latitude_deg = _to_float(row.get("latitude_deg"))
+                longitude_deg = _to_float(row.get("longitude_deg"))
+                if not icao or latitude_deg is None or longitude_deg is None:
+                    continue
+                airports.append(
+                    _AirportRecord(
+                        icao=icao,
+                        name=str(row.get("name") or icao).strip() or icao,
+                        latitude_deg=latitude_deg,
+                        longitude_deg=longitude_deg,
+                    )
+                )
+    except Exception as exc:
+        logger.warning("Failed to load OurAirports airports data: %s", exc)
+    return airports
+
+
+def _load_ourairports_runways() -> dict[str, list[dict[str, Any]]]:
+    runways_by_airport: dict[str, list[dict[str, Any]]] = {}
+    try:
+        with _OURAIRPORTS_RUNWAYS_CSV.open(
+            newline="",
+            encoding="utf-8",
+        ) as csv_file:
+            reader = csv.DictReader(csv_file)
+            for row in reader:
+                if str(row.get("closed") or "").strip() == "1":
+                    continue
+                icao = _to_icao(row.get("airport_ident"))
+                if not icao:
+                    continue
+                airport_runways = runways_by_airport.setdefault(icao, [])
+                for ident_key, heading_key in (
+                    ("le_ident", "le_heading_degT"),
+                    ("he_ident", "he_heading_degT"),
+                ):
+                    runway_ident = str(row.get(ident_key) or "").strip()
+                    heading_true = _to_float(row.get(heading_key))
+                    if not runway_ident or heading_true is None:
+                        continue
+                    airport_runways.append(
+                        {
+                            "runway_ident": runway_ident,
+                            "heading_true": round(heading_true, 1),
+                        }
+                    )
+    except Exception as exc:
+        logger.warning("Failed to load OurAirports runways data: %s", exc)
+    return runways_by_airport
+
+
+_OURAIRPORTS_AIRPORTS = _load_ourairports_airports()
+_OURAIRPORTS_RUNWAYS = _load_ourairports_runways()
+
+
+def _find_nearest_airports(
+    lat: float,
+    lon: float,
+    *,
+    max_results: int,
+    max_distance_km: float | None = None,
+) -> list[tuple[_AirportRecord, float]]:
+    candidates: list[tuple[_AirportRecord, float]] = []
+    for airport in _OURAIRPORTS_AIRPORTS:
+        distance_km = _haversine_km(
+            lat,
+            lon,
+            airport.latitude_deg,
+            airport.longitude_deg,
+        )
+        if max_distance_km is not None and distance_km > max_distance_km:
+            continue
+        candidates.append((airport, distance_km))
+
+    candidates.sort(key=lambda item: item[1])
+    return candidates[:max_results]
+
+
+def _find_nearest_airport(lat: float, lon: float) -> _AirportRecord | None:
+    nearest = _find_nearest_airports(lat, lon, max_results=1)
+    return nearest[0][0] if nearest else None
+
+
+def _fallback_runways_from_ourairports(lat: float, lon: float) -> list[dict]:
+    try:
+        results: list[dict] = []
+        nearest_airports = _find_nearest_airports(
+            lat,
+            lon,
+            max_results=3,
+            max_distance_km=_OURAIRPORTS_MAX_DISTANCE_KM,
+        )
+        for airport, distance_km in nearest_airports:
+            for runway in _OURAIRPORTS_RUNWAYS.get(airport.icao, []):
+                results.append(
+                    {
+                        "airport_icao": airport.icao,
+                        "airport_name": airport.name,
+                        "runway_ident": runway["runway_ident"],
+                        "heading_true": runway["heading_true"],
+                        "distance_km": round(distance_km, 1),
+                    }
+                )
+        return results
+    except Exception as exc:
+        logger.warning("OurAirports runway fallback failed: %s", exc)
+        return []
 
 
 def _pick_closest_row(
@@ -619,6 +797,120 @@ async def _fetch_metar_avwx(
     )
 
 
+async def _fetch_avwx_gov_metar(
+    icao: str,
+    client: httpx.AsyncClient,
+) -> WeatherSourceData | None:
+    try:
+        resp = await client.get(
+            "https://aviationweather.gov/api/data/metar",
+            params={"ids": icao, "format": "json"},
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        logger.warning("aviationweather.gov METAR fetch failed for %s: %s", icao, exc)
+        return None
+
+    rows = _pick_payload_rows(payload)
+    if not rows:
+        return None
+
+    metar = rows[0]
+    temp_c = _pick_first_number(metar, "temp")
+    dewpoint_c = _pick_first_number(metar, "dwpt")
+    visibility_sm = _parse_number(metar.get("visib"))
+    visibility_km = _sm_to_km(visibility_sm) if visibility_sm is not None else 10.0
+
+    return WeatherSourceData(
+        source="METAR (NOAA/aviationweather.gov)",
+        wind_speed_knots=_pick_first_number(metar, "wspd") or 0.0,
+        temperature_c=temp_c if temp_c is not None else 20.0,
+        humidity_pct=estimate_relative_humidity(temp_c, dewpoint_c),
+        visibility_km=visibility_km,
+        precipitation_level=PRECIP_NONE,
+        cloud_base_ft=None,
+        cloud_ceiling_ft=None,
+        wind_direction_deg=_pick_first_number(metar, "wdir"),
+        reliability_weight=1.8,
+        raw={"icao": icao, **metar},
+    )
+
+
+async def _fetch_metar_aviationweather(
+    lat: float,
+    lon: float,
+    client: httpx.AsyncClient,
+) -> WeatherSourceData | None:
+    airport = _find_nearest_airport(lat, lon)
+    if airport is None:
+        return None
+    return await _fetch_avwx_gov_metar(airport.icao, client)
+
+
+async def _fetch_metar_checkwx(
+    lat: float,
+    lon: float,
+    client: httpx.AsyncClient,
+) -> WeatherSourceData | None:
+    if not settings.checkwx_api_key:
+        return None
+
+    airport = _find_nearest_airport(lat, lon)
+    if airport is None:
+        return None
+
+    try:
+        resp = await client.get(
+            f"https://api.checkwx.com/metar/{airport.icao}/decoded",
+            headers={"X-API-Key": settings.checkwx_api_key},
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        logger.warning("CheckWX METAR fetch failed for %s: %s", airport.icao, exc)
+        return None
+
+    rows = _pick_payload_rows(payload)
+    if not rows:
+        return None
+
+    metar = rows[0]
+    wind = metar.get("wind") or {}
+    visibility = metar.get("visibility") or {}
+    temperature = metar.get("temperature") or {}
+    dewpoint = metar.get("dewpoint") or {}
+
+    visibility_km: float
+    meters_visibility = _parse_number(visibility.get("meters"))
+    miles_visibility = _parse_number(visibility.get("miles"))
+    if meters_visibility is not None:
+        visibility_km = _m_to_km(meters_visibility)
+    elif miles_visibility is not None:
+        visibility_km = _sm_to_km(miles_visibility)
+    else:
+        visibility_km = 10.0
+
+    temp_c = _parse_number(temperature.get("celsius"))
+    dewpoint_c = _parse_number(dewpoint.get("celsius"))
+
+    return WeatherSourceData(
+        source="METAR (CheckWX)",
+        wind_speed_knots=_parse_number(wind.get("speed_kts")) or 0.0,
+        temperature_c=temp_c if temp_c is not None else 20.0,
+        humidity_pct=estimate_relative_humidity(temp_c, dewpoint_c),
+        visibility_km=visibility_km,
+        precipitation_level=PRECIP_NONE,
+        cloud_base_ft=None,
+        cloud_ceiling_ft=None,
+        wind_direction_deg=_parse_number(wind.get("degrees")),
+        reliability_weight=1.7,
+        raw={"icao": airport.icao, **metar},
+    )
+
+
 async def _fetch_air_quality(
     lat: float,
     lon: float,
@@ -665,21 +957,32 @@ async def _fetch_air_quality(
 async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
     """Fetch from all available sources and return non-None results.
 
-    Open-Meteo is always attempted. The other four require API keys in
-    ``settings``; they are skipped (not raising) if the key is absent or
+    Open-Meteo is always attempted. The other optional sources require API
+    keys in ``settings`` when applicable; they are skipped (not raising) if
+    the key is absent or
     the request fails.
 
     Raises ``RuntimeError`` if *no* source succeeds.
     """
     async with httpx.AsyncClient() as client:
-        results = [
-            await _fetch_open_meteo(lat, lon, client),
-            await _fetch_owm(lat, lon, client),
-            await _fetch_weatherapi(lat, lon, client),
-            await _fetch_mgm(lat, lon, client),
-            await _fetch_windy(lat, lon, client),
-            await _fetch_metar_avwx(lat, lon, client),
-        ]
+        gathered = await asyncio.gather(
+            _fetch_open_meteo(lat, lon, client),
+            _fetch_owm(lat, lon, client),
+            _fetch_weatherapi(lat, lon, client),
+            _fetch_mgm(lat, lon, client),
+            _fetch_windy(lat, lon, client),
+            _fetch_metar_avwx(lat, lon, client),
+            _fetch_metar_aviationweather(lat, lon, client),
+            _fetch_metar_checkwx(lat, lon, client),
+            return_exceptions=True,
+        )
+
+    results: list[WeatherSourceData | None] = []
+    for item in gathered:
+        if isinstance(item, Exception):
+            logger.warning("Unexpected weather source fetch failure: %s", item)
+            continue
+        results.append(item)
 
     sources = [r for r in results if r is not None]
     if not sources:
@@ -711,6 +1014,7 @@ async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:
           ...
         ]
 
+    Falls back to bundled OurAirports CSV data when AVWX returns no runways.
     Returns an empty list if the AVWX key is missing or any request fails.
     """
     if not settings.avwx_api_key:
@@ -772,4 +1076,4 @@ async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:
         logger.warning("fetch_nearby_runways failed: %s", exc)
         return []
 
-    return results
+    return results if results else _fallback_runways_from_ourairports(lat, lon)
