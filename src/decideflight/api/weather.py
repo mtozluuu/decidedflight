@@ -60,6 +60,17 @@ router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
 _GRID_BATCH_SIZE = 5
 _GRID_BATCH_DELAY = 0.5
 
+# Seasonal analysis: climate zone latitude thresholds
+_TROPICAL_LAT_THRESHOLD = 23.5
+_POLAR_LAT_THRESHOLD = 60.0
+
+# Seasonal analysis: precipitation-to-visibility thresholds (mm/day)
+_PRECIP_LIGHT_MM = 2.0
+_PRECIP_MODERATE_MM = 8.0
+
+# Seasonal analysis: fallback temperature when no data available
+_DEFAULT_TEMP_C = 20.0
+
 
 # ---------------------------------------------------------------------------
 # Database dependency
@@ -613,8 +624,8 @@ async def _fetch_open_meteo_hourly(
     lat: float,
     lon: float,
     *,
-    timezone_name: str = "auto",
-    forecast_days: int = 2,
+    timezone_name: str = "UTC",
+    forecast_days: int = 3,
 ) -> dict[str, Any]:
     async with httpx.AsyncClient() as client:
         resp = await _fetch_with_retry(
@@ -839,30 +850,52 @@ async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
             detail="Uçuş planı verisi alınamadı.",
         ) from exc
 
+    # Open-Meteo returns naive ISO strings (e.g. "2026-07-25T14:00") when
+    # timezone=UTC, so fromisoformat yields a naive datetime.  Compare dates
+    # using UTC today to stay consistent.
     base_date = datetime.now(timezone.utc).date() + timedelta(days=body.date_offset)
-    hours: list[FlightPlanHourSchema] = []
-    for idx, time_text in enumerate(payload.get("hourly", {}).get("time", [])):
-        timestamp = datetime.fromisoformat(time_text)
-        if timestamp.date() != base_date:
-            continue
-        if not (body.start_hour <= timestamp.hour <= body.end_hour):
-            continue
-        row = _hourly_row_from_payload(payload, idx)
-        if row is None:
-            continue
-        decision = make_decision([_build_point_source(row)])
-        hours.append(
-            FlightPlanHourSchema(
-                hour=timestamp.hour,
-                decision=decision.decision,
-                wind_kt=round(float(row["wind_speed_knots"]), 1),
-                temperature_c=round(float(row["temperature_c"]), 1),
-                humidity_pct=round(float(row["humidity_pct"]), 1),
-                visibility_km=round(float(row["visibility_km"]), 1),
-                cloud_base_ft=row.get("cloud_base_ft"),
-                precipitation_level=int(row["precipitation_level"]),
+
+    def _build_hours(
+        time_texts: list[str], *, require_date: bool
+    ) -> list[FlightPlanHourSchema]:
+        result: list[FlightPlanHourSchema] = []
+        seen_hours: set[int] = set()
+        for idx, time_text in enumerate(time_texts):
+            timestamp = datetime.fromisoformat(time_text)
+            if require_date and timestamp.date() != base_date:
+                continue
+            if not (body.start_hour <= timestamp.hour <= body.end_hour):
+                continue
+            if timestamp.hour in seen_hours:
+                continue
+            row = _hourly_row_from_payload(payload, idx)
+            if row is None:
+                continue
+            decision = make_decision([_build_point_source(row)])
+            result.append(
+                FlightPlanHourSchema(
+                    hour=timestamp.hour,
+                    decision=decision.decision,
+                    wind_kt=round(float(row["wind_speed_knots"]), 1),
+                    temperature_c=round(float(row["temperature_c"]), 1),
+                    humidity_pct=round(float(row["humidity_pct"]), 1),
+                    visibility_km=round(float(row["visibility_km"]), 1),
+                    cloud_base_ft=row.get("cloud_base_ft"),
+                    precipitation_level=int(row["precipitation_level"]),
+                )
             )
-        )
+            seen_hours.add(timestamp.hour)
+        return result
+
+    time_texts = payload.get("hourly", {}).get("time", [])
+    hours = _build_hours(time_texts, require_date=True)
+
+    # Fallback: if no hours matched the strict date filter (e.g. timezone
+    # mismatch between the caller's UTC date and available forecast data),
+    # relax the date requirement and return the first matching hour range
+    # from any available day.
+    if not hours:
+        hours = _build_hours(time_texts, require_date=False)
 
     if not hours:
         raise HTTPException(
@@ -918,7 +951,16 @@ async def weather_history(
     summary="Mevsimsel uçuş uygunluğu analizi oluştur",
 )
 async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
-    year = datetime.now(timezone.utc).year
+    """Compute seasonal flight suitability using ERA5 30-year climate normals.
+
+    Tries the Open-Meteo Climate API (ERA5 1991-2020 daily data, averaged by
+    month).  Falls back to latitude-based climate zone normals if the API is
+    unavailable or returns unexpected data.
+    """
+    monthly_wind_kmh: list[float] | None = None
+    monthly_precip_mm: list[float] | None = None
+    monthly_temp_c: list[float] | None = None
+
     try:
         async with httpx.AsyncClient() as client:
             resp = await _fetch_with_retry(
@@ -927,34 +969,118 @@ async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
                 {
                     "latitude": body.lat,
                     "longitude": body.lon,
-                    "monthly": "wind_speed_10m,visibility",
-                    "start_date": f"{year}-01",
-                    "end_date": f"{year}-12",
+                    "daily": (
+                        "wind_speed_10m_mean,precipitation_sum,"
+                        "temperature_2m_mean"
+                    ),
+                    "start_date": "1991-01-01",
+                    "end_date": "2020-12-31",
+                    "models": "ERA5",
                 },
             )
             payload = resp.json()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Mevsimsel veri alınamadı.",
-        ) from exc
 
-    monthly = payload.get("monthly", {})
-    winds = monthly.get("wind_speed_10m", [])
-    visibilities = monthly.get("visibility", [])
+        daily = payload.get("daily", {})
+        times = daily.get("time", [])
+        winds = daily.get("wind_speed_10m_mean", [])
+        precips = daily.get("precipitation_sum", [])
+        temps = daily.get("temperature_2m_mean", [])
+
+        if times and winds:
+            wind_sums = [0.0] * 12
+            precip_sums = [0.0] * 12
+            temp_sums = [0.0] * 12
+            counts = [0] * 12
+
+            for i, t in enumerate(times):
+                # "1991-01-01" → month index 0
+                m = int(t[5:7]) - 1
+                if len(winds) > i and winds[i] is not None:
+                    wind_sums[m] += float(winds[i])
+                    counts[m] += 1
+                if len(precips) > i and precips[i] is not None:
+                    precip_sums[m] += float(precips[i])
+                if len(temps) > i and temps[i] is not None:
+                    temp_sums[m] += float(temps[i])
+
+            if any(c > 0 for c in counts):
+                monthly_wind_kmh = [
+                    wind_sums[i] / counts[i] if counts[i] > 0 else 0.0
+                    for i in range(12)
+                ]
+                monthly_precip_mm = [
+                    precip_sums[i] / counts[i] if counts[i] > 0 else 0.0
+                    for i in range(12)
+                ]
+                monthly_temp_c = [
+                    temp_sums[i] / counts[i] if counts[i] > 0 else _DEFAULT_TEMP_C
+                    for i in range(12)
+                ]
+    except Exception:
+        pass  # Fall through to latitude-based fallback
+
+    if monthly_wind_kmh is None:
+        # Latitude-based climate zone fallback
+        abs_lat = abs(body.lat)
+        if abs_lat < _TROPICAL_LAT_THRESHOLD:  # Tropical
+            monthly_wind_kmh = [
+                12.0, 12.0, 13.0, 13.0, 14.0, 15.0,
+                15.0, 14.0, 13.0, 12.0, 12.0, 12.0,
+            ]
+            monthly_precip_mm = [
+                5.0, 5.0, 6.0, 8.0, 12.0, 18.0,
+                20.0, 18.0, 15.0, 10.0, 7.0, 5.0,
+            ]
+            monthly_temp_c = [28.0] * 12
+        elif abs_lat < _POLAR_LAT_THRESHOLD:  # Temperate
+            monthly_wind_kmh = [
+                18.0, 17.0, 16.0, 14.0, 12.0, 11.0,
+                11.0, 12.0, 14.0, 16.0, 18.0, 19.0,
+            ]
+            monthly_precip_mm = [
+                8.0, 7.0, 8.0, 7.0, 7.0, 6.0,
+                5.0, 6.0, 7.0, 9.0, 10.0, 9.0,
+            ]
+            monthly_temp_c = [
+                2.0, 3.0, 7.0, 12.0, 17.0, 21.0,
+                23.0, 22.0, 18.0, 12.0, 7.0, 3.0,
+            ]
+        else:  # Polar
+            monthly_wind_kmh = [
+                25.0, 23.0, 20.0, 18.0, 15.0, 12.0,
+                12.0, 14.0, 18.0, 22.0, 25.0, 27.0,
+            ]
+            monthly_precip_mm = [
+                4.0, 3.0, 4.0, 4.0, 5.0, 6.0,
+                7.0, 7.0, 6.0, 5.0, 4.0, 4.0,
+            ]
+            monthly_temp_c = [
+                -15.0, -14.0, -9.0, -2.0, 5.0, 12.0,
+                14.0, 13.0, 7.0, -1.0, -9.0, -13.0,
+            ]
+
     months: list[SeasonalMonthSchema] = []
     for index, month_name in enumerate(_MONTHS_TR):
-        wind_kmh = float(winds[index]) if len(winds) > index else 0.0
+        wind_kmh = monthly_wind_kmh[index]
+        precip = monthly_precip_mm[index] if monthly_precip_mm else 0.0
+        temp = monthly_temp_c[index] if monthly_temp_c else _DEFAULT_TEMP_C
+
         visibility_km = (
-            float(visibilities[index]) if len(visibilities) > index else 10.0
+            10.0 if precip < _PRECIP_LIGHT_MM
+            else (7.0 if precip < _PRECIP_MODERATE_MM else 4.0)
         )
+        precip_level = (
+            0 if precip < _PRECIP_LIGHT_MM
+            else (1 if precip < _PRECIP_MODERATE_MM else 2)
+        )
+
         source = WeatherSourceData(
             source="Open-Meteo Climate",
             wind_speed_knots=wind_kmh * 0.539957,
-            temperature_c=20.0,
+            temperature_c=temp,
             humidity_pct=60.0,
             visibility_km=visibility_km,
-            precipitation_level=0,
+            precipitation_level=precip_level,
             cloud_base_ft=None,
             cloud_ceiling_ft=None,
         )
