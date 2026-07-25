@@ -2191,7 +2191,7 @@
           opt.value = r.heading_true;
           opt.dataset.ident = r.runway_ident;
           opt.dataset.airport = r.airport_icao;
-          opt.textContent = `${r.airport_icao} — RWY ${r.runway_ident} (${r.heading_true.toFixed(0)}°) — ${r.distance_km.toFixed(1)} km`;
+          opt.textContent = `${r.airport_name} (${r.airport_icao}) — RWY ${r.runway_ident} (${r.heading_true.toFixed(0)}°) — ${r.distance_km.toFixed(1)} km`;
           sel.appendChild(opt);
         });
         document.getElementById('runwayCard').classList.remove('hidden');
