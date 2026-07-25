@@ -343,17 +343,19 @@ def compute_wind_components(
     headwind = wind_speed_knots * math.cos(angle_diff)
     crosswind = wind_speed_knots * math.sin(angle_diff)
 
+    crosswind_side = "R" if crosswind > 0.05 else ("L" if crosswind < -0.05 else "")
+
     if headwind >= 0:
         return {
             "headwind_kt": round(headwind, 1),
             "tailwind_kt": 0.0,
             "crosswind_kt": round(abs(crosswind), 1),
-            "crosswind_side": "R" if crosswind > 0 else "L",
+            "crosswind_side": crosswind_side,
         }
     else:
         return {
             "headwind_kt": 0.0,
             "tailwind_kt": round(abs(headwind), 1),
             "crosswind_kt": round(abs(crosswind), 1),
-            "crosswind_side": "R" if crosswind > 0 else "L",
+            "crosswind_side": crosswind_side,
         }

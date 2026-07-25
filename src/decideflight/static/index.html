@@ -2203,7 +2203,7 @@
 
     async function computeWindComponents() {
       const report = currentReportData;
-      if (!report) return;
+      if (!report || !report.sources || report.sources.length === 0) return;
 
       const avgWind = report.sources.reduce((s, src) => s + src.wind_speed_knots, 0) / report.sources.length;
       const metarSource = report.sources.find(s => s.source && s.source.includes('METAR'));
@@ -2238,20 +2238,23 @@
         });
         if (!res.ok) return;
         const data = await res.json();
-        renderWindComponents(data);
+        renderWindComponents(data, windDir, heading);
       } catch(e) {
         console.warn('Wind components fetch failed', e);
       }
     }
 
-    function renderWindComponents(data) {
+    function renderWindComponents(data, windDirDeg, runwayHdgDeg) {
       document.getElementById('windComponentResult').classList.remove('hidden');
 
       const badge = (dec) => `<span class="status-pill ${dec === 'UYGUN' ? 'bg-green-400/12 text-green-300 border-green-400/30' : dec === 'RISKLI' ? 'bg-amber-400/12 text-amber-300 border-amber-400/30' : 'bg-red-400/12 text-red-300 border-red-400/30'}">${dec === 'UYGUN' ? 'UYGUN' : dec === 'RISKLI' ? 'RİSKLİ' : 'UYGUN DEĞİL'}</span>`;
 
       document.getElementById('headwindVal').textContent = data.headwind_kt > 0 ? `${data.headwind_kt} kt` : '—';
       document.getElementById('headwindBadge').innerHTML = badge(data.headwind_decision);
-      document.getElementById('crosswindVal').textContent = `${data.crosswind_kt} kt ${data.crosswind_side}`;
+      const sideLabel = data.crosswind_side === 'R' ? 'SAĞ' : data.crosswind_side === 'L' ? 'SOL' : '';
+      document.getElementById('crosswindVal').textContent = data.crosswind_kt > 0
+        ? `${data.crosswind_kt} kt${sideLabel ? ' ' + sideLabel : ''}`
+        : '—';
       document.getElementById('crosswindBadge').innerHTML = badge(data.crosswind_decision);
       document.getElementById('tailwindVal').textContent = data.tailwind_kt > 0 ? `${data.tailwind_kt} kt` : '—';
       document.getElementById('tailwindBadge').innerHTML = badge(data.tailwind_decision);
@@ -2261,10 +2264,10 @@
       overall.className = `mono text-center text-sm mt-3 ${cfg[data.overall_component_decision]}`;
       overall.textContent = `Bileşen Kararı: ${data.overall_component_decision === 'UYGUN' ? '✦ UYGUN' : data.overall_component_decision === 'RISKLI' ? '⚠ RİSKLİ' : '✕ UYGUN DEĞİL'}`;
 
-      drawWindRose(data);
+      drawWindRose(data, windDirDeg, runwayHdgDeg);
     }
 
-    function drawWindRose(data) {
+    function drawWindRose(data, windDirDeg, runwayHdgDeg) {
       const canvas = document.getElementById('windRoseCanvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -2294,6 +2297,47 @@
       ctx.fillText('S', cx, cy + r - 4);
       ctx.fillText('E', cx + r - 6, cy + 4);
       ctx.fillText('W', cx - r + 6, cy + 4);
+
+      // Helper: draw arrow from centre in a given compass bearing
+      function drawArrow(bearingDeg, length, color, lineWidth) {
+        const rad = (bearingDeg - 90) * Math.PI / 180;
+        const ex = cx + length * Math.cos(rad);
+        const ey = cy + length * Math.sin(rad);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+        // Arrow head
+        const hRad = Math.PI / 6;
+        const hLen = 7;
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - hLen * Math.cos(rad - hRad), ey - hLen * Math.sin(rad - hRad));
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - hLen * Math.cos(rad + hRad), ey - hLen * Math.sin(rad + hRad));
+        ctx.stroke();
+      }
+
+      // Runway heading arrow (cyan, bidirectional line)
+      if (runwayHdgDeg != null) {
+        const rad = (runwayHdgDeg - 90) * Math.PI / 180;
+        ctx.beginPath();
+        ctx.moveTo(cx - (r - 6) * Math.cos(rad), cy - (r - 6) * Math.sin(rad));
+        ctx.lineTo(cx + (r - 6) * Math.cos(rad), cy + (r - 6) * Math.sin(rad));
+        ctx.strokeStyle = 'rgba(0,212,255,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Wind direction arrow — wind comes FROM windDirDeg, so arrow points INTO the rose
+      if (windDirDeg != null) {
+        // Wind arrives from windDirDeg, so the vector points toward (windDirDeg + 180)
+        drawArrow(windDirDeg + 180, r - 10, 'rgba(0,255,136,0.85)', 2);
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════
