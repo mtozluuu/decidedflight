@@ -30,22 +30,87 @@
     body {
       font-family: 'Space Grotesk', sans-serif;
       background:
-        radial-gradient(circle at 20% 15%, rgba(0, 212, 255, 0.13), transparent 35%),
-        radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.12), transparent 42%),
-        linear-gradient(180deg, #0a0e1a 0%, #060913 100%);
+        radial-gradient(ellipse at 15% 10%, rgba(0, 212, 255, 0.18) 0%, transparent 40%),
+        radial-gradient(ellipse at 85% 5%, rgba(99, 102, 241, 0.14) 0%, transparent 35%),
+        radial-gradient(ellipse at 50% 90%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
+        linear-gradient(180deg, #060b18 0%, #04080f 100%);
       color: #d8f5ff;
       min-height: 100vh;
     }
 
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 212, 255, 0.012) 2px,
+        rgba(0, 212, 255, 0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    main, header, footer { position: relative; z-index: 1; }
+
     .mono { font-family: 'JetBrains Mono', monospace; }
 
     .hud-card {
-      background: var(--hud-panel);
-      border: 1px solid rgba(0, 212, 255, 0.28);
-      border-radius: 12px;
-      box-shadow: inset 0 0 0 1px rgba(8, 23, 45, 0.35), 0 0 20px rgba(0, 160, 220, 0.09);
-      clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+      background: linear-gradient(135deg, rgba(14, 24, 48, 0.85) 0%, rgba(8, 15, 32, 0.9) 100%);
+      border: 1px solid rgba(0, 212, 255, 0.22);
+      border-radius: 16px;
+      box-shadow:
+        0 0 0 1px rgba(0, 212, 255, 0.06) inset,
+        0 4px 24px rgba(0, 0, 0, 0.4),
+        0 0 40px rgba(0, 160, 220, 0.06);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       animation: slideUp 0.55s ease both;
+    }
+
+    .logo-icon {
+      filter: drop-shadow(0 0 12px rgba(0, 212, 255, 0.7)) drop-shadow(0 0 24px rgba(0, 212, 255, 0.35));
+    }
+
+    input:focus, select:focus {
+      background: rgba(0, 212, 255, 0.06) !important;
+      border-color: rgba(0, 212, 255, 0.7) !important;
+      box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.12), 0 0 16px rgba(0, 212, 255, 0.15) !important;
+      outline: none !important;
+    }
+
+    .btn-primary-glow {
+      background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%);
+      box-shadow: 0 0 20px rgba(0, 212, 255, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
+    }
+    .btn-primary-glow:hover {
+      box-shadow: 0 0 32px rgba(0, 212, 255, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
+      transform: translateY(-1px);
+    }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.3); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,212,255,0.5); }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: rgba(0, 212, 255, 0.5);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(0,212,255,0.25), transparent);
     }
 
     .hud-grid > * { animation: slideUp 0.55s ease both; }
@@ -93,9 +158,10 @@
     .radar::after {
       content: '';
       position: absolute;
-      inset: 18%;
-      border: 1px solid rgba(0, 255, 136, 0.35);
+      inset: 20%;
+      border: 1px solid rgba(0, 255, 136, 0.2);
       border-radius: 50%;
+      box-shadow: 0 0 0 calc((100% - 40%) / 2) rgba(0, 255, 136, 0.04);
     }
 
     @keyframes radarSweep { to { transform: rotate(360deg); } }
@@ -313,34 +379,40 @@
     .timeline-dot { width: 14px; height: 14px; border-radius: 999px; box-shadow: 0 0 12px currentColor; }
     .chat-bubble-user { background: rgba(0, 212, 255, 0.12); border: 1px solid rgba(0, 212, 255, 0.35); }
     .chat-bubble-ai { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(167, 139, 250, 0.35); }
-    .history-bar { min-height: 18px; border-radius: 6px 6px 0 0; }
-    .month-tile { min-height: 76px; }
+    .history-bar { min-height: 18px; border-radius: 4px 4px 0 0; transition: all 0.2s ease; cursor: pointer; position: relative; }
+    .history-bar:hover { filter: brightness(1.3); box-shadow: 0 -4px 12px currentColor; }
+    .month-tile { min-height: 80px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .month-tile:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    #historyChart { align-items: flex-end; padding: 0.5rem 0; gap: 0.25rem; }
     .aqi-good { color: #00ff88; border-color: rgba(0,255,136,0.35); background: rgba(0,255,136,0.08); }
     .aqi-mid { color: #ffb800; border-color: rgba(255,184,0,0.35); background: rgba(255,184,0,0.08); }
     .aqi-bad { color: #ff3d57; border-color: rgba(255,61,87,0.35); background: rgba(255,61,87,0.08); }
   </style>
 </head>
 <body>
-  <header class="px-4 pt-5 pb-3">
-    <div class="max-w-6xl mx-auto flex items-start justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-3">
-          <img src="/static/decideflight-icon.svg" alt="DecideFlight uygulama logosu" role="img" class="h-8 w-8" />
-          <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest">◈ DECIDEFLIGHT</p>
+  <header class="px-4 pt-6 pb-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <div class="relative">
+          <img src="/static/decideflight-icon.svg" alt="DecideFlight uygulama logosu" role="img" class="logo-icon h-10 w-10" />
+          <div class="absolute inset-0 rounded-full bg-cyan-400/10 blur-xl"></div>
         </div>
-        <p class="mono text-[10px] sm:text-xs text-cyan-100/60 mt-1">UÇUŞ HAVA KOŞULU KARAR ÇEKİRDEĞİ</p>
+        <div>
+          <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest" style="text-shadow: 0 0 20px rgba(0,212,255,0.5)">DECIDEFLIGHT</p>
+          <p class="mono text-[10px] sm:text-[11px] text-cyan-100/50 mt-0.5 tracking-widest">UÇUŞ HAVA KOŞULU KARAR ÇEKİRDEĞİ</p>
+        </div>
       </div>
       <div class="text-right" role="timer" aria-label="Eşgüdümlü Evrensel Zaman">
-        <p class="mono text-[10px] text-green-300/70 tracking-wider">UTC</p>
-        <p id="utcClock" aria-label="Güncel UTC saati" class="mono text-sm sm:text-base text-green-300">--:--:--</p>
+        <p class="mono text-[10px] text-green-300/60 tracking-widest mb-0.5">UTC</p>
+        <p id="utcClock" aria-label="Güncel UTC saati" class="mono text-base sm:text-lg font-bold text-green-300" style="text-shadow: 0 0 12px rgba(0,255,136,0.4)">--:--:--</p>
       </div>
     </div>
-    <div class="header-line max-w-6xl mx-auto mt-3 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent"></div>
+    <div class="header-line max-w-6xl mx-auto mt-4 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent"></div>
   </header>
 
   <!-- Tab navigation -->
   <div class="max-w-6xl mx-auto px-4 pt-4">
-    <nav class="flex gap-0 border-b border-cyan-400/20" role="tablist" aria-label="Uygulama sekmeleri">
+    <nav class="flex gap-0 border-b border-cyan-400/15 bg-gradient-to-b from-cyan-400/[0.03] to-transparent rounded-t-lg px-2" role="tablist" aria-label="Uygulama sekmeleri">
       <button id="tab-btn-point" role="tab" aria-selected="true" aria-controls="panel-point"
         onclick="switchTab('point')" class="tab-btn active">◈ NOKTA ANALİZİ</button>
       <button id="tab-btn-region" role="tab" aria-selected="false" aria-controls="panel-region"
@@ -372,7 +444,7 @@
         <button
           id="reportBtn"
           onclick="generateReport()"
-          class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-6 py-3 text-sm tracking-wider hover:shadow-[0_0_20px_rgba(0,212,255,0.45)] transition"
+          class="mono btn-primary-glow text-slate-950 font-bold rounded-lg px-6 py-3 text-sm tracking-wider"
         >[ ANALİZ ET ]</button>
       </div>
 
@@ -416,10 +488,15 @@
       <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
     </section>
 
-    <div id="loadingSection" role="status" aria-live="polite" aria-busy="true" class="hidden hud-card py-10 px-6 text-center">
-      <div class="flex justify-center"><div class="radar" aria-label="Hava verisi yükleniyor"></div></div>
-      <p class="mono text-green-300 mt-4 blink">HAVA VERİSİ TOPLANIYOR...</p>
-      <p class="mono text-[11px] text-cyan-100/60 mt-3">KAYNAKLARA BAĞLANILIYOR: OPEN-METEO ● METAR ● OWM ● WEATHERAPI</p>
+    <div id="loadingSection" role="status" aria-live="polite" aria-busy="true" class="hidden hud-card py-14 px-6 text-center">
+      <div class="flex justify-center mb-6"><div class="radar" aria-label="Hava verisi yükleniyor"></div></div>
+      <p class="mono text-green-300 text-sm blink tracking-widest">HAVA VERİSİ TOPLANIYOR...</p>
+      <p class="mono text-[11px] text-cyan-100/50 mt-3 tracking-wider">OPEN-METEO · METAR · OWM · WEATHERAPI</p>
+      <div class="mt-4 flex justify-center gap-1">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400/60 animate-bounce" style="animation-delay:0s"></span>
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400/60 animate-bounce" style="animation-delay:0.15s"></span>
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400/60 animate-bounce" style="animation-delay:0.3s"></span>
+      </div>
     </div>
 
     <div id="errorSection" class="hidden hud-card px-5 py-4 border-red-500/40 text-red-300 mono text-sm">
@@ -531,7 +608,7 @@
             </select>
             <select id="flightPlanStart" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
             <select id="flightPlanEnd" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
-            <button type="button" onclick="fetchFlightPlan()" class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-4 py-2 text-xs">[ PLANLA ]</button>
+            <button type="button" onclick="fetchFlightPlan()" class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-4 py-2 text-xs">[ PLANLA ]</button>
           </div>
         </div>
         <div id="flightPlanTimeline" class="mt-4 grid gap-2 md:grid-cols-6"></div>
@@ -601,6 +678,11 @@
     <section id="historySection" class="hidden hud-card p-6">
       <h3 class="mono text-sm text-cyan-300 mb-4">GEÇMİŞ ANALİZLER</h3>
       <div id="historyChart" class="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2 items-end"></div>
+      <div class="flex items-center gap-4 mt-3 mono text-[10px] text-cyan-100/40">
+        <span><span class="inline-block w-2 h-2 rounded-sm bg-green-400/70 mr-1"></span>UYGUN</span>
+        <span><span class="inline-block w-2 h-2 rounded-sm bg-amber-400/70 mr-1"></span>RİSKLİ</span>
+        <span><span class="inline-block w-2 h-2 rounded-sm bg-red-400/70 mr-1"></span>UYGUN DEĞİL</span>
+      </div>
       <div id="historyList" class="mt-5 max-h-72 overflow-y-auto space-y-2"></div>
     </section>
     </div><!-- /panel-point -->
@@ -900,7 +982,7 @@
 
         <div class="flex gap-3 mt-6">
           <button onclick="saveSettings()"
-            class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider hover:shadow-[0_0_16px_rgba(0,212,255,0.4)] transition">
+            class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider">
             [ LİMİTLERİ KAYDET ]
           </button>
           <button onclick="resetSettings()"
