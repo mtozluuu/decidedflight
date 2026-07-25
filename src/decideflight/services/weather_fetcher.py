@@ -98,7 +98,7 @@ async def _fetch_with_retry(
             return resp
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429 and attempt < max_retries:
-                delay = base_delay * (2 ** attempt)
+                delay = base_delay * (2**attempt)
                 logger.warning(
                     "Open-Meteo rate limited (429) – attempt %d/%d; "
                     "retrying in %.1fs",
@@ -111,8 +111,10 @@ async def _fetch_with_retry(
             else:
                 raise
     # Reached only when all retries were exhausted on 429
-    raise last_exc if last_exc is not None else RuntimeError(  # pragma: no cover
-        "Open-Meteo rate limit retries exhausted"
+    raise (
+        last_exc
+        if last_exc is not None
+        else RuntimeError("Open-Meteo rate limit retries exhausted")  # pragma: no cover
     )
 
 
@@ -719,10 +721,7 @@ async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:
 
     try:
         async with httpx.AsyncClient() as client:
-            # Step 1: Find up to 3 nearby airports
-            near_url = (
-                f"https://avwx.rest/api/station/near/{lat},{lon}"
-            )
+            near_url = f"https://avwx.rest/api/station/near/{lat},{lon}"
             near_params = {"n": 3, "airport": "true"}
             try:
                 near_resp = await client.get(
@@ -746,45 +745,26 @@ async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:
                 if not icao:
                     continue
                 airport_name = station.get("name", icao)
-                distance_km = float(item.get("distance", {}).get("km", 0.0))
+                distance_km = float(item.get("kilometers") or 0.0)
 
-                # Step 2: Fetch runway data for this airport
-                try:
-                    apt_resp = await client.get(
-                        f"https://avwx.rest/api/station/{icao}",
-                        headers=headers,
-                        timeout=_TIMEOUT,
-                    )
-                    apt_resp.raise_for_status()
-                    apt_data = apt_resp.json()
-                except Exception as exc:
-                    logger.warning(
-                        "AVWX airport data fetch failed for %s: %s", icao, exc
-                    )
-                    continue
-
-                runways = apt_data.get("runways") or []
+                runways = station.get("runways") or []
                 for rwy in runways:
-                    # Each runway entry may have idents for both ends
-                    for side in ("ident1", "ident2"):
+                    for side, bearing_key in (
+                        ("ident1", "bearing1"),
+                        ("ident2", "bearing2"),
+                    ):
                         ident = rwy.get(side, "")
                         if not ident:
                             continue
-                        heading_true = rwy.get("heading_true")
-                        if heading_true is None:
-                            heading_true = rwy.get("heading_magnetic")
-                        if heading_true is None:
+                        bearing = rwy.get(bearing_key)
+                        if bearing is None:
                             continue
-                        # For ident2 the heading is the reciprocal
-                        hdg = float(heading_true)
-                        if side == "ident2":
-                            hdg = (hdg + 180.0) % 360.0
                         results.append(
                             {
                                 "airport_icao": icao,
                                 "airport_name": airport_name,
                                 "runway_ident": ident,
-                                "heading_true": round(hdg, 1),
+                                "heading_true": round(float(bearing), 1),
                                 "distance_km": round(distance_km, 1),
                             }
                         )
