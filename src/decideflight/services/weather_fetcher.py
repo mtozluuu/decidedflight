@@ -303,6 +303,9 @@ def _load_ourairports_runways() -> dict[str, list[dict[str, Any]]]:
 
 _OURAIRPORTS_AIRPORTS = _load_ourairports_airports()
 _OURAIRPORTS_RUNWAYS = _load_ourairports_runways()
+_RUNWAY_BEARING_OVERRIDES: dict[str, dict[str, float]] = {
+    "HCMM": {"05": 50.0, "23": 230.0},
+}
 
 
 def _find_nearest_airports(
@@ -1062,10 +1065,14 @@ async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:
                             continue
                         bearing = rwy.get(bearing_key)
                         if bearing is None:
-                            for csv_rwy in _OURAIRPORTS_RUNWAYS.get(icao, []):
-                                if csv_rwy["runway_ident"] == ident:
-                                    bearing = csv_rwy["heading_true"]
-                                    break
+                            overrides = _RUNWAY_BEARING_OVERRIDES.get(icao, {})
+                            if ident in overrides:
+                                bearing = overrides[ident]
+                            else:
+                                for csv_rwy in _OURAIRPORTS_RUNWAYS.get(icao, []):
+                                    if csv_rwy["runway_ident"] == ident:
+                                        bearing = csv_rwy["heading_true"]
+                                        break
                         if bearing is None:
                             continue
                         results.append(
