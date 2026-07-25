@@ -155,6 +155,11 @@
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
     }
 
+    .param-row-safe { border-left: 2px solid rgba(0, 255, 136, 0.8); }
+    .param-row-caution { border-left: 2px solid rgba(255, 184, 0, 0.8); }
+    .param-row-danger { border-left: 2px solid rgba(255, 61, 87, 0.8); }
+    .param-row-default { border-left: 2px solid rgba(0, 212, 255, 0.8); }
+
     .value-badge {
       display: inline-flex;
       align-items: center;
@@ -967,6 +972,7 @@
       'RISKLI': '<span class="status-pill bg-amber-400/12 text-amber-300 border-amber-400/30">RİSKLİ</span>',
       'UYGUN_DEGIL': '<span class="status-pill bg-red-400/12 text-red-300 border-red-400/30">UYGUN DEĞİL</span>',
     };
+    const SOURCE_RELIABILITY_MAX = 1.8;
     const FAVORITES_KEY = 'decideflight_favorites';
     let currentReportData = null;
     let deferredInstallPrompt = null;
@@ -1705,7 +1711,7 @@
 
       const paramTbody = document.getElementById('parametersTable');
       paramTbody.innerHTML = data.parameters.map(p => `
-        <tr class="table-row border-b border-cyan-400/15" style="border-left: 2px solid ${getDecisionAccentColor(p.decision)};">
+        <tr class="table-row border-b border-cyan-400/15 ${getParameterRowClass(p.decision)}">
           <td class="py-2.5 pl-3 text-cyan-100/85 font-semibold">${p.name}</td>
           <td class="py-2.5 text-cyan-100/70">
             <span class="value-badge ${getDecisionTone(p.decision)}">
@@ -1748,12 +1754,12 @@
       document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    function getDecisionAccentColor(decision) {
+    function getParameterRowClass(decision) {
       return {
-        UYGUN: '#00ff88',
-        RISKLI: '#ffb800',
-        UYGUN_DEGIL: '#ff3d57',
-      }[decision] || '#00d4ff';
+        UYGUN: 'param-row-safe',
+        RISKLI: 'param-row-caution',
+        UYGUN_DEGIL: 'param-row-danger',
+      }[decision] || 'param-row-default';
     }
 
     function formatSourceName(src) {
@@ -1784,7 +1790,7 @@
     }
 
     function formatReliabilityPercent(weight) {
-      const normalized = Math.max(0, Math.min(100, Math.round(((weight ?? 1.0) / 1.8) * 100)));
+      const normalized = Math.max(0, Math.min(100, Math.round(((weight ?? 1.0) / SOURCE_RELIABILITY_MAX) * 100)));
       return normalized;
     }
 
