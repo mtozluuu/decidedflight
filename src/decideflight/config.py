@@ -61,5 +61,13 @@ class Settings:
     cloud_ceiling_ok_min_ft: float = _float("CLOUD_CEILING_OK_MIN_FT", 1000.0)
     cloud_ceiling_risky_min_ft: float = _float("CLOUD_CEILING_RISKY_MIN_FT", 500.0)
 
+    # Wind component limits (knots)
+    crosswind_ok_max_knots: float = _float("CROSSWIND_OK_MAX_KNOTS", 15.0)
+    crosswind_risky_max_knots: float = _float("CROSSWIND_RISKY_MAX_KNOTS", 20.0)
+    tailwind_ok_max_knots: float = _float("TAILWIND_OK_MAX_KNOTS", 5.0)
+    tailwind_risky_max_knots: float = _float("TAILWIND_RISKY_MAX_KNOTS", 10.0)
+    headwind_ok_max_knots: float = _float("HEADWIND_OK_MAX_KNOTS", 25.0)
+    headwind_risky_max_knots: float = _float("HEADWIND_RISKY_MAX_KNOTS", 35.0)
+
 
 settings = Settings()

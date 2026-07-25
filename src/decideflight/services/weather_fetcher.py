@@ -58,6 +58,7 @@ class WeatherSourceData:
     precipitation_level: int  # 0 = none, 1 = light, 2 = moderate/heavy
     cloud_base_ft: float | None
     cloud_ceiling_ft: float | None
+    wind_direction_deg: float | None = None
     reliability_weight: float = 1.0
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -250,6 +251,7 @@ async def _fetch_open_meteo(
             "relative_humidity_2m,"
             "dew_point_2m,"
             "wind_speed_10m,"
+            "wind_direction_10m,"
             "precipitation,"
             "visibility,"
             "cloud_cover"
@@ -268,6 +270,7 @@ async def _fetch_open_meteo(
     temp = cur.get("temperature_2m")
     dew = cur.get("dew_point_2m")
     wind_kmh = cur.get("wind_speed_10m", 0.0)
+    wind_dir = cur.get("wind_direction_10m")
     rh = cur.get("relative_humidity_2m", 0.0)
     precip_mm = cur.get("precipitation", 0.0)
     vis_m = cur.get("visibility", 10000.0)
@@ -296,6 +299,7 @@ async def _fetch_open_meteo(
         precipitation_level=_precip_level(precip_mm),
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=ceiling_ft,
+        wind_direction_deg=float(wind_dir) if wind_dir is not None else None,
         raw=cur,
     )
 
@@ -332,6 +336,7 @@ async def _fetch_owm(
     temp_k = main.get("temp", 273.15)
     temp_c = _kelvin_to_celsius(temp_k)
     wind_ms = wind.get("speed", 0.0)
+    wind_dir_owm = wind.get("deg")
     rh = main.get("humidity", 0.0)
     vis_m = data.get("visibility", 10000)
     rain_mm = data.get("rain", {}).get("1h", 0.0)
@@ -353,6 +358,7 @@ async def _fetch_owm(
         precipitation_level=_precip_level(precip_mm),
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=ceiling_ft,
+        wind_direction_deg=float(wind_dir_owm) if wind_dir_owm is not None else None,
         raw=data,
     )
 
@@ -386,6 +392,7 @@ async def _fetch_weatherapi(
     cur = data.get("current", {})
     temp_c = cur.get("temp_c", 20.0)
     wind_kmh = cur.get("wind_kph", 0.0)
+    wind_dir_wa = cur.get("wind_degree")
     rh = cur.get("humidity", 0.0)
     vis_km = cur.get("vis_km", 10.0)
     precip_mm = cur.get("precip_mm", 0.0)
@@ -405,6 +412,7 @@ async def _fetch_weatherapi(
         precipitation_level=_precip_level(precip_mm),
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=ceiling_ft,
+        wind_direction_deg=float(wind_dir_wa) if wind_dir_wa is not None else None,
         raw=cur,
     )
 
@@ -449,6 +457,7 @@ async def _fetch_mgm(
     merged.update(current_row)
 
     wind_ms = _pick_first_number(merged, "ruzgarHiz", "windSpeed") or 0.0
+    wind_dir_mgm = _pick_first_number(merged, "ruzgarYon", "windDirection")
     temp_c = _pick_first_number(merged, "sicaklik", "temperature") or 20.0
     humidity = _pick_first_number(merged, "nem", "humidity") or 0.0
     visibility_m = _pick_first_number(merged, "gorus", "visibility") or 10000.0
@@ -475,6 +484,7 @@ async def _fetch_mgm(
         precipitation_level=_precip_level(precip_mm),
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=base_ft + 200.0 if base_ft is not None else None,
+        wind_direction_deg=float(wind_dir_mgm) if wind_dir_mgm is not None else None,
         reliability_weight=1.15,
         raw=merged,
     )
@@ -518,6 +528,11 @@ async def _fetch_windy(
     wind_u = _first("wind_u-surface")
     wind_v = _first("wind_v-surface")
     wind_ms = math.sqrt(wind_u**2 + wind_v**2)
+    # Derive meteorological wind direction from u/v components
+    # (direction wind comes FROM, 0° = North, clockwise)
+    wind_dir_windy: float | None = None
+    if wind_ms > 0:
+        wind_dir_windy = (270.0 - math.degrees(math.atan2(wind_v, wind_u))) % 360.0
     temp_k = _first("temp-surface")
     temp_c = _kelvin_to_celsius(temp_k)
     rh = _first("rh-surface")
@@ -539,6 +554,7 @@ async def _fetch_windy(
         precipitation_level=PRECIP_NONE,
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=ceiling_ft,
+        wind_direction_deg=wind_dir_windy,
         raw=data,
     )
 
@@ -569,6 +585,23 @@ async def _fetch_metar_avwx(
     }
     raw_payload.update(metar.raw)
 
+    # Extract wind direction from raw METAR data
+    wind_dir_metar: float | None = None
+    metar_data = metar.raw.get("metar", {}) or {}
+    wind_dir_raw = metar_data.get("wind_direction")
+    if isinstance(wind_dir_raw, dict):
+        wd_val = wind_dir_raw.get("value")
+        if wd_val is not None:
+            try:
+                wind_dir_metar = float(wd_val)
+            except (TypeError, ValueError):
+                pass
+    elif wind_dir_raw is not None:
+        try:
+            wind_dir_metar = float(wind_dir_raw)
+        except (TypeError, ValueError):
+            pass
+
     return WeatherSourceData(
         source="METAR (AVWX)",
         wind_speed_knots=metar.wind_speed_kt,
@@ -578,6 +611,7 @@ async def _fetch_metar_avwx(
         precipitation_level=PRECIP_NONE,
         cloud_base_ft=metar.cloud_base_ft,
         cloud_ceiling_ft=metar.cloud_base_ft,
+        wind_direction_deg=wind_dir_metar,
         reliability_weight=1.8,
         raw=raw_payload,
     )
@@ -657,3 +691,105 @@ async def fetch_air_quality(lat: float, lon: float) -> AirQualityData | None:
     """Fetch the current AQI context for the given coordinates."""
     async with httpx.AsyncClient() as client:
         return await _fetch_air_quality(lat, lon, client)
+
+
+async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:
+    """Fetch nearby airport runways from AVWX API.
+
+    Returns a list of dicts like::
+
+        [
+          {
+            "airport_icao": "LTFM",
+            "airport_name": "Istanbul Airport",
+            "runway_ident": "35L",
+            "heading_true": 350.0,
+            "distance_km": 12.3,
+          },
+          ...
+        ]
+
+    Returns an empty list if the AVWX key is missing or any request fails.
+    """
+    if not settings.avwx_api_key:
+        return []
+
+    headers = {"Authorization": settings.avwx_api_key}
+    results: list[dict] = []
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Step 1: Find up to 3 nearby airports
+            near_url = (
+                f"https://avwx.rest/api/station/near/{lat},{lon}"
+            )
+            near_params = {"n": 3, "airport": "true"}
+            try:
+                near_resp = await client.get(
+                    near_url,
+                    params=near_params,
+                    headers=headers,
+                    timeout=_TIMEOUT,
+                )
+                near_resp.raise_for_status()
+                near_data = near_resp.json()
+            except Exception as exc:
+                logger.warning("AVWX nearby stations fetch failed: %s", exc)
+                return []
+
+            if not isinstance(near_data, list):
+                return []
+
+            for item in near_data:
+                station = item.get("station") or {}
+                icao = station.get("icao") or station.get("ident") or ""
+                if not icao:
+                    continue
+                airport_name = station.get("name", icao)
+                distance_km = float(item.get("distance", {}).get("km", 0.0))
+
+                # Step 2: Fetch runway data for this airport
+                try:
+                    apt_resp = await client.get(
+                        f"https://avwx.rest/api/airport/{icao}",
+                        headers=headers,
+                        timeout=_TIMEOUT,
+                    )
+                    apt_resp.raise_for_status()
+                    apt_data = apt_resp.json()
+                except Exception as exc:
+                    logger.warning(
+                        "AVWX airport data fetch failed for %s: %s", icao, exc
+                    )
+                    continue
+
+                runways = apt_data.get("runways") or []
+                for rwy in runways:
+                    # Each runway entry may have idents for both ends
+                    for side in ("ident1", "ident2"):
+                        ident = rwy.get(side, "")
+                        if not ident:
+                            continue
+                        heading_true = rwy.get("heading_true")
+                        if heading_true is None:
+                            heading_true = rwy.get("heading_magnetic")
+                        if heading_true is None:
+                            continue
+                        # For ident2 the heading is the reciprocal
+                        hdg = float(heading_true)
+                        if side == "ident2":
+                            hdg = (hdg + 180.0) % 360.0
+                        results.append(
+                            {
+                                "airport_icao": icao,
+                                "airport_name": airport_name,
+                                "runway_ident": ident,
+                                "heading_true": round(hdg, 1),
+                                "distance_km": round(distance_km, 1),
+                            }
+                        )
+    except Exception as exc:
+        logger.warning("fetch_nearby_runways failed: %s", exc)
+        return []
+
+    return results

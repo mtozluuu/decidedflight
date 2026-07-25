@@ -10,6 +10,7 @@ The overall decision is the worst score across all averaged parameters.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable
 
@@ -318,3 +319,41 @@ def make_decision(
         pm25=air_quality.pm25 if air_quality is not None else None,
         pm10=air_quality.pm10 if air_quality is not None else None,
     )
+
+
+def compute_wind_components(
+    wind_direction_deg: float,
+    wind_speed_knots: float,
+    runway_heading_deg: float,
+) -> dict:
+    """Calculate headwind, crosswind, and tailwind components.
+
+    Args:
+        wind_direction_deg: Meteorological wind direction (where wind comes FROM).
+        wind_speed_knots: Wind speed in knots.
+        runway_heading_deg: True heading of the runway (direction aircraft points).
+
+    Returns:
+        Dict with headwind_kt, tailwind_kt, crosswind_kt, crosswind_side.
+        Positive headwind = into the wind (good).
+        Positive crosswind absolute value used for limits.
+        Positive tailwind = with the wind (bad).
+    """
+    angle_diff = math.radians(wind_direction_deg - runway_heading_deg)
+    headwind = wind_speed_knots * math.cos(angle_diff)
+    crosswind = wind_speed_knots * math.sin(angle_diff)
+
+    if headwind >= 0:
+        return {
+            "headwind_kt": round(headwind, 1),
+            "tailwind_kt": 0.0,
+            "crosswind_kt": round(abs(crosswind), 1),
+            "crosswind_side": "R" if crosswind > 0 else "L",
+        }
+    else:
+        return {
+            "headwind_kt": 0.0,
+            "tailwind_kt": round(abs(headwind), 1),
+            "crosswind_kt": round(abs(crosswind), 1),
+            "crosswind_side": "R" if crosswind > 0 else "L",
+        }
