@@ -1062,6 +1062,11 @@ async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:
                             continue
                         bearing = rwy.get(bearing_key)
                         if bearing is None:
+                            for csv_rwy in _OURAIRPORTS_RUNWAYS.get(icao, []):
+                                if csv_rwy["runway_ident"] == ident:
+                                    bearing = csv_rwy["heading_true"]
+                                    break
+                        if bearing is None:
                             continue
                         results.append(
                             {

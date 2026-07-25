@@ -93,6 +93,65 @@ async def test_fetch_nearby_runways_falls_back_to_ourairports():
 
 
 @pytest.mark.asyncio
+async def test_fetch_nearby_runways_fills_null_bearing_from_ourairports():
+    """AVWX bearing1/bearing2 null → filled from OurAirports CSV."""
+    avwx_payload = [
+        {
+            "kilometers": 4.3,
+            "station": {
+                "icao": "HCMM",
+                "name": "Aden Adde International Airport",
+                "runways": [
+                    {
+                        "ident1": "05",
+                        "ident2": "23",
+                        "bearing1": None,
+                        "bearing2": None,
+                    }
+                ],
+            },
+        }
+    ]
+    with (
+        patch(
+            "decideflight.services.weather_fetcher.settings",
+            new=SimpleNamespace(avwx_api_key="k"),
+        ),
+        patch(
+            "decideflight.services.weather_fetcher._OURAIRPORTS_RUNWAYS",
+            new={
+                "HCMM": [
+                    {"runway_ident": "05", "heading_true": 50.0},
+                    {"runway_ident": "23", "heading_true": 230.0},
+                ]
+            },
+        ),
+        patch(
+            "decideflight.services.weather_fetcher.httpx.AsyncClient",
+            return_value=_MockAsyncClient(_MockResponse(avwx_payload)),
+        ),
+    ):
+        result = await fetch_nearby_runways(2.01444, 45.304699)
+
+    assert result == [
+        {
+            "airport_icao": "HCMM",
+            "airport_name": "Aden Adde International Airport",
+            "runway_ident": "05",
+            "heading_true": 50.0,
+            "distance_km": 4.3,
+        },
+        {
+            "airport_icao": "HCMM",
+            "airport_name": "Aden Adde International Airport",
+            "runway_ident": "23",
+            "heading_true": 230.0,
+            "distance_km": 4.3,
+        },
+    ]
+
+
+@pytest.mark.asyncio
 async def test_fetch_metar_aviationweather_parses_payload(monkeypatch):
     monkeypatch.setattr(
         "decideflight.services.weather_fetcher._OURAIRPORTS_AIRPORTS",
