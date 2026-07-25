@@ -1717,8 +1717,9 @@
           <td class="py-2.5 text-cyan-100/70">
             <span class="value-badge ${getDecisionTone(p.decision)}">
               <span class="value-dot" aria-hidden="true"></span>
-              <span>${p.value}<span class="sr-only"> — Durum: ${formatDecisionLabel(p.decision)}</span></span>
+              <span>${p.value}</span>
             </span>
+            <span class="sr-only">Durum: ${formatDecisionLabel(p.decision)}</span>
           </td>
           <td class="py-2.5">${PARAM_DECISION_BADGE[p.decision] || p.decision}</td>
         </tr>`).join('');
@@ -1799,7 +1800,9 @@
     }
 
     function formatReliabilityPercent(weight) {
-      const normalized = Math.max(0, Math.min(100, Math.round(((weight ?? DEFAULT_RELIABILITY_WEIGHT) / SOURCE_RELIABILITY_MAX) * 100)));
+      const effectiveWeight = weight ?? DEFAULT_RELIABILITY_WEIGHT;
+      const scaledWeight = (effectiveWeight / SOURCE_RELIABILITY_MAX) * 100;
+      const normalized = Math.max(0, Math.min(100, Math.round(scaledWeight)));
       return normalized;
     }
 
