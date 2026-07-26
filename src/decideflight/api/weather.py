@@ -1694,7 +1694,7 @@ class GridSummaryMetrics:
     bounds: str
 
 
-def _mean_excluding_none(values: list[float | None]) -> float | None:
+def _calculate_mean_excluding_none(values: list[float | None]) -> float | None:
     """Average trusted numeric values, ignoring missing entries."""
     present = [value for value in values if value is not None]
     if not present:
@@ -1722,7 +1722,7 @@ def _build_grid_summary_metrics(body: GridSummaryRequest) -> GridSummaryMetrics 
     avg_temp = sum(p.temperature_c for p in points) / len(points)
     avg_humidity = sum(p.humidity_pct for p in points) / len(points)
     avg_vis = sum(p.visibility_km for p in points) / len(points)
-    avg_cloud_base = _mean_excluding_none([p.cloud_base_ft for p in points])
+    avg_cloud_base = _calculate_mean_excluding_none([p.cloud_base_ft for p in points])
     pct_uygun = round(summary.UYGUN / summary.total * 100) if summary.total else 0
     pct_riskli = round(summary.RISKLI / summary.total * 100) if summary.total else 0
     pct_uygun_degil = (

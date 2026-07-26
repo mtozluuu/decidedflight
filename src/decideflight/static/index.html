@@ -2834,7 +2834,7 @@
       const altitudeFt = parseFloat(document.getElementById('altitudeSelect').value);
       const hours = _getHoursParam();
       const limits = loadSettings();
-      const locationName = resolveGridLocationLabel(bounds);
+      const locationName = determineGridLocationLabel(bounds);
 
       // Remove old grid markers
       gridMarkers.forEach(({ marker }) => marker.remove());
@@ -2968,7 +2968,7 @@
       if (worstPt && map) map.setView([worstPt.lat, worstPt.lon], Math.max(map.getZoom(), 10));
     }
 
-    function resolveGridLocationLabel(bounds) {
+    function determineGridLocationLabel(bounds) {
       const center = bounds.getCenter();
       return document.getElementById('locationInput').value.trim() ||
         (center.lat.toFixed(2) + ', ' + center.lng.toFixed(2));

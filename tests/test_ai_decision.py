@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from decideflight.api import weather as weather_api
 from decideflight.main import app
 from decideflight.services.ai_decision_engine import (
     AIDecisionResult,
@@ -540,3 +541,60 @@ class TestGridAnalysisEndpoint:
         assert response.status_code == 200
         body = response.json()
         assert body["ai_regional_summary"] is None
+
+
+class TestGridSummaryHelpers:
+    def test_format_grid_bounds_handles_missing_values(self):
+        request = weather_api.GridSummaryRequest(
+            points=[],
+            summary=weather_api.GridSummary(UYGUN=0, RISKLI=0, UYGUN_DEGIL=0, total=0),
+        )
+
+        assert weather_api._format_grid_bounds(request) == "Belirtilmedi"
+
+    def test_build_grid_summary_metrics_averages_cloud_base_with_none_values(self):
+        request = weather_api.GridSummaryRequest(
+            points=[
+                weather_api.GridPointWeather(
+                    lat=41.0,
+                    lon=28.9,
+                    decision="UYGUN",
+                    wind_speed_knots=10.0,
+                    temperature_c=22.0,
+                    humidity_pct=60.0,
+                    visibility_km=8.0,
+                    cloud_base_ft=1200.0,
+                    cloud_ceiling_ft=2000.0,
+                    precipitation_level=0,
+                    cloud_cover_pct=20.0,
+                ),
+                weather_api.GridPointWeather(
+                    lat=41.1,
+                    lon=29.0,
+                    decision="RISKLI",
+                    wind_speed_knots=14.0,
+                    temperature_c=26.0,
+                    humidity_pct=70.0,
+                    visibility_km=10.0,
+                    cloud_base_ft=None,
+                    cloud_ceiling_ft=None,
+                    precipitation_level=1,
+                    cloud_cover_pct=55.0,
+                ),
+            ],
+            summary=weather_api.GridSummary(UYGUN=1, RISKLI=1, UYGUN_DEGIL=0, total=2),
+            altitude_ft=1000.0,
+            location_hint="Istanbul, Turkey",
+            lat_min=41.0,
+            lat_max=41.1,
+            lon_min=28.9,
+            lon_max=29.0,
+        )
+
+        metrics = weather_api._build_grid_summary_metrics(request)
+
+        assert metrics is not None
+        assert metrics.avg_wind == pytest.approx(12.0)
+        assert metrics.avg_humidity == pytest.approx(65.0)
+        assert metrics.avg_cloud_base == pytest.approx(1200.0)
+        assert metrics.bounds == "41.0000-41.1000, 28.9000-29.0000"
