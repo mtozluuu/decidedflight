@@ -2834,7 +2834,7 @@
       const altitudeFt = parseFloat(document.getElementById('altitudeSelect').value);
       const hours = _getHoursParam();
       const limits = loadSettings();
-      const locationName = getGridLocationName(bounds);
+      const locationName = resolveGridLocationLabel(bounds);
 
       // Remove old grid markers
       gridMarkers.forEach(({ marker }) => marker.remove());
@@ -2968,17 +2968,20 @@
       if (worstPt && map) map.setView([worstPt.lat, worstPt.lon], Math.max(map.getZoom(), 10));
     }
 
-    function getGridLocationName(bounds) {
+    function resolveGridLocationLabel(bounds) {
       const center = bounds.getCenter();
       return document.getElementById('locationInput').value.trim() ||
         (center.lat.toFixed(2) + ', ' + center.lng.toFixed(2));
+    }
+
+    function computeArrayMean(arr) {
+      return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
     }
 
     function generateGridFallbackSummaryText(gridData) {
       const s = gridData.summary || {};
       const pts = gridData.points || [];
       const total = s.total || pts.length || 0;
-      const calculateAverage = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
       const pctUygun = total ? Math.round((s.UYGUN || 0) / total * 100) : 0;
 
       let overall = 'Bölge için yeterli veri bulunamadı.';
@@ -2994,10 +2997,10 @@
         total + ' noktanın ' + (s.UYGUN || 0) + '\'i uygun (%' + pctUygun + '), ' +
         (s.RISKLI || 0) + '\'si riskli, ' + (s.UYGUN_DEGIL || 0) +
         '\'i uygun değil olarak değerlendirildi. Ortalama rüzgar ' +
-        calculateAverage(pts.map(p => p.wind_speed_knots)).toFixed(1) + ' knot, görüş ' +
-        calculateAverage(pts.map(p => p.visibility_km)).toFixed(1) + ' km, nem %' +
-        Math.round(calculateAverage(pts.map(p => p.humidity_pct))) + ', sıcaklık ' +
-        calculateAverage(pts.map(p => p.temperature_c)).toFixed(1) + ' °C.';
+        computeArrayMean(pts.map(p => p.wind_speed_knots)).toFixed(1) + ' knot, görüş ' +
+        computeArrayMean(pts.map(p => p.visibility_km)).toFixed(1) + ' km, nem %' +
+        Math.round(computeArrayMean(pts.map(p => p.humidity_pct))) + ', sıcaklık ' +
+        computeArrayMean(pts.map(p => p.temperature_c)).toFixed(1) + ' °C.';
     }
 
     function renderGridAiSummary(gridData) {

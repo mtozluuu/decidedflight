@@ -1695,6 +1695,7 @@ class GridSummaryMetrics:
 
 
 def _mean_excluding_none(values: list[float | None]) -> float | None:
+    """Average trusted numeric values, ignoring missing entries."""
     present = [value for value in values if value is not None]
     if not present:
         return None
@@ -1746,7 +1747,7 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str 
     """Return a GPT-generated Turkish grid summary when available."""
     metrics = _build_grid_summary_metrics(body)
     if metrics is None:
-        return _GRID_NO_DATA_SUMMARY
+        return None
 
     if not api_key or _AsyncOpenAI is None:
         return None
@@ -1786,7 +1787,7 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str 
             max_tokens=300,
         )
         content = (response.choices[0].message.content or "").strip()
-        return content or None
+        return content if content else None
 
     except Exception as exc:
         logger.warning("GPT grid summary failed: %s", exc)
