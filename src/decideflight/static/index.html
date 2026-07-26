@@ -417,6 +417,8 @@
         onclick="switchTab('point')" class="tab-btn active">◈ NOKTA ANALİZİ</button>
       <button id="tab-btn-region" role="tab" aria-selected="false" aria-controls="panel-region"
         onclick="switchTab('region')" class="tab-btn">◈ BÖLGE ANALİZİ</button>
+      <button id="tab-btn-wind" role="tab" aria-selected="false" aria-controls="panel-wind"
+        onclick="switchTab('wind')" class="tab-btn">◈ RÜZGAR</button>
       <button id="tab-btn-settings" role="tab" aria-selected="false" aria-controls="panel-settings"
         onclick="switchTab('settings')" class="tab-btn">◈ AYARLAR</button>
     </nav>
@@ -1075,6 +1077,92 @@
         <p id="settingsSaved" class="hidden mono text-xs text-green-300 mt-3">✓ LİMİTLER KAYDEDİLDİ</p>
       </div>
     </div><!-- /panel-settings -->
+
+    <!-- ══ Tab 4: Live Wind ══════════════════════════════════════════════ -->
+    <div id="panel-wind" role="tabpanel" aria-labelledby="tab-btn-wind" class="hidden space-y-5 pt-6">
+
+      <!-- Loading / Error states -->
+      <div id="windLoading" class="hidden hud-card py-10 text-center">
+        <div class="flex justify-center mb-4"><div class="radar" aria-label="Rüzgar verisi yükleniyor"></div></div>
+        <p class="mono text-green-300 text-sm blink tracking-widest">RÜZGAR VERİSİ ALINIYOR...</p>
+      </div>
+      <div id="windError" class="hidden hud-card px-5 py-4 border-red-500/40 text-red-300 mono text-sm"></div>
+
+      <!-- Placeholder shown before coordinates are set -->
+      <div id="windPlaceholder" class="hud-card p-8 text-center">
+        <p class="mono text-cyan-100/60 text-sm">Rüzgar verisini görmek için önce bir konum analizi yapın.</p>
+      </div>
+
+      <!-- Main wind content (hidden until data loaded) -->
+      <div id="windContent" class="hidden space-y-5">
+
+        <!-- Consensus card -->
+        <div class="hud-card p-6">
+          <div class="flex flex-col sm:flex-row items-center gap-6">
+            <!-- Wind rose SVG -->
+            <div class="flex-shrink-0">
+              <svg id="windRoseSvg" width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+                <!-- Compass circle -->
+                <circle cx="60" cy="60" r="54" stroke="rgba(0,212,255,0.20)" stroke-width="1.5" fill="none"/>
+                <circle cx="60" cy="60" r="3" fill="rgba(0,212,255,0.5)"/>
+                <!-- Cardinal labels -->
+                <text x="60" y="10" text-anchor="middle" fill="rgba(0,212,255,0.7)" font-size="9" font-family="monospace">N</text>
+                <text x="113" y="63" text-anchor="middle" fill="rgba(0,212,255,0.5)" font-size="9" font-family="monospace">E</text>
+                <text x="60" y="116" text-anchor="middle" fill="rgba(0,212,255,0.5)" font-size="9" font-family="monospace">S</text>
+                <text x="7" y="63" text-anchor="middle" fill="rgba(0,212,255,0.5)" font-size="9" font-family="monospace">W</text>
+                <!-- Wind arrow (rotated by JS) -->
+                <g id="windArrowGroup" transform="rotate(0, 60, 60)">
+                  <!-- Arrow tail -->
+                  <line x1="60" y1="60" x2="60" y2="18" stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round"/>
+                  <!-- Arrowhead -->
+                  <polygon points="60,10 55,22 65,22" fill="#00d4ff"/>
+                </g>
+              </svg>
+            </div>
+            <!-- Consensus numbers -->
+            <div class="flex-1 text-center sm:text-left">
+              <p class="mono text-[11px] text-cyan-100/50 tracking-wider mb-1">KONSENSÜS RÜZGAR</p>
+              <div class="flex flex-wrap items-end gap-4">
+                <div>
+                  <p class="mono text-4xl font-extrabold text-cyan-300" id="windConsensusSpeed">— kt</p>
+                  <p class="mono text-[11px] text-cyan-100/60 mt-1" id="windBeaufort"></p>
+                </div>
+                <div>
+                  <p class="mono text-3xl font-bold text-cyan-200" id="windConsensusDir">—°</p>
+                  <p class="mono text-xl text-cyan-300" id="windCompassLabel">—</p>
+                </div>
+              </div>
+              <p class="mono text-[11px] text-cyan-100/40 mt-3" id="windSourceCount"></p>
+            </div>
+            <!-- Refresh button -->
+            <div class="flex-shrink-0">
+              <button onclick="refreshWindData()" class="mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs hover:border-cyan-300 hover:bg-cyan-400/10 transition-colors">
+                🔄 Yenile
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Source comparison table -->
+        <div class="hud-card p-5">
+          <h3 class="mono text-sm text-cyan-300 mb-4">◈ KAYNAK KARŞILAŞTIRMASI</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm mono" id="windSourceTable">
+              <thead>
+                <tr class="border-b border-cyan-400/20 text-left">
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4 tracking-wider">KAYNAK</th>
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4 tracking-wider">YÖN</th>
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4 tracking-wider">HIZ (kt)</th>
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2 tracking-wider">GÜVENİLİRLİK</th>
+                </tr>
+              </thead>
+              <tbody id="windSourceTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /windContent -->
+    </div><!-- /panel-wind -->
 
   </main>
 
@@ -1813,6 +1901,8 @@
 
       // Load nearby runways in background (non-blocking)
       loadNearbyRunways(data.lat, data.lon);
+      // Load wind data in background (non-blocking)
+      loadWindData(data.lat, data.lon);
 
       // Use AI confidence when available, otherwise fall back to score
       const conf = (data.confidence != null)
@@ -2067,7 +2157,7 @@
     // ═══════════════════════════════════════════════════════════════════
 
     function switchTab(tabId) {
-      ['point', 'region', 'settings'].forEach(id => {
+      ['point', 'region', 'wind', 'settings'].forEach(id => {
         document.getElementById('panel-' + id).classList.add('hidden');
         const btn = document.getElementById('tab-btn-' + id);
         btn.classList.remove('active');
@@ -2338,6 +2428,108 @@
         // Wind arrives from windDirDeg, so the vector points toward (windDirDeg + 180)
         drawArrow(windDirDeg + 180, r - 10, 'rgba(0,255,136,0.85)', 2);
       }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // LIVE WIND TAB
+    // ═══════════════════════════════════════════════════════════════════
+
+    let _currentWindLat = null;
+    let _currentWindLon = null;
+
+    function _degreesToCompass(deg) {
+      const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+      return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+    }
+
+    function _beaufortLabel(knots) {
+      if (knots < 1)  return '0 — Sakin';
+      if (knots < 4)  return '1–3 — Hafif';
+      if (knots < 8)  return '4–5 — Orta';
+      if (knots < 14) return '6–7 — Kuvvetli';
+      return '8+ — Fırtına';
+    }
+
+    function _reliabilityBadge(reliability) {
+      const cfg = {
+        high:   { label: 'YÜKSEK', cls: 'bg-green-500/20 text-green-300 border-green-500/40' },
+        medium: { label: 'ORTA',   cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+        low:    { label: 'DÜŞÜK',  cls: 'bg-slate-500/20 text-slate-300 border-slate-500/40' },
+      };
+      const c = cfg[reliability] || cfg.low;
+      return `<span class="mono text-[10px] border rounded px-2 py-0.5 ${c.cls}">${c.label}</span>`;
+    }
+
+    async function loadWindData(lat, lon) {
+      _currentWindLat = lat;
+      _currentWindLon = lon;
+      document.getElementById('windPlaceholder').classList.add('hidden');
+      document.getElementById('windContent').classList.add('hidden');
+      document.getElementById('windError').classList.add('hidden');
+      document.getElementById('windLoading').classList.remove('hidden');
+      try {
+        const res = await fetch(`/api/v1/weather/wind?lat=${lat}&lon=${lon}`);
+        document.getElementById('windLoading').classList.add('hidden');
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          document.getElementById('windError').textContent = '⚠ ' + (err.detail || res.statusText);
+          document.getElementById('windError').classList.remove('hidden');
+          return;
+        }
+        const data = await res.json();
+        _renderWindData(data);
+      } catch(e) {
+        document.getElementById('windLoading').classList.add('hidden');
+        document.getElementById('windError').textContent = '⚠ Rüzgar verisi alınamadı: ' + e.message;
+        document.getElementById('windError').classList.remove('hidden');
+      }
+    }
+
+    function refreshWindData() {
+      if (_currentWindLat !== null && _currentWindLon !== null) {
+        loadWindData(_currentWindLat, _currentWindLon);
+      }
+    }
+
+    function _renderWindData(data) {
+      const c = data.consensus;
+
+      // Consensus card
+      document.getElementById('windConsensusSpeed').textContent = c.wind_speed_knots.toFixed(1) + ' kt';
+      document.getElementById('windConsensusDir').textContent = c.wind_direction_deg.toFixed(0) + '°';
+      document.getElementById('windCompassLabel').textContent = _degreesToCompass(c.wind_direction_deg);
+      document.getElementById('windBeaufort').textContent = _beaufortLabel(c.wind_speed_knots);
+      document.getElementById('windSourceCount').textContent = c.source_count + ' kaynaktan konsensüs';
+
+      // Wind rose arrow — arrow points FROM, so rotate so arrow tip points toward source direction
+      document.getElementById('windArrowGroup').setAttribute('transform', `rotate(${c.wind_direction_deg}, 60, 60)`);
+
+      // Source table
+      const tbody = document.getElementById('windSourceTableBody');
+      tbody.innerHTML = '';
+      // Find single best source (first with highest reliability_weight that has wind_direction_deg)
+      const withDir = data.sources.filter(s => s.wind_direction_deg !== null);
+      const bestWeight = withDir.length ? Math.max(...withDir.map(s => s.reliability_weight)) : null;
+      const bestSource = withDir.find(s => s.reliability_weight === bestWeight) || null;
+
+      data.sources.forEach(s => {
+        const isBest = bestSource !== null && s === bestSource;
+        const dirCell = s.wind_direction_deg !== null
+          ? `${s.wind_direction_deg.toFixed(0)}° ${_degreesToCompass(s.wind_direction_deg)}`
+          : '—';
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-cyan-400/10 hover:bg-cyan-400/5 transition-colors'
+          + (isBest ? ' outline outline-1 outline-cyan-400/60' : '');
+        tr.innerHTML = `
+          <td class="py-2 pr-4 text-cyan-100 text-[12px]">${s.source}${isBest ? ' <span class="text-cyan-400/70 text-[10px]">★</span>' : ''}</td>
+          <td class="py-2 pr-4 text-cyan-200 text-[12px]">${dirCell}</td>
+          <td class="py-2 pr-4 text-cyan-200 text-[12px]">${s.wind_speed_knots.toFixed(1)}</td>
+          <td class="py-2">${_reliabilityBadge(s.reliability)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('windContent').classList.remove('hidden');
     }
 
     // ═══════════════════════════════════════════════════════════════════

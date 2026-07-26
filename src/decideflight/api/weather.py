@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -1779,4 +1780,126 @@ async def calculate_wind_components(
         crosswind_decision=crosswind_dec,
         tailwind_decision=tailwind_dec,
         overall_component_decision=_label[worst],
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/weather/wind
+# ---------------------------------------------------------------------------
+
+_SOURCE_NOTES: dict[str, str] = {
+    "METAR (AVWX)": "Gerçek havalimanı ölçümü",
+    "METAR (CheckWX)": "Gerçek havalimanı ölçümü",
+    "METAR (AviationWeather)": "Gerçek havalimanı ölçümü",
+    "Windy": "Yüksek çözünürlüklü model",
+    "OWM": "OpenWeatherMap anlık verisi",
+    "WeatherAPI": "WeatherAPI anlık verisi",
+    "Open-Meteo": "Açık kaynak hava modeli",
+    "MGM": "Meteoroloji Genel Müdürlüğü",
+}
+
+
+def _source_note(source_name: str) -> str:
+    for key, note in _SOURCE_NOTES.items():
+        if key.lower() in source_name.lower():
+            return note
+    return "Hava verisi kaynağı"
+
+
+def _reliability_label(weight: float) -> str:
+    if weight >= 1.7:
+        return "high"
+    if weight >= 1.0:
+        return "medium"
+    return "low"
+
+
+class WindSourceItem(BaseModel):
+    source: str
+    wind_speed_knots: float
+    wind_direction_deg: float | None
+    reliability: str
+    reliability_weight: float
+    note: str
+
+
+class WindConsensus(BaseModel):
+    wind_speed_knots: float
+    wind_direction_deg: float
+    source_count: int
+
+
+class WindResponse(BaseModel):
+    consensus: WindConsensus
+    sources: list[WindSourceItem]
+
+
+@router.get(
+    "/wind",
+    response_model=WindResponse,
+    summary="Live wind data from all sources",
+)
+async def get_wind(lat: float, lon: float) -> WindResponse:
+    """Return wind readings from every configured source, sorted by reliability.
+
+    Sources without a wind direction are excluded from the consensus calculation
+    but still included in the response (with ``wind_direction_deg`` set to
+    ``null``).  The consensus is a reliability-weight-averaged value computed
+    only from sources that have a valid ``wind_direction_deg``.
+    """
+    try:
+        sources = await fetch_all_sources(lat, lon)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    items = sorted(sources, key=lambda s: s.reliability_weight, reverse=True)
+
+    # Weighted average consensus from sources that have wind_direction_deg
+    valid = [s for s in items if s.wind_direction_deg is not None]
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No source returned a valid wind direction.",
+        )
+
+    total_weight = sum(s.reliability_weight for s in valid)
+    avg_speed = (
+        sum(s.wind_speed_knots * s.reliability_weight for s in valid) / total_weight
+    )
+
+    # Circular mean for wind direction
+    sin_sum = sum(
+        math.sin(math.radians(s.wind_direction_deg)) * s.reliability_weight
+        for s in valid
+    )
+    cos_sum = sum(
+        math.cos(math.radians(s.wind_direction_deg)) * s.reliability_weight
+        for s in valid
+    )
+    avg_dir = math.degrees(math.atan2(sin_sum, cos_sum)) % 360.0
+
+    return WindResponse(
+        consensus=WindConsensus(
+            wind_speed_knots=round(avg_speed, 1),
+            wind_direction_deg=round(avg_dir, 1),
+            source_count=len(valid),
+        ),
+        sources=[
+            WindSourceItem(
+                source=s.source,
+                wind_speed_knots=round(s.wind_speed_knots, 1),
+                wind_direction_deg=(
+                    round(s.wind_direction_deg, 1)
+                    if s.wind_direction_deg is not None
+                    else None
+                ),
+                reliability=_reliability_label(s.reliability_weight),
+                reliability_weight=s.reliability_weight,
+                note=_source_note(s.source),
+            )
+            for s in items
+        ],
     )
