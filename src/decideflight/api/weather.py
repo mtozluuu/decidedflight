@@ -17,7 +17,8 @@ import asyncio
 import json
 import logging
 import math
-from dataclasses import asdict
+import os
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -32,6 +33,7 @@ from decideflight.models.feedback import Feedback
 from decideflight.models.weather_report import WeatherReport
 from decideflight.services.ai_decision_engine import (
     AIDecisionResult,
+    _AsyncOpenAI,
     build_feedback_context,
     chat_about_report,
     make_ai_decision,
@@ -50,11 +52,6 @@ from decideflight.services.weather_fetcher import (
     fetch_nearby_runways,
 )
 
-try:
-    from openai import AsyncOpenAI as _AsyncOpenAI  # type: ignore[import]
-except ImportError:  # pragma: no cover
-    _AsyncOpenAI = None  # type: ignore[assignment,misc]
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
@@ -62,6 +59,7 @@ router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
 # Grid analysis: batch size and inter-batch delay to avoid rate limits
 _GRID_BATCH_SIZE = 5
 _GRID_BATCH_DELAY = 0.5
+_GRID_NO_DATA_SUMMARY = "Bölge için yeterli veri bulunamadı."
 
 # Seasonal analysis: climate zone latitude thresholds
 _TROPICAL_LAT_THRESHOLD = 23.5
@@ -977,8 +975,7 @@ async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
                     "latitude": body.lat,
                     "longitude": body.lon,
                     "daily": (
-                        "wind_speed_10m_mean,precipitation_sum,"
-                        "temperature_2m_mean"
+                        "wind_speed_10m_mean,precipitation_sum," "temperature_2m_mean"
                     ),
                     "start_date": "1991-01-01",
                     "end_date": "2020-12-31",
@@ -1031,39 +1028,119 @@ async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
         abs_lat = abs(body.lat)
         if abs_lat < _TROPICAL_LAT_THRESHOLD:  # Tropical
             monthly_wind_kmh = [
-                12.0, 12.0, 13.0, 13.0, 14.0, 15.0,
-                15.0, 14.0, 13.0, 12.0, 12.0, 12.0,
+                12.0,
+                12.0,
+                13.0,
+                13.0,
+                14.0,
+                15.0,
+                15.0,
+                14.0,
+                13.0,
+                12.0,
+                12.0,
+                12.0,
             ]
             monthly_precip_mm = [
-                5.0, 5.0, 6.0, 8.0, 12.0, 18.0,
-                20.0, 18.0, 15.0, 10.0, 7.0, 5.0,
+                5.0,
+                5.0,
+                6.0,
+                8.0,
+                12.0,
+                18.0,
+                20.0,
+                18.0,
+                15.0,
+                10.0,
+                7.0,
+                5.0,
             ]
             monthly_temp_c = [28.0] * 12
         elif abs_lat < _POLAR_LAT_THRESHOLD:  # Temperate
             monthly_wind_kmh = [
-                18.0, 17.0, 16.0, 14.0, 12.0, 11.0,
-                11.0, 12.0, 14.0, 16.0, 18.0, 19.0,
+                18.0,
+                17.0,
+                16.0,
+                14.0,
+                12.0,
+                11.0,
+                11.0,
+                12.0,
+                14.0,
+                16.0,
+                18.0,
+                19.0,
             ]
             monthly_precip_mm = [
-                8.0, 7.0, 8.0, 7.0, 7.0, 6.0,
-                5.0, 6.0, 7.0, 9.0, 10.0, 9.0,
+                8.0,
+                7.0,
+                8.0,
+                7.0,
+                7.0,
+                6.0,
+                5.0,
+                6.0,
+                7.0,
+                9.0,
+                10.0,
+                9.0,
             ]
             monthly_temp_c = [
-                2.0, 3.0, 7.0, 12.0, 17.0, 21.0,
-                23.0, 22.0, 18.0, 12.0, 7.0, 3.0,
+                2.0,
+                3.0,
+                7.0,
+                12.0,
+                17.0,
+                21.0,
+                23.0,
+                22.0,
+                18.0,
+                12.0,
+                7.0,
+                3.0,
             ]
         else:  # Polar
             monthly_wind_kmh = [
-                25.0, 23.0, 20.0, 18.0, 15.0, 12.0,
-                12.0, 14.0, 18.0, 22.0, 25.0, 27.0,
+                25.0,
+                23.0,
+                20.0,
+                18.0,
+                15.0,
+                12.0,
+                12.0,
+                14.0,
+                18.0,
+                22.0,
+                25.0,
+                27.0,
             ]
             monthly_precip_mm = [
-                4.0, 3.0, 4.0, 4.0, 5.0, 6.0,
-                7.0, 7.0, 6.0, 5.0, 4.0, 4.0,
+                4.0,
+                3.0,
+                4.0,
+                4.0,
+                5.0,
+                6.0,
+                7.0,
+                7.0,
+                6.0,
+                5.0,
+                4.0,
+                4.0,
             ]
             monthly_temp_c = [
-                -15.0, -14.0, -9.0, -2.0, 5.0, 12.0,
-                14.0, 13.0, 7.0, -1.0, -9.0, -13.0,
+                -15.0,
+                -14.0,
+                -9.0,
+                -2.0,
+                5.0,
+                12.0,
+                14.0,
+                13.0,
+                7.0,
+                -1.0,
+                -9.0,
+                -13.0,
             ]
 
     months: list[SeasonalMonthSchema] = []
@@ -1073,11 +1150,13 @@ async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
         temp = monthly_temp_c[index] if monthly_temp_c else _DEFAULT_TEMP_C
 
         visibility_km = (
-            10.0 if precip < _PRECIP_LIGHT_MM
+            10.0
+            if precip < _PRECIP_LIGHT_MM
             else (7.0 if precip < _PRECIP_MODERATE_MM else 4.0)
         )
         precip_level = (
-            0 if precip < _PRECIP_LIGHT_MM
+            0
+            if precip < _PRECIP_LIGHT_MM
             else (1 if precip < _PRECIP_MODERATE_MM else 2)
         )
 
@@ -1139,6 +1218,7 @@ class GridAnalysisRequest(BaseModel):
     grid_size: int = 25  # 25 (5x5) or 100 (10x10)
     altitude_ft: float = 1000.0
     hours: int = 1  # 1 = instant, 24 = next 24 h
+    location_name: str = ""
     limits: DroneLimit = DroneLimit()
 
     @model_validator(mode="after")
@@ -1176,6 +1256,7 @@ class GridAnalysisResponse(BaseModel):
     summary: GridSummary
     grid_size: int
     altitude_ft: float
+    ai_regional_summary: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -1536,17 +1617,32 @@ async def analyse_weather_grid(
     n_uygun = sum(1 for p in points if p.decision == _UYGUN)
     n_riskli = sum(1 for p in points if p.decision == _RISKLI)
     n_uygun_degil = sum(1 for p in points if p.decision == _UYGUN_DEGIL)
+    summary = GridSummary(
+        UYGUN=n_uygun,
+        RISKLI=n_riskli,
+        UYGUN_DEGIL=n_uygun_degil,
+        total=len(points),
+    )
+    ai_regional_summary = await _build_grid_ai_summary(
+        GridSummaryRequest(
+            points=points,
+            summary=summary,
+            altitude_ft=body.altitude_ft,
+            location_hint=body.location_name,
+            lat_min=body.lat_min,
+            lat_max=body.lat_max,
+            lon_min=body.lon_min,
+            lon_max=body.lon_max,
+        ),
+        os.environ.get("OPENAI_API_KEY", ""),
+    )
 
     return GridAnalysisResponse(
         points=points,
-        summary=GridSummary(
-            UYGUN=n_uygun,
-            RISKLI=n_riskli,
-            UYGUN_DEGIL=n_uygun_degil,
-            total=len(points),
-        ),
+        summary=summary,
         grid_size=body.grid_size,
         altitude_ft=body.altitude_ft,
+        ai_regional_summary=ai_regional_summary,
     )
 
 
@@ -1560,6 +1656,10 @@ class GridSummaryRequest(BaseModel):
     summary: GridSummary
     altitude_ft: float = 1000.0
     location_hint: str = ""
+    lat_min: float | None = None
+    lat_max: float | None = None
+    lon_min: float | None = None
+    lon_max: float | None = None
 
 
 class GridSummaryResponse(BaseModel):
@@ -1576,52 +1676,109 @@ async def grid_summary(body: GridSummaryRequest) -> GridSummaryResponse:
     """Call GPT-4o (or fall back to rule-based text) with aggregate grid stats
     and return a single Turkish paragraph summarising the region for drone flight.
     """
-    import os
-
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    summary_text = await _build_grid_ai_summary(body, api_key)
+    summary_text = await _build_grid_summary_text(body)
     return GridSummaryResponse(ai_summary=summary_text)
 
 
-async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str:
-    """Return AI or rule-based Turkish grid summary."""
+@dataclass(frozen=True)
+class GridSummaryMetrics:
+    avg_wind: float
+    avg_temp: float
+    avg_humidity: float
+    avg_vis: float
+    avg_cloud_base: float | None
+    pct_uygun: int
+    pct_riskli: int
+    pct_uygun_degil: int
+    location_name: str
+    bounds: str
+
+
+def _calculate_mean_excluding_none(values: list[float | None]) -> float | None:
+    """Average trusted numeric values, ignoring missing entries."""
+    present = [value for value in values if value is not None]
+    if not present:
+        return None
+    return sum(present) / len(present)
+
+
+def _format_grid_bounds(body: GridSummaryRequest) -> str:
+    if None in (body.lat_min, body.lat_max, body.lon_min, body.lon_max):
+        return "Belirtilmedi"
+    return (
+        f"{body.lat_min:.4f}-{body.lat_max:.4f}, "
+        f"{body.lon_min:.4f}-{body.lon_max:.4f}"
+    )
+
+
+def _build_grid_summary_metrics(body: GridSummaryRequest) -> GridSummaryMetrics | None:
     points = body.points
     summary = body.summary
 
     if not points:
-        return "Bölge için yeterli veri bulunamadı."
+        return None
 
-    # Compute aggregate stats
     avg_wind = sum(p.wind_speed_knots for p in points) / len(points)
     avg_temp = sum(p.temperature_c for p in points) / len(points)
     avg_humidity = sum(p.humidity_pct for p in points) / len(points)
     avg_vis = sum(p.visibility_km for p in points) / len(points)
+    avg_cloud_base = _calculate_mean_excluding_none([p.cloud_base_ft for p in points])
     pct_uygun = round(summary.UYGUN / summary.total * 100) if summary.total else 0
+    pct_riskli = round(summary.RISKLI / summary.total * 100) if summary.total else 0
+    pct_uygun_degil = (
+        round(summary.UYGUN_DEGIL / summary.total * 100) if summary.total else 0
+    )
+
+    return GridSummaryMetrics(
+        avg_wind=avg_wind,
+        avg_temp=avg_temp,
+        avg_humidity=avg_humidity,
+        avg_vis=avg_vis,
+        avg_cloud_base=avg_cloud_base,
+        pct_uygun=pct_uygun,
+        pct_riskli=pct_riskli,
+        pct_uygun_degil=pct_uygun_degil,
+        location_name=body.location_hint.strip() or "Belirtilmedi",
+        bounds=_format_grid_bounds(body),
+    )
+
+
+async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str | None:
+    """Return a GPT-generated Turkish grid summary when available."""
+    metrics = _build_grid_summary_metrics(body)
+    if metrics is None:
+        return None
 
     if not api_key or _AsyncOpenAI is None:
-        return _rule_based_grid_summary(
-            summary, avg_wind, avg_temp, avg_humidity, avg_vis, pct_uygun
-        )
+        return None
 
     try:
         client = _AsyncOpenAI(api_key=api_key)
-        pct_r = round(summary.RISKLI / summary.total * 100) if summary.total else 0
-        pct_d = round(summary.UYGUN_DEGIL / summary.total * 100) if summary.total else 0
+        avg_cloud_base = metrics.avg_cloud_base
+        avg_cloud_base_text = (
+            f"{avg_cloud_base:.0f} ft" if avg_cloud_base is not None else "Bilinmiyor"
+        )
         prompt = (
-            "Bir drone uçuş güvenlik uzmanı olarak aşağıdaki bölge analizini "
-            "değerlendir.\n\n"
-            f"Konum ipucu: {body.location_hint or 'Belirtilmedi'}\n"
-            f"İrtifa: {body.altitude_ft:.0f} ft\n"
-            f"Toplam nokta: {summary.total}\n"
-            f"  UYGUN: {summary.UYGUN} (%{pct_uygun})\n"
-            f"  RISKLI: {summary.RISKLI} (%{pct_r})\n"
-            f"  UYGUN_DEGIL: {summary.UYGUN_DEGIL} (%{pct_d})\n"
-            f"Ortalama rüzgar: {avg_wind:.1f} knot\n"
-            f"Ortalama sıcaklık: {avg_temp:.1f} °C\n"
-            f"Ortalama nem: {avg_humidity:.0f}%\n"
-            f"Ortalama görüş: {avg_vis:.1f} km\n\n"
-            "Bu bölge için drone uçuşunu Türkçe 2-3 cümleyle değerlendir. "
-            "Sadece düz metin döndür, JSON değil."
+            "Sen bir drone uçuş güvenlik uzmanısın. Aşağıdaki bölgesel hava "
+            "analizi verilerini değerlendirerek kısa ve anlamlı bir Türkçe "
+            "yorum yaz.\n\n"
+            f"BÖLGE: {metrics.location_name} ({metrics.bounds})\n"
+            f"GRID BOYUTU: {body.summary.total} nokta\n"
+            f"İRTİFA: {body.altitude_ft:.0f} ft\n\n"
+            "KARAR DAĞILIMI:\n"
+            f"- UYGUN: {body.summary.UYGUN} nokta (%{metrics.pct_uygun})\n"
+            f"- RİSKLİ: {body.summary.RISKLI} nokta (%{metrics.pct_riskli})\n"
+            "- UYGUN DEĞİL: "
+            f"{body.summary.UYGUN_DEGIL} nokta (%{metrics.pct_uygun_degil})\n\n"
+            "ORT. PARAMETRELER:\n"
+            f"- Rüzgar: {metrics.avg_wind:.1f} kt\n"
+            f"- Nem: {metrics.avg_humidity:.0f}%\n"
+            f"- Sıcaklık: {metrics.avg_temp:.1f} °C\n"
+            f"- Görüş: {metrics.avg_vis:.1f} km\n"
+            f"- Bulut tabanı: {avg_cloud_base_text}\n\n"
+            "2-3 cümle ile bölgenin genel uçuş koşullarını değerlendir. "
+            "Varsa dikkat edilmesi gereken başlıca risk faktörlerini belirt. "
+            "Yanıtın doğrudan değerlendirme metni olsun, JSON değil."
         )
         response = await client.chat.completions.create(
             model="gpt-4o",
@@ -1629,13 +1786,34 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str:
             temperature=0.3,
             max_tokens=300,
         )
-        return (response.choices[0].message.content or "").strip()
+        content = (response.choices[0].message.content or "").strip()
+        return content if content else None
 
     except Exception as exc:
-        logger.warning("GPT grid summary failed, using rule-based: %s", exc)
-        return _rule_based_grid_summary(
-            summary, avg_wind, avg_temp, avg_humidity, avg_vis, pct_uygun
-        )
+        logger.warning("GPT grid summary failed: %s", exc)
+        return None
+
+
+async def _build_grid_summary_text(body: GridSummaryRequest) -> str:
+    """Return AI summary when available, otherwise the rule-based fallback."""
+    metrics = _build_grid_summary_metrics(body)
+    if metrics is None:
+        return _GRID_NO_DATA_SUMMARY
+
+    ai_summary = await _build_grid_ai_summary(
+        body, os.environ.get("OPENAI_API_KEY", "")
+    )
+    if ai_summary:
+        return ai_summary
+
+    return _rule_based_grid_summary(
+        body.summary,
+        metrics.avg_wind,
+        metrics.avg_temp,
+        metrics.avg_humidity,
+        metrics.avg_vis,
+        metrics.pct_uygun,
+    )
 
 
 def _rule_based_grid_summary(

@@ -892,7 +892,10 @@
         <p class="mono text-xs text-violet-300/80 animate-pulse">✦ Yapay zeka bölge analizi hazırlanıyor...</p>
       </div>
       <div id="gridAiSummarySection" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
-        <h3 class="mono text-sm mb-3 text-violet-300">✦ YAPAY ZEKA BÖLGE DEĞERLENDİRMESİ</h3>
+        <div class="flex items-center gap-2 mb-3">
+          <h3 class="mono text-sm text-violet-300">✦ YAPAY ZEKA BÖLGE DEĞERLENDİRMESİ</h3>
+          <span id="gridAiModelBadge" class="hidden mono text-[10px] px-2 py-1 rounded-full border border-violet-400/40 text-violet-200 bg-violet-900/40">✦ GPT-4o</span>
+        </div>
         <p id="gridAiSummaryText" class="text-sm text-violet-100/90 leading-relaxed"></p>
       </div>
 
@@ -2819,6 +2822,14 @@
       document.getElementById('gridSummarySection').classList.add('hidden');
       document.getElementById('gridErrorSection').classList.add('hidden');
       document.getElementById('filterBar').classList.add('hidden');
+      document.getElementById('gridAiSummarySection').classList.add('hidden');
+      document.getElementById('gridAiModelBadge').classList.add('hidden');
+    }
+
+    function determineGridLocationLabel(bounds) {
+      const center = bounds.getCenter();
+      return document.getElementById('locationInput').value.trim() ||
+        `${center.lat.toFixed(2)}, ${center.lng.toFixed(2)}`;
     }
 
     async function analyzeGrid() {
@@ -2829,6 +2840,7 @@
       const altitudeFt = parseFloat(document.getElementById('altitudeSelect').value);
       const hours = _getHoursParam();
       const limits = loadSettings();
+      const locationName = determineGridLocationLabel(bounds);
 
       // Remove old grid markers
       gridMarkers.forEach(({ marker }) => marker.remove());
@@ -2854,6 +2866,7 @@
             grid_size: gridSize,
             altitude_ft: altitudeFt,
             hours: hours,
+            location_name: locationName,
             limits: limits,
           }),
         });
@@ -2943,8 +2956,7 @@
         document.getElementById('filterBar').classList.remove('hidden');
         document.getElementById('regionStatus').textContent = s.total + ' nokta analiz edildi.';
 
-        // Fetch AI grid summary asynchronously
-        fetchGridAiSummary(data, bounds, altitudeFt);
+        renderGridAiSummary(data);
 
       } catch (err) {
         document.getElementById('gridErrorMsg').textContent = err.message;
@@ -2962,37 +2974,44 @@
       if (worstPt && map) map.setView([worstPt.lat, worstPt.lon], Math.max(map.getZoom(), 10));
     }
 
-    async function fetchGridAiSummary(gridData, bounds, altitudeFt) {
-      const aiLoading = document.getElementById('gridAiLoadingSection');
+    function computeArrayMean(arr) {
+      return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    }
+
+    function generateGridFallbackSummaryText(gridData) {
+      const s = gridData.summary || {};
+      const pts = gridData.points || [];
+      const total = s.total || pts.length || 0;
+      const pctUygun = total ? Math.round((s.UYGUN || 0) / total * 100) : 0;
+
+      let overall = 'Bölge için yeterli veri bulunamadı.';
+      if (total > 0 && pctUygun >= 70) {
+        overall = 'Bölgenin büyük çoğunluğu drone uçuşu için UYGUN koşullar göstermektedir.';
+      } else if (total > 0 && pctUygun >= 40) {
+        overall = 'Bölgede karma koşullar gözlemlenmektedir; uçuş planlaması dikkat gerektirir.';
+      } else if (total > 0) {
+        overall = 'Bölgenin önemli bir kısmı drone uçuşu için UYGUN DEĞİL koşullar içermektedir.';
+      }
+
+      return overall + ' ' +
+        total + ' noktanın ' + (s.UYGUN || 0) + '\'i uygun (%' + pctUygun + '), ' +
+        (s.RISKLI || 0) + '\'si riskli, ' + (s.UYGUN_DEGIL || 0) +
+        '\'i uygun değil olarak değerlendirildi. Ortalama rüzgar ' +
+        computeArrayMean(pts.map(p => p.wind_speed_knots)).toFixed(1) + ' knot, görüş ' +
+        computeArrayMean(pts.map(p => p.visibility_km)).toFixed(1) + ' km, nem %' +
+        Math.round(computeArrayMean(pts.map(p => p.humidity_pct))) + ', sıcaklık ' +
+        computeArrayMean(pts.map(p => p.temperature_c)).toFixed(1) + ' °C.';
+    }
+
+    function renderGridAiSummary(gridData) {
       const aiSection = document.getElementById('gridAiSummarySection');
       const aiText = document.getElementById('gridAiSummaryText');
-
-      aiSection.classList.add('hidden');
-      aiLoading.classList.remove('hidden');
-
-      const center = bounds.getCenter();
-      const locationHint = center.lat.toFixed(2) + ', ' + center.lng.toFixed(2);
-
-      try {
-        const res = await fetch('/api/v1/weather/grid/summary', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            points: gridData.points,
-            summary: gridData.summary,
-            altitude_ft: altitudeFt,
-            location_hint: locationHint,
-          }),
-        });
-        if (!res.ok) throw new Error('AI özeti alınamadı');
-        const result = await res.json();
-        aiText.textContent = result.ai_summary || '';
-        aiSection.classList.remove('hidden');
-      } catch (err) {
-        console.warn('Grid AI summary error:', err);
-      } finally {
-        aiLoading.classList.add('hidden');
-      }
+      const aiBadge = document.getElementById('gridAiModelBadge');
+      const summaryText = gridData.ai_regional_summary ||
+        generateGridFallbackSummaryText(gridData);
+      aiText.textContent = summaryText;
+      aiBadge.classList.toggle('hidden', !gridData.ai_regional_summary);
+      aiSection.classList.remove('hidden');
     }
 
   </script>

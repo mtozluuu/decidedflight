@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from decideflight.api import weather as weather_api
 from decideflight.main import app
 from decideflight.services.ai_decision_engine import (
     AIDecisionResult,
@@ -464,3 +465,138 @@ class TestGridSummaryEndpoint:
         assert response.status_code == 200
         body = response.json()
         assert len(body["ai_summary"]) > 0
+
+
+class TestGridAnalysisEndpoint:
+    def _grid_weather(self) -> dict:
+        return {
+            "wind_speed_knots": 12.0,
+            "temperature_c": 24.0,
+            "humidity_pct": 68.0,
+            "visibility_km": 9.0,
+            "cloud_base_ft": 1800.0,
+            "cloud_ceiling_ft": 2500.0,
+            "precipitation_level": 0,
+            "cloud_cover_pct": 45.0,
+        }
+
+    def _request_body(self) -> dict:
+        return {
+            "lat_min": 41.0,
+            "lat_max": 41.1,
+            "lon_min": 28.9,
+            "lon_max": 29.0,
+            "grid_size": 25,
+            "altitude_ft": 1000.0,
+            "hours": 1,
+            "location_name": "Istanbul, Turkey",
+        }
+
+    def test_grid_returns_ai_regional_summary_when_gpt_succeeds(
+        self, client: TestClient
+    ):
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = (
+            "Bölgenin genelinde uçuş yapılabilir, ancak rüzgar dalgalanmaları izlenmelidir."
+        )
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "fake-key"}),
+            patch(
+                "decideflight.api.weather._fetch_grid_point_weather",
+                new=AsyncMock(return_value=self._grid_weather()),
+            ),
+            patch(
+                "decideflight.api.weather._AsyncOpenAI",
+                return_value=mock_client,
+            ),
+        ):
+            response = client.post("/api/v1/weather/grid", json=self._request_body())
+
+        assert response.status_code == 200
+        body = response.json()
+        assert (
+            body["ai_regional_summary"]
+            == "Bölgenin genelinde uçuş yapılabilir, ancak rüzgar dalgalanmaları izlenmelidir."
+        )
+
+        messages = mock_client.chat.completions.create.await_args.kwargs.get(
+            "messages", []
+        )
+        assert messages, "Expected GPT request messages to be sent"
+        prompt = messages[0].get("content", "")
+        assert "BÖLGE: Istanbul, Turkey (41.0000-41.1000, 28.9000-29.0000)" in prompt
+        assert "- Bulut tabanı: 1800 ft" in prompt
+
+    def test_grid_leaves_ai_regional_summary_null_without_key(self, client: TestClient):
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(
+                "decideflight.api.weather._fetch_grid_point_weather",
+                new=AsyncMock(return_value=self._grid_weather()),
+            ),
+        ):
+            response = client.post("/api/v1/weather/grid", json=self._request_body())
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ai_regional_summary"] is None
+
+
+class TestGridSummaryHelpers:
+    def test_format_grid_bounds_handles_missing_values(self):
+        request = weather_api.GridSummaryRequest(
+            points=[],
+            summary=weather_api.GridSummary(UYGUN=0, RISKLI=0, UYGUN_DEGIL=0, total=0),
+        )
+
+        assert weather_api._format_grid_bounds(request) == "Belirtilmedi"
+
+    def test_build_grid_summary_metrics_averages_cloud_base_with_none_values(self):
+        request = weather_api.GridSummaryRequest(
+            points=[
+                weather_api.GridPointWeather(
+                    lat=41.0,
+                    lon=28.9,
+                    decision="UYGUN",
+                    wind_speed_knots=10.0,
+                    temperature_c=22.0,
+                    humidity_pct=60.0,
+                    visibility_km=8.0,
+                    cloud_base_ft=1200.0,
+                    cloud_ceiling_ft=2000.0,
+                    precipitation_level=0,
+                    cloud_cover_pct=20.0,
+                ),
+                weather_api.GridPointWeather(
+                    lat=41.1,
+                    lon=29.0,
+                    decision="RISKLI",
+                    wind_speed_knots=14.0,
+                    temperature_c=26.0,
+                    humidity_pct=70.0,
+                    visibility_km=10.0,
+                    cloud_base_ft=None,
+                    cloud_ceiling_ft=None,
+                    precipitation_level=1,
+                    cloud_cover_pct=55.0,
+                ),
+            ],
+            summary=weather_api.GridSummary(UYGUN=1, RISKLI=1, UYGUN_DEGIL=0, total=2),
+            altitude_ft=1000.0,
+            location_hint="Istanbul, Turkey",
+            lat_min=41.0,
+            lat_max=41.1,
+            lon_min=28.9,
+            lon_max=29.0,
+        )
+
+        metrics = weather_api._build_grid_summary_metrics(request)
+
+        assert metrics is not None
+        assert metrics.avg_wind == pytest.approx(12.0)
+        assert metrics.avg_humidity == pytest.approx(65.0)
+        assert metrics.avg_cloud_base == pytest.approx(1200.0)
+        assert metrics.bounds == "41.0000-41.1000, 28.9000-29.0000"
