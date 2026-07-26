@@ -2826,6 +2826,12 @@
       document.getElementById('gridAiModelBadge').classList.add('hidden');
     }
 
+    function determineGridLocationLabel(bounds) {
+      const center = bounds.getCenter();
+      return document.getElementById('locationInput').value.trim() ||
+        `${center.lat.toFixed(2)}, ${center.lng.toFixed(2)}`;
+    }
+
     async function analyzeGrid() {
       if (!drawnRectangle) return;
 
@@ -2966,12 +2972,6 @@
 
     function panToWorstPoint() {
       if (worstPt && map) map.setView([worstPt.lat, worstPt.lon], Math.max(map.getZoom(), 10));
-    }
-
-    function determineGridLocationLabel(bounds) {
-      const center = bounds.getCenter();
-      return document.getElementById('locationInput').value.trim() ||
-        (center.lat.toFixed(2) + ', ' + center.lng.toFixed(2));
     }
 
     function computeArrayMean(arr) {

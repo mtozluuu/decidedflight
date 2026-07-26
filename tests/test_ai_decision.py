@@ -522,9 +522,11 @@ class TestGridAnalysisEndpoint:
             == "Bölgenin genelinde uçuş yapılabilir, ancak rüzgar dalgalanmaları izlenmelidir."
         )
 
-        prompt = mock_client.chat.completions.create.await_args.kwargs["messages"][0][
-            "content"
-        ]
+        messages = mock_client.chat.completions.create.await_args.kwargs.get(
+            "messages", []
+        )
+        assert messages, "Expected GPT request messages to be sent"
+        prompt = messages[0].get("content", "")
         assert "BÖLGE: Istanbul, Turkey (41.0000-41.1000, 28.9000-29.0000)" in prompt
         assert "- Bulut tabanı: 1800 ft" in prompt
 
