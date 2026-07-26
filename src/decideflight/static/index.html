@@ -2834,9 +2834,7 @@
       const altitudeFt = parseFloat(document.getElementById('altitudeSelect').value);
       const hours = _getHoursParam();
       const limits = loadSettings();
-      const center = bounds.getCenter();
-      const locationName = document.getElementById('locationInput').value.trim() ||
-        (center.lat.toFixed(2) + ', ' + center.lng.toFixed(2));
+      const locationName = getGridLocationName(bounds);
 
       // Remove old grid markers
       gridMarkers.forEach(({ marker }) => marker.remove());
@@ -2970,7 +2968,13 @@
       if (worstPt && map) map.setView([worstPt.lat, worstPt.lon], Math.max(map.getZoom(), 10));
     }
 
-    function buildGridFallbackSummary(gridData) {
+    function getGridLocationName(bounds) {
+      const center = bounds.getCenter();
+      return document.getElementById('locationInput').value.trim() ||
+        (center.lat.toFixed(2) + ', ' + center.lng.toFixed(2));
+    }
+
+    function generateGridFallbackSummaryText(gridData) {
       const s = gridData.summary || {};
       const pts = gridData.points || [];
       const total = s.total || pts.length || 0;
@@ -3000,7 +3004,8 @@
       const aiSection = document.getElementById('gridAiSummarySection');
       const aiText = document.getElementById('gridAiSummaryText');
       const aiBadge = document.getElementById('gridAiModelBadge');
-      const summaryText = gridData.ai_regional_summary || buildGridFallbackSummary(gridData);
+      const summaryText = gridData.ai_regional_summary ||
+        generateGridFallbackSummaryText(gridData);
       aiText.textContent = summaryText;
       aiBadge.classList.toggle('hidden', !gridData.ai_regional_summary);
       aiSection.classList.remove('hidden');

@@ -18,7 +18,7 @@ import json
 import logging
 import math
 import os
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -1679,7 +1679,21 @@ async def grid_summary(body: GridSummaryRequest) -> GridSummaryResponse:
     return GridSummaryResponse(ai_summary=summary_text)
 
 
-def _mean_optional(values: list[float | None]) -> float | None:
+@dataclass(frozen=True)
+class GridSummaryMetrics:
+    avg_wind: float
+    avg_temp: float
+    avg_humidity: float
+    avg_vis: float
+    avg_cloud_base: float | None
+    pct_uygun: int
+    pct_riskli: int
+    pct_uygun_degil: int
+    location_name: str
+    bounds: str
+
+
+def _mean_excluding_none(values: list[float | None]) -> float | None:
     present = [value for value in values if value is not None]
     if not present:
         return None
@@ -1695,45 +1709,42 @@ def _format_grid_bounds(body: GridSummaryRequest) -> str:
     )
 
 
-def _build_grid_summary_metrics(
-    body: GridSummaryRequest,
-) -> dict[str, float | int | str | None]:
+def _build_grid_summary_metrics(body: GridSummaryRequest) -> GridSummaryMetrics | None:
     points = body.points
     summary = body.summary
 
     if not points:
-        return {"empty": True}
+        return None
 
     avg_wind = sum(p.wind_speed_knots for p in points) / len(points)
     avg_temp = sum(p.temperature_c for p in points) / len(points)
     avg_humidity = sum(p.humidity_pct for p in points) / len(points)
     avg_vis = sum(p.visibility_km for p in points) / len(points)
-    avg_cloud_base = _mean_optional([p.cloud_base_ft for p in points])
+    avg_cloud_base = _mean_excluding_none([p.cloud_base_ft for p in points])
     pct_uygun = round(summary.UYGUN / summary.total * 100) if summary.total else 0
     pct_riskli = round(summary.RISKLI / summary.total * 100) if summary.total else 0
     pct_uygun_degil = (
         round(summary.UYGUN_DEGIL / summary.total * 100) if summary.total else 0
     )
 
-    return {
-        "empty": False,
-        "avg_wind": avg_wind,
-        "avg_temp": avg_temp,
-        "avg_humidity": avg_humidity,
-        "avg_vis": avg_vis,
-        "avg_cloud_base": avg_cloud_base,
-        "pct_uygun": pct_uygun,
-        "pct_riskli": pct_riskli,
-        "pct_uygun_degil": pct_uygun_degil,
-        "location_name": body.location_hint.strip() or "Belirtilmedi",
-        "bounds": _format_grid_bounds(body),
-    }
+    return GridSummaryMetrics(
+        avg_wind=avg_wind,
+        avg_temp=avg_temp,
+        avg_humidity=avg_humidity,
+        avg_vis=avg_vis,
+        avg_cloud_base=avg_cloud_base,
+        pct_uygun=pct_uygun,
+        pct_riskli=pct_riskli,
+        pct_uygun_degil=pct_uygun_degil,
+        location_name=body.location_hint.strip() or "Belirtilmedi",
+        bounds=_format_grid_bounds(body),
+    )
 
 
 async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str | None:
     """Return a GPT-generated Turkish grid summary when available."""
     metrics = _build_grid_summary_metrics(body)
-    if metrics["empty"]:
+    if metrics is None:
         return "Bölge için yeterli veri bulunamadı."
 
     if not api_key or _AsyncOpenAI is None:
@@ -1741,7 +1752,7 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str 
 
     try:
         client = _AsyncOpenAI(api_key=api_key)
-        avg_cloud_base = metrics["avg_cloud_base"]
+        avg_cloud_base = metrics.avg_cloud_base
         avg_cloud_base_text = (
             f"{avg_cloud_base:.0f} ft"
             if isinstance(avg_cloud_base, (int, float))
@@ -1751,19 +1762,19 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str 
             "Sen bir drone uçuş güvenlik uzmanısın. Aşağıdaki bölgesel hava "
             "analizi verilerini değerlendirerek kısa ve anlamlı bir Türkçe "
             "yorum yaz.\n\n"
-            f"BÖLGE: {metrics['location_name']} ({metrics['bounds']})\n"
+            f"BÖLGE: {metrics.location_name} ({metrics.bounds})\n"
             f"GRID BOYUTU: {body.summary.total} nokta\n"
             f"İRTİFA: {body.altitude_ft:.0f} ft\n\n"
             "KARAR DAĞILIMI:\n"
-            f"- UYGUN: {body.summary.UYGUN} nokta (%{metrics['pct_uygun']})\n"
-            f"- RİSKLİ: {body.summary.RISKLI} nokta (%{metrics['pct_riskli']})\n"
+            f"- UYGUN: {body.summary.UYGUN} nokta (%{metrics.pct_uygun})\n"
+            f"- RİSKLİ: {body.summary.RISKLI} nokta (%{metrics.pct_riskli})\n"
             "- UYGUN DEĞİL: "
-            f"{body.summary.UYGUN_DEGIL} nokta (%{metrics['pct_uygun_degil']})\n\n"
+            f"{body.summary.UYGUN_DEGIL} nokta (%{metrics.pct_uygun_degil})\n\n"
             "ORT. PARAMETRELER:\n"
-            f"- Rüzgar: {metrics['avg_wind']:.1f} kt\n"
-            f"- Nem: {metrics['avg_humidity']:.0f}%\n"
-            f"- Sıcaklık: {metrics['avg_temp']:.1f} °C\n"
-            f"- Görüş: {metrics['avg_vis']:.1f} km\n"
+            f"- Rüzgar: {metrics.avg_wind:.1f} kt\n"
+            f"- Nem: {metrics.avg_humidity:.0f}%\n"
+            f"- Sıcaklık: {metrics.avg_temp:.1f} °C\n"
+            f"- Görüş: {metrics.avg_vis:.1f} km\n"
             f"- Bulut tabanı: {avg_cloud_base_text}\n\n"
             "2-3 cümle ile bölgenin genel uçuş koşullarını değerlendir. "
             "Varsa dikkat edilmesi gereken başlıca risk faktörlerini belirt. "
@@ -1786,7 +1797,7 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str 
 async def _build_grid_summary_text(body: GridSummaryRequest) -> str:
     """Return AI summary when available, otherwise the rule-based fallback."""
     metrics = _build_grid_summary_metrics(body)
-    if metrics["empty"]:
+    if metrics is None:
         return "Bölge için yeterli veri bulunamadı."
 
     ai_summary = await _build_grid_ai_summary(
@@ -1797,11 +1808,11 @@ async def _build_grid_summary_text(body: GridSummaryRequest) -> str:
 
     return _rule_based_grid_summary(
         body.summary,
-        float(metrics["avg_wind"]),
-        float(metrics["avg_temp"]),
-        float(metrics["avg_humidity"]),
-        float(metrics["avg_vis"]),
-        int(metrics["pct_uygun"]),
+        metrics.avg_wind,
+        metrics.avg_temp,
+        metrics.avg_humidity,
+        metrics.avg_vis,
+        metrics.pct_uygun,
     )
 
 
