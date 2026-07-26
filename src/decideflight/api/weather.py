@@ -59,6 +59,7 @@ router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
 # Grid analysis: batch size and inter-batch delay to avoid rate limits
 _GRID_BATCH_SIZE = 5
 _GRID_BATCH_DELAY = 0.5
+_GRID_NO_DATA_SUMMARY = "Bölge için yeterli veri bulunamadı."
 
 # Seasonal analysis: climate zone latitude thresholds
 _TROPICAL_LAT_THRESHOLD = 23.5
@@ -1745,7 +1746,7 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str 
     """Return a GPT-generated Turkish grid summary when available."""
     metrics = _build_grid_summary_metrics(body)
     if metrics is None:
-        return "Bölge için yeterli veri bulunamadı."
+        return _GRID_NO_DATA_SUMMARY
 
     if not api_key or _AsyncOpenAI is None:
         return None
@@ -1754,9 +1755,7 @@ async def _build_grid_ai_summary(body: GridSummaryRequest, api_key: str) -> str 
         client = _AsyncOpenAI(api_key=api_key)
         avg_cloud_base = metrics.avg_cloud_base
         avg_cloud_base_text = (
-            f"{avg_cloud_base:.0f} ft"
-            if isinstance(avg_cloud_base, (int, float))
-            else "Bilinmiyor"
+            f"{avg_cloud_base:.0f} ft" if avg_cloud_base is not None else "Bilinmiyor"
         )
         prompt = (
             "Sen bir drone uçuş güvenlik uzmanısın. Aşağıdaki bölgesel hava "
@@ -1798,7 +1797,7 @@ async def _build_grid_summary_text(body: GridSummaryRequest) -> str:
     """Return AI summary when available, otherwise the rule-based fallback."""
     metrics = _build_grid_summary_metrics(body)
     if metrics is None:
-        return "Bölge için yeterli veri bulunamadı."
+        return _GRID_NO_DATA_SUMMARY
 
     ai_summary = await _build_grid_ai_summary(
         body, os.environ.get("OPENAI_API_KEY", "")
