@@ -25,7 +25,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from decideflight.config import settings
@@ -1367,6 +1367,7 @@ async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
 
 
 class DroneLimit(BaseModel):
+    cloud_cover_ok_max_pct: float = Field(default=50.0, ge=0, le=100)
     """Configurable drone flight limits used by the grid decision engine."""
 
     wind_ok_max_knots: float = 15.0
@@ -1634,9 +1635,12 @@ def _eval_grid_decision(
     cloud_ceiling_ft: float | None,
     precipitation_level: int,
     limits: DroneLimit,
+    cloud_cover_pct: float | None = None,
 ) -> str:
     """Return UYGUN / RISKLI / UYGUN_DEGIL for one grid point."""
     scores: list[int] = []
+    if cloud_cover_pct is not None:
+        scores.append(1 if cloud_cover_pct > limits.cloud_cover_ok_max_pct else 0)
 
     # Wind
     if wind_speed_knots < limits.wind_ok_max_knots:
@@ -1763,6 +1767,7 @@ async def analyse_weather_grid(
             cloud_ceiling_ft=result["cloud_ceiling_ft"],
             precipitation_level=result["precipitation_level"],
             limits=body.limits,
+            cloud_cover_pct=result.get("cloud_cover_pct"),
         )
 
         points.append(

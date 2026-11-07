@@ -1044,6 +1044,14 @@
             </div>
           </div>
 
+          <div>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">BULUTLULUK (%)</h3>
+            <label for="s_cloud_cover_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Uygun (≤)</label>
+            <input id="s_cloud_cover_ok" type="number" step="1" min="0" max="100"
+              class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+            <p class="mono text-[11px] text-cyan-100/60 mt-2">Bu sınırın üstü risklidir; bulutluluk tek başına uygun değil kararı vermez.</p>
+          </div>
+
           <!-- Temperature -->
           <div>
             <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">SICAKLIK (°C) — UYGUN ARALIK</h3>
@@ -2311,6 +2319,7 @@
       cloud_ceiling_risky_min_ft: 500,
       humidity_ok_max_pct: 85,
       humidity_risky_max_pct: 95,
+      cloud_cover_ok_max_pct: 50,
       temp_ok_min_c: 0,
       temp_ok_max_c: 40,
       crosswind_ok_max_knots: 15,
@@ -2342,6 +2351,7 @@
       document.getElementById('s_cloud_ceil_risky').value = lim.cloud_ceiling_risky_min_ft;
       document.getElementById('s_hum_ok').value = lim.humidity_ok_max_pct;
       document.getElementById('s_hum_risky').value = lim.humidity_risky_max_pct;
+      document.getElementById('s_cloud_cover_ok').value = lim.cloud_cover_ok_max_pct;
       document.getElementById('s_temp_min').value = lim.temp_ok_min_c;
       document.getElementById('s_temp_max').value = lim.temp_ok_max_c;
       document.getElementById('s_crosswind_ok').value = lim.crosswind_ok_max_knots;
@@ -2353,6 +2363,11 @@
     }
 
     function saveSettings() {
+      const cloudCoverInput = document.getElementById('s_cloud_cover_ok');
+      if (cloudCoverInput.value === '' || !cloudCoverInput.reportValidity()) {
+        alert('Bulutluluk sınırı 0 ile 100 arasında olmalıdır.');
+        return;
+      }
       const lim = {
         wind_ok_max_knots: parseFloat(document.getElementById('s_wind_ok').value),
         wind_risky_max_knots: parseFloat(document.getElementById('s_wind_risky').value),
@@ -2364,6 +2379,7 @@
         cloud_ceiling_risky_min_ft: parseFloat(document.getElementById('s_cloud_ceil_risky').value),
         humidity_ok_max_pct: parseFloat(document.getElementById('s_hum_ok').value),
         humidity_risky_max_pct: parseFloat(document.getElementById('s_hum_risky').value),
+        cloud_cover_ok_max_pct: parseFloat(cloudCoverInput.value),
         temp_ok_min_c: parseFloat(document.getElementById('s_temp_min').value),
         temp_ok_max_c: parseFloat(document.getElementById('s_temp_max').value),
         crosswind_ok_max_knots: parseFloat(document.getElementById('s_crosswind_ok').value),
@@ -2737,7 +2753,7 @@
       const tOk  = pt.temperature_c >= lim.temp_ok_min_c && pt.temperature_c <= lim.temp_ok_max_c;
       const tLvl = tOk ? 0 : 2;
       const cloudVal = pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0;
-      const cLvl = cloudVal < 50 ? 0 : (cloudVal < 80 ? 1 : 2);
+      const cLvl = cloudVal <= lim.cloud_cover_ok_max_pct ? 0 : 1;
       const bLvl = pt.cloud_base_ft == null ? 0
                  : _paramLevelMin(pt.cloud_base_ft, lim.cloud_base_ok_min_ft, lim.cloud_base_risky_min_ft);
       const pLvl = Math.min(pt.precipitation_level, 2);
