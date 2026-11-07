@@ -227,7 +227,11 @@
       title.classList.add('airspace-title');
       title.setAttribute('role', 'button');
       title.setAttribute('tabindex', '0');
-      const toggle = () => panel.classList.toggle('collapsed');
+      const toggle = () => {
+        const open = panel.classList.contains('collapsed');
+        panels.forEach((other) => other.classList.add('collapsed'));
+        if (open) panel.classList.remove('collapsed');
+      };
       title.addEventListener('click', toggle);
       title.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }

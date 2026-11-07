@@ -5,7 +5,12 @@
     ['700', '700 hPa (~FL100)'],
     ['500', '500 hPa (~FL180)'],
   ];
-  const CLOUD_RADIUS_M = 80000;
+  const CELL = 0.75;
+
+  function cloudColor(c) {
+    const mix = (a, b) => Math.round(a + (b - a) * c).toString(16).padStart(2, '0');
+    return '#' + mix(0xc9, 0x1d) + mix(0xd8, 0x3b) + mix(0xe8, 0x6b);
+  }
 
   function lerp(a, b, t) { return a + (b - a) * Math.min(Math.max(t, 0), 1); }
   function windColor(knots) {
@@ -53,12 +58,22 @@
         if (current !== requestId) return;
         data.points.forEach((p) => {
           if (showCloud && p.cloud_cover_pct != null) {
-            L.circle([p.lat, p.lon], {
-              radius: CLOUD_RADIUS_M,
+            const c = p.cloud_cover_pct / 100;
+            L.rectangle([[p.lat - CELL, p.lon - CELL], [p.lat + CELL, p.lon + CELL]], {
               stroke: false,
               interactive: false,
-              fillColor: '#d4dce5',
-              fillOpacity: 0.65 * (p.cloud_cover_pct / 100),
+              fillColor: cloudColor(c),
+              fillOpacity: 0.12 + 0.6 * c,
+            }).addTo(group);
+            L.marker([p.lat, p.lon], {
+              interactive: false,
+              keyboard: false,
+              icon: L.divIcon({
+                className: 'cloud-label',
+                html: Math.round(p.cloud_cover_pct) + '%',
+                iconSize: [36, 14],
+                iconAnchor: [18, 7],
+              }),
             }).addTo(group);
           }
           if (showWind && p.wind_speed_knots != null && p.wind_direction_deg != null) {
@@ -97,6 +112,8 @@
         option.textContent = text;
       });
       select.addEventListener('change', () => { level = select.value; redraw(); });
+      const legend = L.DomUtil.create('div', 'cloud-legend', box);
+      legend.innerHTML = '<span>Bulut %0</span><i></i><span>%100</span>';
       statusEl = L.DomUtil.create('div', 'airspace-status', box);
       L.DomEvent.disableClickPropagation(box);
       return box;
