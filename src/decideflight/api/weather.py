@@ -817,10 +817,14 @@ class ForecastHourSchema(BaseModel):
     visibility_km: float
     cloud_base_ft: float | None = None
     precipitation_level: int
+    time: datetime
+    detail: str
+    cloud_cover_pct: float | None = None
 
 
 class ForecastChangeResponse(BaseModel):
     hours: list[ForecastHourSchema]
+    missing_offsets: list[int] = Field(default_factory=list)
 
 
 class NotamResponse(BaseModel):
@@ -856,6 +860,10 @@ class FlightPlanHourSchema(BaseModel):
     visibility_km: float
     cloud_base_ft: float | None = None
     precipitation_level: int
+    time: datetime | None = None
+    detail: str = ""
+    cloud_cover_pct: float | None = None
+    is_past: bool = False
 
 
 class FlightPlanBestWindowSchema(BaseModel):
@@ -867,6 +875,9 @@ class FlightPlanBestWindowSchema(BaseModel):
 class FlightPlanResponse(BaseModel):
     hours: list[FlightPlanHourSchema]
     best_window: FlightPlanBestWindowSchema | None = None
+    date: str
+    timezone: str = "UTC"
+    missing_hours: list[int] = Field(default_factory=list)
 
 
 class HistoryItemSchema(BaseModel):
@@ -914,6 +925,20 @@ _MONTHS_TR = [
     "Kasım",
     "Aralık",
 ]
+
+
+def _hourly_timestamp(time_text: str) -> datetime:
+    try:
+        timestamp = datetime.fromisoformat(time_text)
+    except (TypeError, ValueError) as exc:
+        logger.warning("Invalid hourly forecast timestamp: %r", time_text)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Saatlik tahmin zaman bilgisi geçersiz.",
+        ) from exc
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
 
 
 async def _fetch_open_meteo_hourly(
@@ -990,38 +1015,24 @@ def _best_window(
     hours: list[FlightPlanHourSchema],
 ) -> FlightPlanBestWindowSchema | None:
     best: FlightPlanBestWindowSchema | None = None
-    current_start: int | None = None
+    current: FlightPlanBestWindowSchema | None = None
 
-    for hour in hours + [
-        FlightPlanHourSchema(
-            hour=-1,
-            decision="BREAK",
-            wind_kt=0.0,
-            temperature_c=0.0,
-            humidity_pct=0.0,
-            visibility_km=0.0,
-            precipitation_level=0,
-        )
-    ]:
-        if hour.decision == "UYGUN":
-            if current_start is None:
-                current_start = hour.hour
+    for hour in sorted(hours, key=lambda item: item.hour):
+        if hour.decision != "UYGUN" or hour.is_past:
+            current = None
             continue
-        if current_start is None:
-            continue
-        length = (
-            hour.hour - current_start
-            if hour.hour >= 0
-            else (hours[-1].hour - current_start + 1)
-        )
-        candidate = FlightPlanBestWindowSchema(
-            start_hour=current_start,
-            end_hour=(hour.hour - 1) if hour.hour >= 0 else hours[-1].hour,
-            length=length,
-        )
-        if best is None or candidate.length > best.length:
-            best = candidate
-        current_start = None
+        if current is None or hour.hour != current.end_hour + 1:
+            current = FlightPlanBestWindowSchema(
+                start_hour=hour.hour, end_hour=hour.hour, length=1
+            )
+        else:
+            current = FlightPlanBestWindowSchema(
+                start_hour=current.start_hour,
+                end_hour=hour.hour,
+                length=current.length + 1,
+            )
+        if best is None or current.length > best.length:
+            best = current
     return best
 
 
@@ -1079,21 +1090,28 @@ async def forecast_change(
             detail=f"Report {report_id} not found.",
         )
 
-    async with httpx.AsyncClient() as client:
-        results = await asyncio.gather(
-            *[
-                _fetch_grid_point_weather(
-                    report.lat, report.lon, 1000.0, offset, client
-                )
-                for offset in range(1, 7)
-            ]
-        )
+    try:
+        payload = await _fetch_open_meteo_hourly(report.lat, report.lon)
+    except Exception as exc:
+        logger.warning("Hourly forecast fetch failed for report %s: %s", report_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Saatlik tahmin verisi alınamadı.",
+        ) from exc
+    start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    targets = {start + timedelta(hours=offset): offset for offset in range(1, 7)}
+    results = {}
+    for index, time_text in enumerate(payload.get("hourly", {}).get("time", [])):
+        timestamp = _hourly_timestamp(time_text)
+        if timestamp in targets:
+            results[targets[timestamp]] = (timestamp, _hourly_row_from_payload(payload, index))
 
     hours: list[ForecastHourSchema] = []
     air_quality = _load_air_quality(report)
     saved_limits = _load_ai_payload(report).get("applied_limits")
     limits = DroneLimit.model_validate(saved_limits) if saved_limits else None
-    for offset, result in enumerate(results, start=1):
+    for offset in range(1, 7):
+        timestamp, result = results.get(offset, (None, None))
         if result is None:
             continue
         decision = make_decision(
@@ -1109,6 +1127,9 @@ async def forecast_change(
                 visibility_km=round(float(result["visibility_km"]), 1),
                 cloud_base_ft=result.get("cloud_base_ft"),
                 precipitation_level=int(result["precipitation_level"]),
+                time=timestamp,
+                detail=decision.detail,
+                cloud_cover_pct=decision.avg_cloud_cover_pct,
             )
         )
 
@@ -1117,7 +1138,10 @@ async def forecast_change(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Tahmin verisi alınamadı.",
         )
-    return ForecastChangeResponse(hours=hours)
+    available = {hour.offset for hour in hours}
+    return ForecastChangeResponse(
+        hours=hours, missing_offsets=[i for i in range(1, 7) if i not in available]
+    )
 
 
 @router.get(
@@ -1146,6 +1170,7 @@ async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
     try:
         payload = await _fetch_open_meteo_hourly(body.lat, body.lon)
     except Exception as exc:
+        logger.warning("Flight plan fetch failed at (%s, %s): %s", body.lat, body.lon, exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Uçuş planı verisi alınamadı.",
@@ -1154,16 +1179,17 @@ async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
     # Open-Meteo returns naive ISO strings (e.g. "2026-07-25T14:00") when
     # timezone=UTC, so fromisoformat yields a naive datetime.  Compare dates
     # using UTC today to stay consistent.
-    base_date = datetime.now(timezone.utc).date() + timedelta(days=body.date_offset)
+    now = datetime.now(timezone.utc)
+    base_date = now.date() + timedelta(days=body.date_offset)
 
     def _build_hours(
-        time_texts: list[str], *, require_date: bool
+        time_texts: list[str],
     ) -> list[FlightPlanHourSchema]:
         result: list[FlightPlanHourSchema] = []
         seen_hours: set[int] = set()
         for idx, time_text in enumerate(time_texts):
-            timestamp = datetime.fromisoformat(time_text)
-            if require_date and timestamp.date() != base_date:
+            timestamp = _hourly_timestamp(time_text)
+            if timestamp.date() != base_date:
                 continue
             if not (body.start_hour <= timestamp.hour <= body.end_hour):
                 continue
@@ -1183,20 +1209,17 @@ async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
                     visibility_km=round(float(row["visibility_km"]), 1),
                     cloud_base_ft=row.get("cloud_base_ft"),
                     precipitation_level=int(row["precipitation_level"]),
+                    time=timestamp,
+                    detail=decision.detail,
+                    cloud_cover_pct=decision.avg_cloud_cover_pct,
+                    is_past=timestamp + timedelta(hours=1) <= now,
                 )
             )
             seen_hours.add(timestamp.hour)
         return result
 
     time_texts = payload.get("hourly", {}).get("time", [])
-    hours = _build_hours(time_texts, require_date=True)
-
-    # Fallback: if no hours matched the strict date filter (e.g. timezone
-    # mismatch between the caller's UTC date and available forecast data),
-    # relax the date requirement and return the first matching hour range
-    # from any available day.
-    if not hours:
-        hours = _build_hours(time_texts, require_date=False)
+    hours = _build_hours(time_texts)
 
     if not hours:
         raise HTTPException(
@@ -1204,7 +1227,14 @@ async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
             detail="Seçilen saat aralığı için veri bulunamadı.",
         )
 
-    return FlightPlanResponse(hours=hours, best_window=_best_window(hours))
+    hours.sort(key=lambda item: item.hour)
+    available = {hour.hour for hour in hours}
+    return FlightPlanResponse(
+        hours=hours, best_window=_best_window(hours), date=base_date.isoformat(),
+        missing_hours=[
+            i for i in range(body.start_hour, body.end_hour + 1) if i not in available
+        ],
+    )
 
 
 @router.get(

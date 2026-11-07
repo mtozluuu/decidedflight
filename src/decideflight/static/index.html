@@ -694,28 +694,30 @@
       </div>
 
       <div id="forecastSection" class="hidden hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">SONRAKİ 6 SAAT TAHMİNİ</h3>
-        <div id="forecastTimeline" class="grid grid-cols-2 md:grid-cols-6 gap-3"></div>
+        <h3 class="mono text-sm text-cyan-300 mb-4">SONRAKİ 6 SAAT TAHMİNİ · UTC</h3>
+        <p id="forecastStatus" role="status" class="text-xs text-cyan-100/70 mb-3"></p>
+        <div id="forecastTimeline" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
       </div>
 
       <div class="hud-card p-6">
         <div class="flex flex-col md:flex-row md:items-end gap-3 justify-between">
           <div>
             <h3 class="mono text-sm text-cyan-300 mb-2">UÇUŞ PLANLAMA</h3>
-            <p class="mono text-[11px] text-cyan-100/60">Bugün veya yarın için en uygun saat penceresini çıkarın.</p>
+            <p class="mono text-[11px] text-cyan-100/60">Gün ve saatler UTC'dir (Türkiye: UTC+3). Raporun kaydedilmiş limitleri kullanılır. Geçmiş saatler önerilmez.</p>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full md:w-auto">
-            <select id="flightPlanDate" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs">
-              <option value="0">Bugün</option>
-              <option value="1">Yarın</option>
+            <select id="flightPlanDate" aria-label="Plan günü (UTC)" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs">
+              <option value="0">Bugün (UTC)</option>
+              <option value="1">Yarın (UTC)</option>
             </select>
-            <select id="flightPlanStart" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
-            <select id="flightPlanEnd" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
+            <select id="flightPlanStart" aria-label="İlk saat (UTC)" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
+            <select id="flightPlanEnd" aria-label="Son saat (dahil, UTC)" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
             <button type="button" onclick="fetchFlightPlan()" class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-4 py-2 text-xs">[ PLANLA ]</button>
           </div>
         </div>
-        <div id="flightPlanTimeline" class="mt-4 grid gap-2 md:grid-cols-6"></div>
-        <p id="flightPlanBest" class="mono text-[11px] text-green-300 mt-3"></p>
+        <p id="flightPlanStatus" role="status" class="text-xs text-cyan-100/70 mt-3"></p>
+        <div id="flightPlanTimeline" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 lg:grid-cols-3"></div>
+        <p id="flightPlanBest" class="mono text-xs text-cyan-100 mt-3"></p>
       </div>
 
       <div id="seasonalSection" class="hidden hud-card p-6">
@@ -1531,27 +1533,62 @@
       }
     }
 
+    let forecastRequestVersion = 0;
+    let planRequestVersion = 0;
+
+    function renderHourlyCards(container, hours, label) {
+      container.replaceChildren();
+      hours.forEach(hour => {
+        const card = document.createElement('div');
+        card.className = `rounded-md border ${getDecisionTone(hour.decision)} px-3 py-3 min-w-0`;
+        const title = document.createElement('p');
+        title.className = 'mono text-xs font-semibold';
+        title.textContent = `${label(hour)} · ${formatDecisionLabel(hour.decision)}${hour.is_past ? ' (Geçmiş)' : ''}`;
+        const values = document.createElement('p');
+        values.className = 'text-xs mt-2 leading-relaxed';
+        values.textContent = `Rüzgâr ${hour.wind_kt.toFixed(1)} kt · ${hour.temperature_c.toFixed(1)} °C · Görüş ${hour.visibility_km.toFixed(1)} km · Nem %${hour.humidity_pct.toFixed(0)} · Yağış ${PRECIP_LABELS[hour.precipitation_level]} · Bulutluluk ${hour.cloud_cover_pct == null ? 'N/A' : '%' + hour.cloud_cover_pct.toFixed(1)}`;
+        const details = document.createElement('details');
+        details.className = 'text-xs mt-2';
+        const summary = document.createElement('summary');
+        summary.className = 'cursor-pointer';
+        summary.textContent = 'Karar gerekçesi';
+        const explanation = document.createElement('p');
+        explanation.className = 'whitespace-pre-line mt-2';
+        explanation.textContent = hour.detail;
+        details.append(summary, explanation);
+        card.append(title, values, details);
+        container.appendChild(card);
+      });
+    }
+
+    function utcForecastLabel(hour) {
+      return new Date(hour.time).toLocaleString('tr-TR', {
+        timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+      }) + ' UTC';
+    }
+
     async function fetchForecastChange() {
       if (currentReportId == null) return;
+      const reportId = currentReportId;
+      const version = ++forecastRequestVersion;
       const section = document.getElementById('forecastSection');
       const timeline = document.getElementById('forecastTimeline');
+      const status = document.getElementById('forecastStatus');
       timeline.innerHTML = '';
+      section.classList.remove('hidden');
+      status.textContent = 'Saatlik tahmin yükleniyor…';
       try {
-        const response = await fetch(`/api/v1/weather/report/${currentReportId}/forecast-change`, { method: 'POST' });
+        const response = await fetch(`/api/v1/weather/report/${reportId}/forecast-change`, { method: 'POST' });
         const data = await response.json();
+        if (version !== forecastRequestVersion || reportId !== currentReportId) return;
         if (!response.ok) throw new Error(data.detail || 'Tahmin alınamadı.');
-        timeline.innerHTML = data.hours.map(item => {
-          const color = item.decision === 'UYGUN' ? '#00ff88' : item.decision === 'RISKLI' ? '#ffb800' : '#ff3d57';
-          return `
-            <div class="rounded-md border border-cyan-400/15 bg-slate-950/40 p-3 text-center">
-              <p class="mono text-[11px] text-cyan-100/60">+${item.offset} SAAT</p>
-              <div class="timeline-dot mx-auto my-2" style="background:${color}; color:${color};"></div>
-              <p class="mono text-sm text-cyan-100">${item.wind_kt.toFixed(1)} kt</p>
-            </div>`;
-        }).join('');
-        section.classList.remove('hidden');
-      } catch (_) {
-        section.classList.add('hidden');
+        renderHourlyCards(timeline, data.hours, utcForecastLabel);
+        status.textContent = data.missing_offsets.length
+          ? `Eksik tahmin: +${data.missing_offsets.join(', +')} saat. Eksik saatler uygun sayılmaz.`
+          : 'Open-Meteo saatlik tahmini; rapor limitleri kullanılır. Varsa AQI kontrolü kaydedilen rapora aittir, saatlik AQI tahmini değildir.';
+      } catch (error) {
+        if (version !== forecastRequestVersion || reportId !== currentReportId) return;
+        status.textContent = error.message || 'Saatlik tahmin alınamadı.';
       }
     }
 
@@ -1570,35 +1607,47 @@
 
     async function fetchFlightPlan() {
       if (!currentReportData) return;
+      const report = currentReportData;
+      const version = ++planRequestVersion;
       const timeline = document.getElementById('flightPlanTimeline');
       const best = document.getElementById('flightPlanBest');
+      const status = document.getElementById('flightPlanStatus');
       timeline.innerHTML = '';
       best.textContent = '';
+      const startHour = Number(document.getElementById('flightPlanStart').value);
+      const endHour = Number(document.getElementById('flightPlanEnd').value);
+      if (endHour < startHour) {
+        status.textContent = 'Son saat ilk saatten küçük olamaz.';
+        return;
+      }
+      status.textContent = 'Uçuş planı yükleniyor…';
       try {
         const response = await fetch('/api/v1/weather/flight-plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            lat: currentReportData.lat,
-            lon: currentReportData.lon,
+            lat: report.lat,
+            lon: report.lon,
+            limits: report.applied_limits || null,
             date_offset: parseInt(document.getElementById('flightPlanDate').value, 10),
-            start_hour: parseInt(document.getElementById('flightPlanStart').value, 10),
-            end_hour: parseInt(document.getElementById('flightPlanEnd').value, 10),
+            start_hour: startHour,
+            end_hour: endHour,
           }),
         });
         const data = await response.json();
+        if (version !== planRequestVersion || report !== currentReportData) return;
         if (!response.ok) throw new Error(data.detail || 'Plan verisi alınamadı.');
-        timeline.innerHTML = data.hours.map(hour => `
-          <div class="rounded-md border ${getDecisionTone(hour.decision)} px-3 py-3 text-center">
-            <p class="mono text-[11px]">${String(hour.hour).padStart(2, '0')}:00</p>
-            <p class="mono text-sm mt-2">${hour.wind_kt.toFixed(1)} kt</p>
-            <p class="text-[11px] mt-1">${hour.decision.replaceAll('_', ' ')}</p>
-          </div>`).join('');
+        renderHourlyCards(timeline, data.hours, utcForecastLabel);
+        status.textContent = `${data.date} · UTC · ${data.hours.length} saat değerlendirildi.` +
+          (data.missing_hours.length ? ` Veri yok: ${data.missing_hours.map(h => String(h).padStart(2, '0') + ':00').join(', ')}. Eksik saatler uygun sayılmaz.` : '');
         if (data.best_window) {
-          best.textContent = `En iyi pencere: ${String(data.best_window.start_hour).padStart(2, '0')}:00 – ${String(data.best_window.end_hour).padStart(2, '0')}:00`;
+          best.textContent = `Kesintisiz uygun pencere: ${String(data.best_window.start_hour).padStart(2, '0')}:00 – ${String(data.best_window.end_hour + 1).padStart(2, '0')}:00 UTC (${data.best_window.length} saat). Yalnızca hava koşulları değerlendirmesidir.`;
+        } else {
+          best.textContent = 'Seçilen aralıkta geçmiş olmayan, uygun bir saat penceresi bulunamadı.';
         }
       } catch (error) {
-        best.textContent = error.message || 'Plan üretilemedi.';
+        if (version !== planRequestVersion || report !== currentReportData) return;
+        status.textContent = error.message || 'Plan üretilemedi.';
       }
     }
 
