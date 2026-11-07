@@ -73,6 +73,8 @@
   function attach(map) {
     let airports = [];
     let line = null;
+    let sampleLayer = null;
+    let lastPath = null;
     let statusEl = null;
     let resultEl = null;
 
@@ -82,7 +84,10 @@
 
     function clear() {
       if (line) map.removeLayer(line);
+      if (sampleLayer) map.removeLayer(sampleLayer);
       line = null;
+      sampleLayer = null;
+      lastPath = null;
       resultEl.innerHTML = '';
       setStatus('');
     }
@@ -130,11 +135,53 @@
       return place.icao || place.name;
     }
 
+    function windStats(data, along, course, km) {
+      const rows = along.map((p, i) => {
+        const g = nearest(data.points, p);
+        if (!g || g.wind_speed_knots == null) return null;
+        const head = g.wind_speed_knots * Math.cos(rad(g.wind_direction_deg - course));
+        return { km: Math.round((km * i) / (along.length - 1)), g, head, point: p };
+      }).filter(Boolean);
+      if (!rows.length) return null;
+      const clouds = rows.map((r) => r.g.cloud_cover_pct || 0);
+      return {
+        rows,
+        maxWind: Math.max(...rows.map((r) => r.g.wind_speed_knots)),
+        avgHead: rows.reduce((sum, r) => sum + r.head, 0) / rows.length,
+        avgCloud: clouds.reduce((a, b) => a + b, 0) / clouds.length,
+        maxCloud: Math.max(...clouds),
+      };
+    }
+
+    const headText = (v) => (v >= 0 ? Math.round(v) + ' kt karşı' : Math.round(-v) + ' kt arka');
+
+    async function compareLevels(target) {
+      if (!lastPath) return;
+      target.innerHTML = '<p>Seviyeler karşılaştırılıyor…</p>';
+      const results = [];
+      for (const level of Object.keys(LEVEL_LABELS)) {
+        try {
+          const data = await getJson('/api/v1/map-layers/wind-cloud?level=' + level);
+          const st = windStats(data, lastPath.along, lastPath.course, lastPath.km);
+          if (st) results.push({ level, st, score: st.avgHead * 0.5 + st.avgCloud / 5 + st.maxWind / 2 });
+        } catch (err) { /* level skipped */ }
+      }
+      if (!results.length) {
+        target.innerHTML = '<p>Karşılaştırma için veri alınamadı.</p>';
+        return;
+      }
+      const best = results.reduce((a, b) => (b.score < a.score ? b : a));
+      target.innerHTML = '<table class="route-table"><tr><th>Seviye</th><th>Maks. rüzgâr</th><th>Bileşen</th><th>Bulut</th></tr>' +
+        results.map((r) => '<tr' + (r === best ? ' class="route-best"' : '') + '><td>' + esc(LEVEL_LABELS[r.level].split(' (')[0]) + '</td><td>' + Math.round(r.st.maxWind) + ' kt</td><td>' + headText(r.st.avgHead) + '</td><td>%' + Math.round(r.st.avgCloud) + '</td></tr>').join('') +
+        '</table><p>Önerilen: <b>' + esc(LEVEL_LABELS[best.level]) + '</b> (karşı rüzgâr, en şiddetli rüzgâr ve bulut dengesi). Mevcut 4 seviyeyle sınırlı tahmindir.</p>';
+    }
+
     async function analyse(from, to, altFt) {
       const level = levelFor(altFt);
       setStatus('Hesaplanıyor…');
       const { points, km } = samplePath([from.lat, from.lon], [to.lat, to.lon]);
       if (line) map.removeLayer(line);
+      if (sampleLayer) map.removeLayer(sampleLayer);
       line = L.polyline(points, { color: '#ffd166', weight: 3, dashArray: '2 6', interactive: false }).addTo(map);
       map.fitBounds(line.getBounds(), { padding: [60, 60] });
 
@@ -173,33 +220,35 @@
       }
 
       const course = bearing([from.lat, from.lon], [to.lat, to.lon]);
-      const count = 8;
+      const count = Math.max(4, Math.min(12, Math.ceil(km / 100) + 1));
       const along = Array.from({ length: count }, (_, i) => points[Math.round((i / (count - 1)) * (points.length - 1))]);
+      lastPath = { along, course, km, from, to };
+      const hitsAt = (p) => (airspace.status !== 'fulfilled' ? [] : airspace.value.features.filter((f) => {
+        const pr = f.properties;
+        if (pr.category === 'FIR') return false;
+        const inAlt = altFt == null || ((pr.lower_ft == null || pr.lower_ft <= altFt) && (pr.upper_ft == null || pr.upper_ft >= altFt));
+        return inAlt && inFeature(p, f);
+      }).map((f) => f.properties.name));
       let windHtml;
+      const st = windData.status === 'fulfilled' ? windStats(windData.value, along, course, km) : null;
       if (windData.status !== 'fulfilled') {
         windHtml = '<p>Rüzgâr/bulut verisi alınamadı.</p>';
+      } else if (!st) {
+        windHtml = '<p>Veri yok.</p>';
       } else {
-        const rows = along.map((p, i) => {
-          const g = nearest(windData.value.points, p);
-          if (!g || g.wind_speed_knots == null) return null;
-          const head = g.wind_speed_knots * Math.cos(rad(g.wind_direction_deg - course));
-          return { km: Math.round((km * i) / (count - 1)), g, head };
-        }).filter(Boolean);
-        if (!rows.length) {
-          windHtml = '<p>Veri yok.</p>';
-        } else {
-          const maxWind = Math.max(...rows.map((r) => r.g.wind_speed_knots));
-          const avgHead = rows.reduce((sum, r) => sum + r.head, 0) / rows.length;
-          const avgCloud = rows.reduce((sum, r) => sum + (r.g.cloud_cover_pct || 0), 0) / rows.length;
-          const maxCloud = Math.max(...rows.map((r) => r.g.cloud_cover_pct || 0));
-          windHtml = '<p>Rüzgâr en çok ' + Math.round(maxWind) + ' kt · ort. ' + (avgHead >= 0 ? Math.round(avgHead) + ' kt karşı' : Math.round(-avgHead) + ' kt arka') + ' bileşen (rota ' + Math.round(course) + '°)</p>' +
-            '<p>Bulut ort. %' + Math.round(avgCloud) + ' · en yoğun %' + Math.round(maxCloud) + '</p>' +
-            '<table class="route-table"><tr><th>km</th><th>Rüzgâr</th><th>Bulut</th></tr>' +
-            rows.map((r) => '<tr><td>' + r.km + '</td><td>' + Math.round(r.g.wind_direction_deg) + '°/' + Math.round(r.g.wind_speed_knots) + ' kt</td><td>%' + Math.round(r.g.cloud_cover_pct || 0) + '</td></tr>').join('') +
-            '</table>';
-        }
+        sampleLayer = L.layerGroup().addTo(map);
+        st.rows.forEach((r) => {
+          r.areas = hitsAt(r.point);
+          const tip = r.km + ' km · ' + Math.round(r.g.wind_direction_deg) + '°/' + Math.round(r.g.wind_speed_knots) + ' kt · bulut %' + Math.round(r.g.cloud_cover_pct || 0) + (r.areas.length ? ' · ' + r.areas.join(', ') : '');
+          L.circleMarker(r.point, { radius: 5, color: '#14181d', weight: 1, fillColor: '#ffd166', fillOpacity: 1 }).bindTooltip(tip).addTo(sampleLayer);
+        });
+        windHtml = '<p>Rüzgâr en çok ' + Math.round(st.maxWind) + ' kt · ort. ' + headText(st.avgHead) + ' bileşen (rota ' + Math.round(course) + '°)</p>' +
+          '<p>Bulut ort. %' + Math.round(st.avgCloud) + ' · en yoğun %' + Math.round(st.maxCloud) + '</p>' +
+          '<table class="route-table"><tr><th>km</th><th>Rüzgâr</th><th>Bulut</th><th>Saha</th></tr>' +
+          st.rows.map((r) => '<tr><td>' + r.km + '</td><td>' + Math.round(r.g.wind_direction_deg) + '°/' + Math.round(r.g.wind_speed_knots) + ' kt</td><td>%' + Math.round(r.g.cloud_cover_pct || 0) + '</td><td>' + (r.areas.length ? esc(r.areas.join(', ')) : '—') + '</td></tr>').join('') +
+          '</table><button type="button" class="airspace-play route-go route-compare">Seviyeleri karşılaştır</button><div class="route-levels"></div>';
       }
-      sections.push('<p style="margin-top:6px"><b>Rota boyunca · ' + esc(LEVEL_LABELS[level]) + '</b></p>' + windHtml);
+      sections.push('<p style="margin-top:6px"><b>Rota profili · ' + esc(LEVEL_LABELS[level]) + '</b></p>' + windHtml);
 
       if (sigmet.status === 'fulfilled') {
         const hit = sigmet.value.sigmets.filter((s) => s.coords.length > 2 &&
@@ -210,6 +259,8 @@
 
       sections.push('<p style="opacity:.7;margin-top:6px">Düz hat tahminidir; resmî brifing değildir.</p>');
       resultEl.innerHTML = sections.join('');
+      const cmp = resultEl.querySelector('.route-compare');
+      if (cmp) cmp.addEventListener('click', () => compareLevels(resultEl.querySelector('.route-levels')));
       resultEl.closest('.airspace-control').scrollIntoView({ block: 'nearest' });
       setStatus('');
     }
@@ -231,6 +282,22 @@
       const toInput = mk('Varış: LTAC veya 39.9,32.9');
       const altInput = L.DomUtil.create('input', 'airspace-select route-alt', form);
       altInput.placeholder = 'İrtifa: FL100, 8000 ft, 2500 m';
+      const pickBtn = (text, input) => {
+        const btn = L.DomUtil.create('button', 'airspace-play route-go', form);
+        btn.type = 'button';
+        btn.textContent = text;
+        btn.addEventListener('click', () => {
+          map._routePicking = true;
+          setStatus('Haritada bir noktaya tıklayın…');
+          map.once('click', (e) => {
+            input.value = e.latlng.lat.toFixed(3) + ',' + e.latlng.lng.toFixed(3);
+            setStatus('');
+            setTimeout(() => { map._routePicking = false; }, 0);
+          });
+        });
+      };
+      pickBtn('Kalkış ⌖ haritadan', fromInput);
+      pickBtn('Varış ⌖ haritadan', toInput);
       const go = L.DomUtil.create('button', 'airspace-play route-go', form);
       go.type = 'button';
       go.textContent = 'Rotayı analiz et';
@@ -265,6 +332,7 @@
       });
       reset.addEventListener('click', clear);
       map._routeApi = {
+        path: () => lastPath,
         get: () => ({ from: fromInput.value, to: toInput.value, alt: altInput.value }),
         set(v) {
           fromInput.value = v.from || '';
@@ -279,6 +347,6 @@
     control.addTo(map);
   }
 
-  window.RouteGeometry = { samplePath, inFeature, distanceKm };
+  window.RouteGeometry = { samplePath, inFeature, inRing, distanceKm };
   (window.MapLayerPlugins = window.MapLayerPlugins || []).push(attach);
 })();
