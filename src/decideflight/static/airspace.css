@@ -1,0 +1,14 @@
+.airspace-control {
+  background: #1b2026;
+  color: #edf0f3;
+  border: 1px solid #333b45;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.7;
+  min-width: 150px;
+}
+.airspace-control .airspace-row { display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; }
+.airspace-control .airspace-row input { margin: 0; width: auto; }
+.airspace-status { margin-top: 4px; color: #a0aab6; font-size: 11px; max-width: 190px; }
+.airspace-popup p { margin: 0; }

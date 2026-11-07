@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from decideflight.api.airspace import router as airspace_router
 from decideflight.api.health import router as health_router
 from decideflight.api.weather import router as weather_router
 from decideflight.database import init_db
@@ -34,6 +35,7 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(weather_router)
+app.include_router(airspace_router)
 
 if os.path.isdir(_STATIC_DIR):
     app.mount(
