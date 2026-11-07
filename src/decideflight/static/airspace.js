@@ -92,6 +92,7 @@
       return box;
     };
     control.addTo(map);
+    (window.MapLayerPlugins || []).forEach((plugin) => plugin(map));
   }
 
   window.AirspaceLayer = { attach };

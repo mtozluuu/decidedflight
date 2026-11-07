@@ -113,3 +113,5 @@ def test_ui_wires_airspace_layer() -> None:
     assert "/static/airspace.js" in index
     assert "AirspaceLayer.attach(map)" in index
     assert "'/static/airspace.js'" in (STATIC / "sw.js").read_text()
+    assert "/static/radar.js" in index
+    assert "'/static/radar.js'" in (STATIC / "sw.js").read_text()
