@@ -356,12 +356,10 @@
 
     <!-- ══ Tab 1: Point Analysis ══════════════════════════════════════════ -->
     <div id="panel-point" role="tabpanel" aria-labelledby="tab-btn-point" class="space-y-6 pt-6">
-    <section class="hud-card p-6 sm:p-8">
-      <p class="workspace-kicker">Operasyon / Konum değerlendirmesi</p>
+    <section id="locationSearch" class="hud-card p-6 sm:p-8">
       <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">Uçuş hava analizi</h1>
-      <p class="mono text-xs sm:text-sm text-cyan-100/75 mt-3">Bir konum seçin. Hava koşullarını kaynaklar ve uçuş limitlerinizle birlikte değerlendirin.</p>
 
-      <div class="mt-6 flex flex-col sm:flex-row gap-3">
+      <div class="mt-3 flex flex-col sm:flex-row gap-3">
         <div class="relative flex-1">
           <svg class="ui-icon absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300/80" aria-hidden="true"><use href="#icon-search"/></svg>
           <input
@@ -379,6 +377,8 @@
         >Analiz et</button>
       </div>
 
+      <details id="locationOptions" class="mt-3">
+      <summary class="text-xs text-cyan-100/70 cursor-pointer">Ülke, şehir ve favorilerden seç</summary>
       <div class="mt-4 grid sm:grid-cols-2 gap-3 text-left">
         <div>
           <label for="countrySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Ülke</label>
@@ -416,7 +416,7 @@
       <p id="installStatus" class="mono text-[11px] text-cyan-100/55 mt-2"></p>
 
       <p id="cityDataStatus" class="mono text-[11px] text-cyan-100/60 mt-3">Şehir verisi hazırlanıyor...</p>
-      <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
+      </details>
     </section>
 
     <details id="airportTools" class="hud-card p-4 mb-4">
@@ -601,6 +601,11 @@
           <div><dt>Güven endeksi</dt><dd id="snapshotConfidence">—</dd></div>
           <div><dt>Veri kaynağı</dt><dd id="snapshotSources">—</dd></div>
         </dl>
+        <div class="source-summary-block">
+          <h4 class="text-xs">Kaynak durumu</h4>
+          <p id="reportSourceSummary" class="text-xs text-cyan-100/70 mt-2"></p>
+          <a href="#sourceDetails" id="sourceSummaryLink" class="text-xs text-cyan-100 underline">Kaynak ayrıntıları</a>
+        </div>
         <p id="windTrendBadge" class="hidden mono text-xs mt-4 text-cyan-300/80"></p>
         <p class="text-xs text-cyan-100/60 mt-4">Değerler bu rapora aittir. Güncellik ve kaynak bilgilerini ayrıntılardan kontrol edin.</p>
       </aside>
@@ -679,7 +684,7 @@
           </div>
         </div>
         <p id="flightPlanStatus" role="status" class="text-xs text-cyan-100/70 mt-3"></p>
-        <div id="flightPlanTimeline" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 lg:grid-cols-3"></div>
+        <div id="flightPlanTimeline" class="mt-4"></div>
         <p id="flightPlanBest" class="mono text-xs text-cyan-100 mt-3"></p>
       </div>
       </details>
@@ -746,6 +751,13 @@
 
     <details id="historySection" class="hidden hud-card p-5">
       <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Geçmiş analizler</summary>
+      <form id="historyFilters" class="history-filters">
+        <label class="history-field">Konum<input id="historyLocation" type="search" placeholder="Şehir veya konum" maxlength="200" /></label>
+        <label class="history-field">İlk tarih (UTC)<input id="historyStartDate" type="date" /></label>
+        <label class="history-field">Son tarih (UTC)<input id="historyEndDate" type="date" /></label>
+        <button type="submit" class="btn-primary-glow px-3 py-2">Filtrele</button>
+        <button type="button" id="historyReset" class="border border-cyan-400/30 px-3 py-2">Temizle</button>
+      </form>
       <p id="historyStatus" role="status" class="text-xs text-amber-300 mb-3"></p>
       <div id="historyChart" class="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2 items-end"></div>
       <div class="flex items-center gap-4 mt-3 mono text-[10px] text-cyan-100/40">
@@ -754,6 +766,13 @@
         <span><span class="inline-block w-2 h-2 rounded-sm bg-red-400/70 mr-1"></span>UYGUN DEĞİL</span>
       </div>
       <div id="historyList" class="mt-5 max-h-72 overflow-y-auto space-y-2"></div>
+      <div class="report-compare-controls">
+        <label class="history-field">Rapor A<select id="compareReportA" class="history-select"><option value="">Rapor seçin</option></select></label>
+        <label class="history-field">Rapor B<select id="compareReportB" class="history-select"><option value="">Rapor seçin</option></select></label>
+        <button id="compareReportsBtn" type="button" class="btn-primary-glow px-3 py-2">Karşılaştır</button>
+      </div>
+      <p id="reportCompareStatus" role="status" class="text-xs text-cyan-100/70 mt-3"></p>
+      <div id="reportComparison" class="overflow-x-auto mt-3"></div>
     </details>
     </div><!-- /panel-point -->
 
@@ -1521,7 +1540,7 @@
         summary.textContent = 'Karar gerekçesi';
         const explanation = document.createElement('p');
         explanation.className = 'whitespace-pre-line mt-2';
-        explanation.textContent = hour.detail;
+        explanation.textContent = plainAnalysisText(hour.detail);
         details.append(summary, explanation);
         card.append(title, values, details);
         container.appendChild(card);
@@ -1532,6 +1551,57 @@
       return new Date(hour.time).toLocaleString('tr-TR', {
         timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
       }) + ' UTC';
+    }
+
+    function renderFlightPlanTimeline(container, data, startHour, endHour) {
+      container.replaceChildren();
+      const strip = document.createElement('div');
+      strip.className = 'plan-hour-strip';
+      strip.setAttribute('role', 'group');
+      strip.setAttribute('aria-label', 'Saatlik uçuş koşulları · UTC');
+      const detail = document.createElement('div');
+      detail.className = 'plan-hour-detail';
+      const hours = new Map(data.hours.map(hour => [hour.hour, hour]));
+      const preferred = data.best_window?.start_hour ?? data.hours.find(hour => !hour.is_past)?.hour ?? data.hours[0]?.hour;
+      function selectHour(hour, button) {
+        strip.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        renderHourlyCards(detail, [hour], utcForecastLabel);
+        detail.querySelector('details').open = true;
+      }
+      for (let index = startHour; index <= endHour; index++) {
+        const hour = hours.get(index);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'plan-hour';
+        const time = document.createElement('strong');
+        time.textContent = String(index).padStart(2, '0') + ':00';
+        const state = document.createElement('span');
+        state.textContent = hour ? formatDecisionLabel(hour.decision) : 'Veri yok';
+        button.append(time, state);
+        if (hour) {
+          button.dataset.tone = getDecisionToneName(hour.decision);
+          button.setAttribute('aria-pressed', 'false');
+          if (hour.is_past) {
+            const past = document.createElement('small');
+            past.textContent = 'Geçmiş';
+            button.appendChild(past);
+          } else if (data.best_window && index >= data.best_window.start_hour && index <= data.best_window.end_hour) {
+            const windowLabel = document.createElement('small');
+            windowLabel.textContent = 'Uygun pencere';
+            button.appendChild(windowLabel);
+          }
+          button.addEventListener('click', () => selectHour(hour, button));
+        } else {
+          button.disabled = true;
+        }
+        strip.appendChild(button);
+        if (index === preferred && hour) selectHour(hour, button);
+      }
+      container.append(strip, detail);
+    }
+
+    function getDecisionToneName(decision) {
+      return { UYGUN: 'safe', RISKLI: 'caution', UYGUN_DEGIL: 'danger' }[decision] || 'unknown';
     }
 
     async function fetchForecastChange() {
@@ -1607,8 +1677,8 @@
         const data = await response.json();
         if (version !== planRequestVersion || report !== currentReportData) return;
         if (!response.ok) throw new Error(data.detail || 'Plan verisi alınamadı.');
-        renderHourlyCards(timeline, data.hours, utcForecastLabel);
-        status.textContent = `${data.date} · UTC · ${data.hours.length} saat değerlendirildi.` +
+        renderFlightPlanTimeline(timeline, data, startHour, endHour);
+        status.textContent = `${data.date} · UTC · ${data.hours.length} saat değerlendirildi. Ayrıntılar için bir saat seçin.` +
           (data.missing_hours.length ? ` Veri yok: ${data.missing_hours.map(h => String(h).padStart(2, '0') + ':00').join(', ')}. Eksik saatler uygun sayılmaz.` : '');
         if (data.best_window) {
           best.textContent = `Kesintisiz uygun pencere: ${String(data.best_window.start_hour).padStart(2, '0')}:00 – ${String(data.best_window.end_hour + 1).padStart(2, '0')}:00 UTC (${data.best_window.length} saat). Yalnızca hava koşulları değerlendirmesidir.`;
@@ -1647,7 +1717,7 @@
     }
 
     function timeAgo(value) {
-      const diffMs = Date.now() - new Date(value).getTime();
+      const diffMs = Date.now() - reportTimestamp(value).getTime();
       const minutes = Math.max(1, Math.round(diffMs / 60000));
       if (minutes < 60) return `${minutes} dk önce`;
       const hours = Math.round(minutes / 60);
@@ -1655,7 +1725,14 @@
       return `${Math.round(hours / 24)} gün önce`;
     }
 
+    function reportTimestamp(value) {
+      // SQLite returns the stored UTC timestamp without an offset.
+      return new Date(/(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : value + 'Z');
+    }
+
     let historyLoadVersion = 0;
+    let historyListVersion = 0;
+    let reportCompareVersion = 0;
 
     async function openSavedReport(reportId) {
       const version = ++historyLoadVersion;
@@ -1667,6 +1744,9 @@
         if (version !== historyLoadVersion) return;
         if (!response.ok) throw new Error(data.detail || 'Kayıtlı rapor alınamadı.');
         renderResult(data);
+        show('resultSection');
+        switchTab('point');
+        document.getElementById('decisionBanner').scrollIntoView({ behavior: 'smooth', block: 'start' });
         status.textContent = 'Kayıtlı rapor açıldı; yeniden analiz yapılmadı.';
       } catch (error) {
         if (version !== historyLoadVersion) return;
@@ -1677,18 +1757,57 @@
     async function fetchHistory() {
       const section = document.getElementById('historySection');
       const status = document.getElementById('historyStatus');
+      const version = ++historyListVersion;
+      const location = document.getElementById('historyLocation').value.trim();
+      const start = document.getElementById('historyStartDate').value;
+      const end = document.getElementById('historyEndDate').value;
+      if (start && end && end < start) {
+        status.textContent = 'Son tarih ilk tarihten önce olamaz.';
+        return;
+      }
+      status.textContent = 'Geçmiş yükleniyor…';
+      ++reportCompareVersion;
+      document.getElementById('reportComparison').replaceChildren();
+      document.getElementById('reportCompareStatus').textContent = '';
+      document.getElementById('compareReportsBtn').disabled = true;
+      document.getElementById('historyChart').replaceChildren();
+      document.getElementById('historyList').replaceChildren();
+      const query = new URLSearchParams({ limit: '100' });
+      if (location) query.set('location', location);
+      if (start) query.set('start_date', start);
+      if (end) query.set('end_date', end);
       try {
-        const response = await fetch('/api/v1/weather/history?limit=30');
+        const response = await fetch('/api/v1/weather/history?' + query);
         const data = await response.json();
+        if (version !== historyListVersion) return;
         if (!response.ok) throw new Error(data.detail || 'Rapor geçmişi alınamadı.');
+        ++reportCompareVersion;
+        document.getElementById('reportComparison').replaceChildren();
+        document.getElementById('reportCompareStatus').textContent = '';
+        for (const id of ['compareReportA', 'compareReportB']) {
+          const select = document.getElementById(id);
+          const selected = select.value;
+          select.replaceChildren(new Option('Rapor seçin', ''));
+          data.reports.forEach(report => select.add(new Option(
+            `#${report.report_id} · ${report.location} · ${reportTimestamp(report.created_at).toLocaleString('tr-TR', { timeZone: 'UTC' })} UTC`,
+            String(report.report_id),
+          )));
+          if (data.reports.some(report => String(report.report_id) === selected)) select.value = selected;
+        }
         const chart = document.getElementById('historyChart');
         const list = document.getElementById('historyList');
-        chart.innerHTML = data.reports.map(report => {
+        chart.replaceChildren();
+        data.reports.forEach(report => {
           const height = Math.max(18, report.confidence_score);
           const colors = getHudColors();
           const bg = report.decision === 'UYGUN' ? colors.safe : report.decision === 'RISKLI' ? colors.caution : colors.danger;
-          return `<div class="history-bar" style="height:${height}px; background:${bg};" title="${report.location} — ${report.decision}"></div>`;
-        }).join('');
+          const bar = document.createElement('div');
+          bar.className = 'history-bar';
+          bar.style.height = height + 'px';
+          bar.style.background = bg;
+          bar.title = `${report.location} — ${formatDecisionLabel(report.decision)}`;
+          chart.appendChild(bar);
+        });
         list.replaceChildren();
         data.reports.forEach(report => {
           const button = document.createElement('button');
@@ -1699,11 +1818,128 @@
           list.appendChild(button);
         });
         section.classList.remove('hidden');
-        status.textContent = data.reports.length ? '' : 'Henüz kayıtlı rapor yok.';
+        document.getElementById('compareReportsBtn').disabled = data.reports.length < 2;
+        status.textContent = data.reports.length
+          ? `${data.reports.length} kayıt gösteriliyor${data.reports.length === 100 ? ' (en fazla 100; aramayı tarih veya konumla daraltın)' : ''}. Tarihler UTC.`
+          : 'Bu filtrelere uyan kayıtlı rapor yok.';
       } catch (error) {
+        if (version !== historyListVersion) return;
         section.classList.remove('hidden');
         status.textContent = error.message || 'Rapor geçmişi alınamadı.';
       }
+    }
+
+    async function compareSavedReports() {
+      const version = ++reportCompareVersion;
+      const a = document.getElementById('compareReportA').value;
+      const b = document.getElementById('compareReportB').value;
+      const status = document.getElementById('reportCompareStatus');
+      const container = document.getElementById('reportComparison');
+      container.replaceChildren();
+      if (!a || !b || a === b) {
+        status.textContent = 'Karşılaştırmak için iki farklı rapor seçin.';
+        return;
+      }
+      status.textContent = 'Kayıtlı raporlar yükleniyor…';
+      try {
+        const reports = await Promise.all([a, b].map(async id => {
+          const response = await fetch(`/api/v1/weather/report/${id}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || 'Rapor karşılaştırması alınamadı.');
+          return data;
+        }));
+        if (version !== reportCompareVersion) return;
+        renderReportComparison(container, reports);
+        status.textContent = 'Kayıtlı değerler karşılaştırılıyor; yeni hava sorgusu veya AI değerlendirmesi yapılmadı.';
+      } catch (error) {
+        if (version !== reportCompareVersion) return;
+        status.textContent = error.message || 'Raporlar karşılaştırılamadı.';
+      }
+    }
+
+    function renderReportComparison(container, reports) {
+      const table = document.createElement('table');
+      table.className = 'report-comparison-table w-full text-xs';
+      function row(label, values, heading = false) {
+        const tr = document.createElement('tr');
+        const name = document.createElement('th');
+        name.scope = 'row';
+        name.textContent = label;
+        tr.appendChild(name);
+        values.forEach(value => {
+          const cell = document.createElement(heading ? 'th' : 'td');
+          if (heading) cell.scope = 'col';
+          cell.textContent = value;
+          tr.appendChild(cell);
+        });
+        table.appendChild(tr);
+      }
+      row('Kayıtlı rapor', reports.map(report => `#${report.report_id} · ${report.location}`), true);
+      row('Rapor zamanı (UTC)', reports.map(report => reportTimestamp(report.created_at).toLocaleString('tr-TR', { timeZone: 'UTC' })));
+      row('Nihai karar', reports.map(report => formatDecisionLabel(report.decision)));
+      row('Açıklama', reports.map(report => plainAnalysisText(report.decision_detail)));
+      row('Parametre kaydı', reports.map(report => report.parameter_snapshot_available
+        ? 'Oluşturulduğu haliyle kaydedildi' : 'Özgün parametre kaydı yok; kayıtlı kaynaklardan yeniden hesaplandı'));
+      const names = [...new Set(reports.flatMap(report => report.parameters.map(parameter => parameter.name)))];
+      names.forEach(name => row(name, reports.map(report => {
+        const parameter = report.parameters.find(item => item.name === name);
+        return parameter ? `${parameter.value} · ${formatDecisionLabel(parameter.decision)}\n${parameter.explanation || ''}` : 'Kaydedilmemiş';
+      })));
+      row('Güven endeksi', reports.map(report => `%${report.confidence ?? report.confidence_score}`));
+      row('Kaynak durumu', reports.map(report => sourceSummaryText(report)));
+      row('Uygulanan limitler', reports.map(report => formatSavedLimits(report.applied_limits)));
+      container.replaceChildren(table);
+    }
+
+    function formatSavedLimits(limits) {
+      if (!limits) return 'Limit kaydı yok; dönem limitleri bilinmiyor';
+      return [
+        `Rüzgâr (uygun/riskli üst sınır): ${limits.wind_ok_max_knots} / ${limits.wind_risky_max_knots} kt`,
+        `Görüş (uygun/riskli alt sınır): ${limits.visibility_ok_min_km} / ${limits.visibility_risky_min_km} km`,
+        `Bulut tabanı (uygun/riskli alt sınır): ${limits.cloud_base_ok_min_ft} / ${limits.cloud_base_risky_min_ft} ft`,
+        `Bulut tavanı (uygun/riskli alt sınır): ${limits.cloud_ceiling_ok_min_ft} / ${limits.cloud_ceiling_risky_min_ft} ft`,
+        `Nem (uygun/riskli üst sınır): %${limits.humidity_ok_max_pct} / %${limits.humidity_risky_max_pct}`,
+        `Bulutluluk (uygun üst sınır): %${limits.cloud_cover_ok_max_pct}`,
+        `Sıcaklık (uygun): ${limits.temp_ok_min_c}–${limits.temp_ok_max_c} °C`,
+        `Sıcaklık (riskli): ${limits.temp_risky_min_override_c ?? limits.temp_ok_min_c - 5}–${limits.temp_risky_max_override_c ?? limits.temp_ok_max_c + 5} °C`,
+      ].join('\n');
+    }
+
+    function sourceSummaryText(report) {
+      const sources = report.sources;
+      const current = sources.filter(source => source.freshness === 'current').length;
+      const stale = sources.filter(source => source.freshness === 'stale').length;
+      const unknown = sources.length - current - stale;
+      const parts = [`${current} güncel · ${stale} eski · ${unknown} güncelliği bilinmeyen`];
+      if (report.source_checks) {
+        const missing = report.source_checks.filter(check => check.status === 'no_data').length;
+        const unconfigured = report.source_checks.filter(check => check.status === 'not_configured').length;
+        parts.push(`${missing} sorgu sonuçsuz · ${unconfigured} yapılandırılmamış`);
+      } else {
+        parts.push('Alınamayan kaynakların sorgu kaydı yok');
+      }
+      return parts.join('. ');
+    }
+
+    document.getElementById('sourceSummaryLink').addEventListener('click', () => {
+      document.getElementById('sourceDetails').open = true;
+    });
+
+    document.getElementById('historyFilters').addEventListener('submit', event => {
+      event.preventDefault();
+      fetchHistory();
+    });
+    document.getElementById('historyReset').addEventListener('click', () => {
+      document.getElementById('historyFilters').reset();
+      fetchHistory();
+    });
+    document.getElementById('compareReportsBtn').addEventListener('click', compareSavedReports);
+    for (const id of ['compareReportA', 'compareReportB']) {
+      document.getElementById(id).addEventListener('change', () => {
+        ++reportCompareVersion;
+        document.getElementById('reportComparison').replaceChildren();
+        document.getElementById('reportCompareStatus').textContent = '';
+      });
     }
 
     function toggleRegionCompare() {
@@ -2041,7 +2277,7 @@
       document.getElementById('decisionText').textContent = cfg.title;
       document.getElementById('locationLabel').textContent = `Konum: ${data.location} (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
       document.getElementById('createdAt').textContent =
-        'Rapor zamanı: ' + new Date(data.created_at).toLocaleString('tr-TR');
+        'Rapor zamanı: ' + reportTimestamp(data.created_at).toLocaleString('tr-TR');
       const savedNotice = document.getElementById('savedReportNotice');
       savedNotice.classList.toggle('hidden', !data.is_saved_report);
       savedNotice.textContent = data.parameter_snapshot_available
@@ -2183,12 +2419,10 @@
         </tr>`).join('');
 
       const srcContainer = document.getElementById('sourcesTable');
-      const staleSources = data.sources.filter(source => source.freshness === 'stale').length;
-      const unverifiedSources = data.sources.filter(source => source.freshness !== 'stale' && source.freshness !== 'current').length;
-      document.getElementById('sourceTimingOverview').textContent = data.sources.length
-        ? `${data.is_saved_report ? 'Rapor oluşturulurken: ' : ''}${data.sources.length} kaynak · ${staleSources} eski gözlem · ${unverifiedSources} kaynağın güncelliği doğrulanmadı. ` +
-          (data.source_checks ? `${data.source_checks.filter(check => check.status === 'no_data').length} veri isteği sonuçsuz.` : 'Kaynak sorgu durumları kaydedilmemiş.') + ' Ayrıntılar için açın.'
-        : 'Kaynak verisi bulunmuyor.';
+      const sourceSummary = sourceSummaryText(data);
+      document.getElementById('sourceTimingOverview').textContent =
+        `${data.is_saved_report ? 'Rapor oluşturulurken: ' : ''}${sourceSummary}`;
+      document.getElementById('reportSourceSummary').textContent = sourceSummary;
       const checks = document.getElementById('reportSourceChecks');
       checks.replaceChildren();
       if (!data.source_checks) {

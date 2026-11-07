@@ -52,3 +52,11 @@ def test_point_details_are_valid_accessible_and_keep_core_output_visible():
     assert ("aside", "weatherSnapshot") in layout.elements["windTrendBadge"][2]
     for name in ("metricWind", "metricVisibility", "metricTemperature", "metricCloudCover"):
         assert not any(tag == "details" for tag, _ in layout.elements[name][2])
+    assert layout.elements["locationOptions"][0] == "details"
+    assert "open" not in layout.elements["locationOptions"][1]
+    for name in ("countrySelect", "citySelect", "favoritesSelect"):
+        assert ("details", "locationOptions") in layout.elements[name][2]
+    assert ("aside", "weatherSnapshot") in layout.elements["reportSourceSummary"][2]
+    assert not any(tag == "details" for tag, _ in layout.elements["reportSourceSummary"][2])
+    for name in ("historyFilters", "compareReportA", "compareReportB", "reportComparison"):
+        assert ("details", "historySection") in layout.elements[name][2]
