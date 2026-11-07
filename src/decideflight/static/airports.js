@@ -55,10 +55,13 @@
         const res = await fetch('/api/v1/map-layers/airports');
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Havalimanları alınamadı');
+        if (!map.getPane('airportPane')) {
+          map.createPane('airportPane').style.zIndex = 620;
+        }
         data.airports.forEach((airport) => {
           const marker = L.circleMarker([airport.lat, airport.lon], {
             radius: 5, color: '#14181d', weight: 1, fillColor: '#edf0f3', fillOpacity: 0.95,
-            bubblingMouseEvents: false,
+            bubblingMouseEvents: false, pane: 'airportPane',
           });
           marker.bindTooltip(airport.icao);
           marker.on('click', async () => {
