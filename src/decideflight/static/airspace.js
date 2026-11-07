@@ -42,13 +42,40 @@
       if (statusEl) statusEl.textContent = text;
     }
 
+    function inRing(pt, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i], b = ring[j];
+        if ((a.lat > pt.lat) !== (b.lat > pt.lat) &&
+            pt.lng < ((b.lng - a.lng) * (pt.lat - a.lat)) / (b.lat - a.lat) + a.lng) inside = !inside;
+      }
+      return inside;
+    }
+
+    function contains(layer, pt) {
+      const polys = layer.getLatLngs();
+      const list = Array.isArray(polys[0]) && Array.isArray(polys[0][0]) && polys[0][0].lat === undefined ? polys : [polys];
+      return list.some((rings) => inRing(pt, rings[0]) && !rings.slice(1).some((h) => inRing(pt, h)));
+    }
+
+    function openStack(latlng) {
+      const order = ['CTR', 'TMA', 'FIR'];
+      const hits = [];
+      Object.keys(layers).sort((a, b) => order.indexOf(a) - order.indexOf(b)).forEach((code) => {
+        if (!map.hasLayer(layers[code])) return;
+        layers[code].eachLayer((l) => { if (contains(l, latlng)) hits.push(l.feature.properties); });
+      });
+      if (!hits.length) return;
+      L.popup({ maxHeight: 260 }).setLatLng(latlng).setContent(hits.map(popupHtml).join('<hr>')).openOn(map);
+    }
+
     async function show(code) {
       if (!layers[code]) {
         layers[code] = L.geoJSON(null, {
           style: () => STYLES[code],
           bubblingMouseEvents: false,
           onEachFeature: (feature, layer) => {
-            layer.bindPopup(popupHtml(feature.properties));
+            layer.on('click', (e) => openStack(e.latlng));
             layer.bindTooltip(feature.properties.name, { sticky: true });
             layer.on('mouseover', () => layer.setStyle({ weight: STYLES[code].weight + 2, fillOpacity: STYLES[code].fillOpacity + 0.15 }));
             layer.on('mouseout', () => layer.setStyle(STYLES[code]));
@@ -70,6 +97,7 @@
         }
       }
       layers[code].addTo(map);
+      if (code === 'FIR') layers[code].bringToBack();
       return true;
     }
 
