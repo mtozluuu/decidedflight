@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from decideflight.services.map_layers import LEVELS, MapLayerUnavailableError, load_layer, turkish_airports
+from decideflight.services.map_layers import (
+    LEVELS,
+    MapLayerUnavailableError,
+    flight_categories,
+    load_layer,
+    sigmets,
+    turkish_airports,
+)
 
 router = APIRouter(prefix="/api/v1/map-layers", tags=["map-layers"])
 
@@ -29,3 +36,26 @@ async def wind_cloud(level: str = Query("surface", description="surface, 850, 70
     except MapLayerUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {**data, "source": "Open-Meteo", "disclaimer": DISCLAIMER}
+
+
+@router.get("/airports/status")
+async def airport_status() -> dict:
+    """Latest METAR flight category (VFR/MVFR/IFR/LIFR) per airport."""
+    try:
+        return {"stations": await flight_categories(), "source": "NOAA Aviation Weather Center"}
+    except MapLayerUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/sigmet")
+async def sigmet_list() -> dict:
+    """Active international SIGMETs near Türkiye."""
+    try:
+        items = await sigmets()
+    except MapLayerUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "sigmets": items,
+        "source": "NOAA Aviation Weather Center",
+        "disclaimer": "Bilgilendirme amaçlıdır; resmî SIGMET/AIRMET için DHMİ/MGM kaynaklarını kullanın.",
+    }

@@ -157,3 +157,47 @@ def test_airports_endpoint_lists_turkish_icao_airports() -> None:
     assert {"LTAC", "LTFM", "LTAI"} <= icaos
     assert all(i.startswith("LT") and len(i) == 4 for i in icaos)
     assert all(-90 <= a["lat"] <= 90 for a in data)
+
+
+def test_ui_wires_route_and_sigmet_plugins() -> None:
+    index = (STATIC / "index.html").read_text()
+    sw = (STATIC / "sw.js").read_text()
+    for name in ("sigmet.js", "route.js"):
+        assert f"/static/{name}" in index
+        assert f"'/static/{name}'" in sw
+
+
+def test_limit_feet_conversion() -> None:
+    assert airspace.limit_feet({"value": 240, "unit": 6}) == 24000
+    assert airspace.limit_feet({"value": 3500, "unit": 1}) == 3500
+    assert airspace.limit_feet({"value": 1000, "unit": 0}) == 3281
+    assert airspace.limit_feet(None) is None
+
+
+def test_flight_categories_and_sigmet_parsing() -> None:
+    from decideflight.services import map_layers
+
+    cats = map_layers.parse_flight_categories(
+        [{"icaoId": "LTAC", "fltCat": "VFR", "reportTime": "t"}, {"icaoId": "LTXX"}, {"icaoId": "LTBA", "fltCat": "??"}]
+    )
+    assert cats == {"LTAC": {"category": "VFR", "observed": "t"}}
+
+    near = {"hazard": "TS", "firName": "LTAA", "coords": [{"lat": 39.0, "lon": 32.0}], "rawSigmet": "x"}
+    far = {"hazard": "VA", "coords": [{"lat": 14.0, "lon": -90.0}]}
+    parsed = map_layers.parse_sigmets([near, far])
+    assert len(parsed) == 1 and parsed[0]["hazard"] == "TS" and parsed[0]["coords"] == [[39.0, 32.0]]
+
+
+def test_status_and_sigmet_endpoints(monkeypatch) -> None:
+    async def fake_status():
+        return {"LTAC": {"category": "IFR", "observed": None}}
+
+    async def fake_sigmets():
+        return []
+
+    monkeypatch.setattr("decideflight.api.map_layers.flight_categories", fake_status)
+    monkeypatch.setattr("decideflight.api.map_layers.sigmets", fake_sigmets)
+    client = TestClient(app)
+
+    assert client.get("/api/v1/map-layers/airports/status").json()["stations"]["LTAC"]["category"] == "IFR"
+    assert client.get("/api/v1/map-layers/sigmet").json()["sigmets"] == []
