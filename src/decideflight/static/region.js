@@ -93,8 +93,12 @@
     }
 
     function openPanel() {
-      if (!panel || !panel.classList.contains('collapsed')) return;
-      panel.parentElement.querySelectorAll('.airspace-control').forEach((p) => p.classList.add('collapsed'));
+      if (!panel) return;
+      if (map._toolsApi) map._toolsApi.show('Bölge araçları');
+      if (!panel.classList.contains('collapsed')) return;
+      panel.parentElement.querySelectorAll('.airspace-control').forEach((p) => {
+        if (p.dataset.group === panel.dataset.group) p.classList.add('collapsed');
+      });
       panel.classList.remove('collapsed');
       panel.scrollIntoView({ block: 'nearest' });
     }
@@ -349,7 +353,7 @@
     compareControl.addTo(map);
 
     const shared = MapUtil.sharedState();
-    if (shared) restore(shared);
+    if (shared) setTimeout(() => restore(shared), 0);
   }
 
   (window.MapLayerPlugins = window.MapLayerPlugins || []).push(attach);

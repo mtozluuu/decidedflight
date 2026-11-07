@@ -261,6 +261,7 @@
       resultEl.innerHTML = sections.join('');
       const cmp = resultEl.querySelector('.route-compare');
       if (cmp) cmp.addEventListener('click', () => compareLevels(resultEl.querySelector('.route-levels')));
+      if (map._toolsApi) map._toolsApi.show('Rota');
       resultEl.closest('.airspace-control').scrollIntoView({ block: 'nearest' });
       setStatus('');
     }
