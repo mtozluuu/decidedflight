@@ -1,7 +1,8 @@
-const CACHE_NAME = 'decideflight-static-v17';
+const CACHE_NAME = 'decideflight-static-v22';
 const STATIC_ASSETS = [
   '/',
   '/static/index.html',
+  '/static/theme.css',
   '/static/manifest.json',
   '/static/decideflight-icon.svg',
   '/static/data/cities.json',

@@ -47,3 +47,8 @@ def test_point_details_are_valid_accessible_and_keep_core_output_visible():
         assert ("details", "feedbackSection") in layout.elements[name][2]
     assert ("details", "sourceDetails") in layout.elements["sourceTimingOverview"][2]
     assert any(tag == "summary" for tag, _ in layout.elements["sourceTimingOverview"][2])
+    assert layout.elements["weatherSnapshot"][0] == "aside"
+    assert layout.elements["weatherSnapshot"][2][-1] == ("section", "resultSection")
+    assert ("aside", "weatherSnapshot") in layout.elements["windTrendBadge"][2]
+    for name in ("metricWind", "metricVisibility", "metricTemperature", "metricCloudCover"):
+        assert not any(tag == "details" for tag, _ in layout.elements[name][2])

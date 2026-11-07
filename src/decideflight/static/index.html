@@ -7,15 +7,13 @@
   <link rel="icon" type="image/svg+xml" href="/static/decideflight-icon.svg" />
   <link rel="apple-touch-icon" href="/static/decideflight-icon.svg" />
   <link rel="manifest" href="/static/manifest.json" />
-  <meta name="theme-color" content="#0a0e1a" />
+  <meta name="theme-color" content="#14181d" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin=""></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
-
     :root {
       --hud-bg: #0a0e1a;
       --hud-panel: rgba(10, 17, 35, 0.72);
@@ -390,6 +388,7 @@
     .aqi-mid { color: #ffb800; border-color: rgba(255,184,0,0.35); background: rgba(255,184,0,0.08); }
     .aqi-bad { color: #ff3d57; border-color: rgba(255,61,87,0.35); background: rgba(255,61,87,0.08); }
   </style>
+  <link rel="stylesheet" href="/static/theme.css" />
 </head>
 <body>
   <header class="px-4 pt-6 pb-4">
@@ -397,44 +396,59 @@
       <div class="flex items-center gap-4">
         <div class="relative">
           <img src="/static/decideflight-icon.svg" alt="DecideFlight uygulama logosu" role="img" class="logo-icon h-10 w-10" />
-          <div class="absolute inset-0 rounded-full bg-cyan-400/10 blur-xl"></div>
         </div>
         <div>
-          <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest" style="text-shadow: 0 0 20px rgba(0,212,255,0.5)">DECIDEFLIGHT</p>
-          <p class="mono text-[10px] sm:text-[11px] text-cyan-100/50 mt-0.5 tracking-widest">UÇUŞ HAVA KOŞULU KARAR ÇEKİRDEĞİ</p>
+          <p class="brand-name">DecideFlight</p>
+          <p class="brand-subtitle">Uçuş hava durumu ve karar desteği</p>
         </div>
       </div>
-      <div class="text-right ml-auto" role="timer" aria-label="Eşgüdümlü Evrensel Zaman">
+      <div class="clock-card text-right ml-auto" role="timer" aria-label="Eşgüdümlü Evrensel Zaman">
         <p class="mono text-[10px] text-green-300/60 tracking-widest mb-0.5">UTC</p>
-        <p id="utcClock" aria-label="Güncel UTC saati" class="mono text-base sm:text-lg font-bold text-green-300" style="text-shadow: 0 0 12px rgba(0,255,136,0.4)">--:--:--</p>
+        <p id="utcClock" aria-label="Güncel UTC saati" class="mono text-base sm:text-lg font-bold">--:--:--</p>
       </div>
     </div>
     <div class="header-line max-w-6xl mx-auto mt-4 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent"></div>
   </header>
 
   <!-- Tab navigation -->
-  <div class="max-w-6xl mx-auto px-4 pt-4">
+  <div class="workspace-nav max-w-6xl mx-auto px-4 pt-4">
+    <div class="sidebar-brand">
+      <img src="/static/decideflight-icon.svg" alt="" />
+      <span>DecideFlight</span>
+    </div>
     <nav class="flex gap-0 overflow-x-auto border-b border-cyan-400/15 bg-gradient-to-b from-cyan-400/[0.03] to-transparent rounded-t-lg px-2" role="tablist" aria-label="Uygulama sekmeleri">
       <button id="tab-btn-point" role="tab" aria-selected="true" aria-controls="panel-point"
-        onclick="switchTab('point')" class="tab-btn active">◈ NOKTA ANALİZİ</button>
+        onclick="switchTab('point')" class="tab-btn active">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 21s7-6 7-12a7 7 0 0 0-14 0c0 6 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        Nokta analizi</button>
       <button id="tab-btn-region" role="tab" aria-selected="false" aria-controls="panel-region"
-        onclick="switchTab('region')" class="tab-btn">◈ BÖLGE ANALİZİ</button>
+        onclick="switchTab('region')" class="tab-btn">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5ZM9 3v16M15 5v16"/></svg>
+        Bölge analizi</button>
       <button id="tab-btn-wind" role="tab" aria-selected="false" aria-controls="panel-wind"
-        onclick="switchTab('wind')" class="tab-btn">◈ RÜZGAR</button>
+        onclick="switchTab('wind')" class="tab-btn">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h12a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h6"/></svg>
+        Rüzgâr</button>
       <button id="tab-btn-sources" role="tab" aria-selected="false" aria-controls="panel-sources"
-        onclick="switchTab('sources')" class="tab-btn">◈ VERİ KAYNAKLARI</button>
+        onclick="switchTab('sources')" class="tab-btn">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/></svg>
+        Veri kaynakları</button>
       <button id="tab-btn-settings" role="tab" aria-selected="false" aria-controls="panel-settings"
-        onclick="switchTab('settings')" class="tab-btn">◈ AYARLAR</button>
+        onclick="switchTab('settings')" class="tab-btn">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--hud-bg)"/><circle cx="15" cy="17" r="3" fill="var(--hud-bg)"/></svg>
+        Ayarlar</button>
     </nav>
+    <p class="sidebar-caption">Uçuş operasyonları<br />Hava koşulları karar desteği</p>
   </div>
 
   <main class="max-w-6xl mx-auto px-4 pb-8">
 
     <!-- ══ Tab 1: Point Analysis ══════════════════════════════════════════ -->
     <div id="panel-point" role="tabpanel" aria-labelledby="tab-btn-point" class="space-y-6 pt-6">
-    <section class="hud-card p-6 sm:p-8 text-center">
-      <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">UÇUŞ HAVA ANALİZİ</h1>
-      <p class="mono text-xs sm:text-sm text-cyan-100/75 mt-3">KONUM VEYA KOORDİNAT GİRİN — DÜNYA GENELİ KAPSAM</p>
+    <section class="hud-card p-6 sm:p-8">
+      <p class="workspace-kicker">Operasyon / Konum değerlendirmesi</p>
+      <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">Uçuş hava analizi</h1>
+      <p class="mono text-xs sm:text-sm text-cyan-100/75 mt-3">Bir konum seçin. Hava koşullarını kaynaklar ve uçuş limitlerinizle birlikte değerlendirin.</p>
 
       <div class="mt-6 flex flex-col sm:flex-row gap-3">
         <div class="relative flex-1">
@@ -442,7 +456,7 @@
           <input
             id="locationInput"
             type="text"
-            placeholder="ŞEHİR ADI VEYA ENLEM, BOYLAM GİRİN..."
+            placeholder="Şehir adı veya enlem, boylam"
             aria-label="Konum veya koordinat girişi"
             class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md pl-9 pr-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
           />
@@ -451,12 +465,12 @@
           id="reportBtn"
           onclick="generateReport()"
           class="mono btn-primary-glow text-slate-950 font-bold rounded-lg px-6 py-3 text-sm tracking-wider"
-        >[ ANALİZ ET ]</button>
+        >Analiz et</button>
       </div>
 
       <div class="mt-4 grid sm:grid-cols-2 gap-3 text-left">
         <div>
-          <label for="countrySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ÜLKE SEÇİMİ</label>
+          <label for="countrySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Ülke</label>
           <select
             id="countrySelect"
             aria-label="Ülke seçimi"
@@ -467,7 +481,7 @@
           </select>
         </div>
         <div>
-          <label for="citySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ŞEHİR SEÇİMİ</label>
+          <label for="citySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Şehir</label>
           <select
             id="citySelect"
             aria-label="Şehir seçimi"
@@ -481,7 +495,7 @@
 
       <div class="mt-4 grid sm:grid-cols-[1fr_auto] gap-3 items-end text-left">
         <div>
-          <label for="favoritesSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">FAVORİLER</label>
+          <label for="favoritesSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Favori konumlar</label>
           <select id="favoritesSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
             <option value="">Favori konum seçin</option>
           </select>
@@ -495,10 +509,10 @@
     </section>
 
     <details id="airportTools" class="hud-card p-4 mb-4">
-      <summary class="mono text-sm text-cyan-300 cursor-pointer">MEYDAN, AIRGRAM VE PİST ARAÇLARI</summary>
+      <summary class="mono text-sm text-cyan-300 cursor-pointer">Meydan, Airgram ve pist araçları</summary>
       <p class="text-xs text-cyan-100/60 mt-2">İsteğe bağlı ek bilgiler. Meydan rasatları analiz noktasından ayrı değerlendirilir.</p>
     <section class="p-2 mt-4 mb-4">
-      <h3 class="mono text-sm text-cyan-300 mb-2">MEYDAN RASATLARI</h3>
+      <h3 class="mono text-sm text-cyan-300 mb-2">Meydan rasatları</h3>
       <p class="mono text-[11px] text-cyan-100/60 mb-4">MGM Hezarfen · Son METAR ve TAF</p>
       <div class="flex flex-wrap gap-3">
         <label for="airportIcao" class="sr-only">Meydan ICAO kodu</label>
@@ -522,10 +536,10 @@
     </section>
 
     <section class="hud-card p-6 mb-4">
-      <h3 class="mono text-sm text-cyan-300 mb-2">AIRGRAM &amp; İRTİFA PROFİLİ</h3>
+      <h3 class="mono text-sm text-cyan-300 mb-2">Airgram ve irtifa profili</h3>
       <p class="mono text-[11px] text-cyan-100/60">Görmek istediğiniz kaynağı açın. Nokta profili ve meydan görseli ayrı kaynaklardır.</p>
       <details class="mt-4 border border-cyan-400/20 rounded-lg p-3">
-        <summary class="mono text-xs text-cyan-200 cursor-pointer">NOKTA PROFİLİ · OPEN-METEO</summary>
+        <summary class="mono text-xs text-cyan-200 cursor-pointer">Nokta profili · Open-Meteo</summary>
       <div class="flex flex-wrap items-center gap-4 mt-3">
         <button type="button" onclick="loadPointAirgram()" class="mono border border-cyan-400/40 rounded px-3 py-2 text-xs text-cyan-200">NOKTA PROFİLİNİ YENİLE</button>
         <a id="windyAirgramLink" target="_blank" rel="noopener noreferrer" class="hidden mono text-xs text-cyan-300 underline">Windy Airgram · dış sitede aç</a>
@@ -538,7 +552,7 @@
       </details>
       </details>
       <details class="mt-3 border border-cyan-400/20 rounded-lg p-3">
-        <summary class="mono text-xs text-cyan-200 cursor-pointer">MEYDAN AIRGRAM · MGM HEZARFEN</summary>
+        <summary class="mono text-xs text-cyan-200 cursor-pointer">Meydan Airgram · MGM Hezarfen</summary>
       <p id="mgmAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-4">MGM Airgram için meydan seçin ve GÖSTER / YENİLE düğmesine basın.</p>
       <img id="mgmAirgramImage" class="hidden mt-3 w-full" alt="Seçilen meydanın MGM Hezarfen Airgram görseli" />
         <button type="button" onclick="showMgmAirgram()" class="inline-block mt-3 mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">HEZARFEN AIRGRAM GÖSTER / YENİLE</button>
@@ -546,7 +560,7 @@
     </section>
 
     <div id="runwayCard" class="hidden hud-card p-6">
-      <h3 class="mono text-sm text-cyan-300 mb-4">◈ PİST &amp; RÜZGAR BİLEŞENLERİ</h3>
+      <h3 class="mono text-sm text-cyan-300 mb-4">Pist ve rüzgâr bileşenleri</h3>
 
       <div class="grid sm:grid-cols-2 gap-4 mb-4">
         <div>
@@ -621,9 +635,15 @@
         </div>
       </div>
 
-      <div class="hud-card p-6 hud-grid">
+      <div class="analysis-main hud-card p-6 hud-grid">
+        <div class="metric-grid" aria-label="Temel hava parametreleri">
+          <div class="metric-item"><p class="metric-label">Rüzgâr</p><p id="metricWind" class="metric-value">—</p></div>
+          <div class="metric-item"><p class="metric-label">Görüş</p><p id="metricVisibility" class="metric-value">—</p></div>
+          <div class="metric-item"><p class="metric-label">Sıcaklık</p><p id="metricTemperature" class="metric-value">—</p></div>
+          <div class="metric-item"><p class="metric-label">Bulutluluk</p><p id="metricCloudCover" class="metric-value">—</p></div>
+        </div>
         <div class="grid md:grid-cols-[220px_1fr] gap-6 items-center">
-          <div class="text-center">
+          <div class="confidence-panel text-center">
             <div class="relative w-40 h-40 mx-auto">
               <svg class="w-40 h-40 -rotate-90" role="img" aria-label="Güven puanı göstergesi" viewBox="0 0 120 120">
                 <circle cx="60" cy="60" r="52" stroke="rgba(14,165,233,0.25)" stroke-width="8" fill="none"></circle>
@@ -636,21 +656,20 @@
               </div>
             </div>
             <p id="confidenceLabel" class="mono text-xs text-cyan-100/60 mt-2"></p>
-            <p id="windTrendBadge" class="hidden mono text-[11px] mt-1 text-cyan-300/80"></p>
           </div>
 
           <div>
-            <h3 class="mono text-cyan-300 text-sm mb-2">◈ ANALİZ ÖZETİ</h3>
+            <h3 class="mono text-cyan-300 text-sm mb-2">Analiz özeti</h3>
             <p id="decisionDetail" class="text-sm leading-relaxed text-cyan-100/85 whitespace-pre-line"></p>
             <div class="mt-4 border-t border-cyan-400/20 pt-3">
-              <h4 class="mono text-xs text-cyan-300 mb-2">KARARI BELİRLEYEN KURALLAR</h4>
+              <h4 class="mono text-xs text-cyan-300 mb-2">Kararı belirleyen kurallar</h4>
               <p id="ruleDecisionNotice" class="text-xs text-cyan-100/70 mb-2"></p>
               <ul id="decisionReasons" class="space-y-2 text-sm text-cyan-100/85"></ul>
             </div>
             <div id="confidenceBar" class="hidden"></div>
             <div id="parameterWeightsSection" class="hidden mt-5">
               <details>
-              <summary class="mono text-cyan-300 text-xs mb-3 cursor-pointer">AI KARAR AĞIRLIKLARI</summary>
+              <summary class="mono text-cyan-300 text-xs mb-3 cursor-pointer">AI karar ağırlıkları</summary>
               <div id="parameterWeightsChart" class="space-y-2"></div>
               </details>
             </div>
@@ -658,9 +677,23 @@
         </div>
       </div>
 
+      <aside id="weatherSnapshot" class="weather-summary hud-card p-5" aria-label="Rapor hava özeti">
+        <p class="workspace-kicker">Rapor özeti</p>
+        <h3>Hava koşulları</h3>
+        <dl>
+          <div><dt>Yağış</dt><dd id="snapshotPrecipitation">—</dd></div>
+          <div><dt>Nem</dt><dd id="snapshotHumidity">—</dd></div>
+          <div><dt>Bulut tabanı</dt><dd id="snapshotCloudBase">—</dd></div>
+          <div><dt>Güven endeksi</dt><dd id="snapshotConfidence">—</dd></div>
+          <div><dt>Veri kaynağı</dt><dd id="snapshotSources">—</dd></div>
+        </dl>
+        <p id="windTrendBadge" class="hidden mono text-xs mt-4 text-cyan-300/80"></p>
+        <p class="text-xs text-cyan-100/60 mt-4">Değerler bu rapora aittir. Güncellik ve kaynak bilgilerini ayrıntılardan kontrol edin.</p>
+      </aside>
+
       <!-- AI Summary box (shown when GPT-4o is active) -->
       <details id="aiSummaryCard" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
-        <summary class="mono text-sm mb-3 text-violet-300 cursor-pointer">✦ YAPAY ZEKA ANALİZİ</summary>
+        <summary class="mono text-sm mb-3 text-violet-300 cursor-pointer">Yapay zekâ analizi</summary>
         <p id="aiSummaryText" class="text-sm text-violet-100/90 mb-3"></p>
         <div id="aiDetailWrap" class="hidden">
           <details class="text-sm text-cyan-100/75">
@@ -672,16 +705,16 @@
 
       <div class="grid lg:grid-cols-2 gap-4 hud-grid">
         <details id="riskCard" class="hud-card p-5 hidden">
-          <summary class="mono text-sm mb-3 text-amber-300 cursor-pointer">⚠ EK RİSK DEĞERLENDİRMESİ</summary>
+          <summary class="mono text-sm mb-3 text-amber-300 cursor-pointer">Ek risk değerlendirmesi</summary>
           <ul id="riskList" class="space-y-2 text-sm"></ul>
         </details>
         <div id="recCard" class="hud-card p-5 hidden">
-          <h3 class="mono text-sm mb-3 text-cyan-300">◈ ÖNERİLER</h3>
+          <h3 class="mono text-sm mb-3 text-cyan-300">Öneriler</h3>
           <ul id="recList" class="space-y-2 text-sm"></ul>
         </div>
       </div>
       <details id="parameterDetails" class="hud-card p-5">
-        <summary class="mono text-sm text-cyan-300 cursor-pointer">UÇUŞ PARAMETRELERİ VE UYGULANAN LİMİTLER</summary>
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">Uçuş parametreleri ve uygulanan limitler</summary>
         <div class="mt-4">
         <div class="overflow-x-auto">
           <table class="w-full text-sm mono">
@@ -700,7 +733,7 @@
       </details>
 
       <details id="sourceDetails" class="hud-card p-5">
-        <summary class="mono text-sm text-cyan-300 cursor-pointer">VERİ KAYNAKLARI VE GÜNCELLİK
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">Veri kaynakları ve güncellik
           <span id="sourceTimingOverview" class="block text-xs text-amber-300 mt-2"></span>
         </summary>
         <div id="reportSourceChecks" class="mt-3 space-y-2 text-xs"></div>
@@ -708,9 +741,9 @@
       </details>
 
       <details id="planningTools" class="hud-card p-5">
-        <summary class="mono text-sm text-cyan-300 cursor-pointer">SAATLİK TAHMİN VE UÇUŞ PLANLAMA</summary>
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">Saatlik tahmin ve uçuş planlama</summary>
       <div id="forecastSection" class="hidden hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">SONRAKİ 6 SAAT TAHMİNİ · UTC</h3>
+        <h3 class="mono text-sm text-cyan-300 mb-4">Sonraki 6 saat · UTC</h3>
         <p id="forecastStatus" role="status" class="text-xs text-cyan-100/70 mb-3"></p>
         <div id="forecastTimeline" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
       </div>
@@ -718,7 +751,7 @@
       <div class="hud-card p-6">
         <div class="flex flex-col md:flex-row md:items-end gap-3 justify-between">
           <div>
-            <h3 class="mono text-sm text-cyan-300 mb-2">UÇUŞ PLANLAMA</h3>
+            <h3 class="mono text-sm text-cyan-300 mb-2">Uçuş planlama</h3>
             <p class="mono text-[11px] text-cyan-100/60">Gün ve saatler UTC'dir (Türkiye: UTC+3). Raporun kaydedilmiş limitleri kullanılır. Geçmiş saatler önerilmez.</p>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full md:w-auto">
@@ -728,7 +761,7 @@
             </select>
             <select id="flightPlanStart" aria-label="İlk saat (UTC)" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
             <select id="flightPlanEnd" aria-label="Son saat (dahil, UTC)" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
-            <button type="button" onclick="fetchFlightPlan()" class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-4 py-2 text-xs">[ PLANLA ]</button>
+            <button type="button" onclick="fetchFlightPlan()" class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-4 py-2 text-xs">Planla</button>
           </div>
         </div>
         <p id="flightPlanStatus" role="status" class="text-xs text-cyan-100/70 mt-3"></p>
@@ -738,7 +771,7 @@
       </details>
 
       <details id="seasonalSection" class="hidden hud-card p-5">
-        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">MEVSİMSEL ANALİZ — EN İYİ UÇUŞ AYLARI</summary>
+        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Mevsimsel analiz · Uygun uçuş ayları</summary>
         <div id="seasonalHeatmap" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3"></div>
       </details>
 
@@ -750,7 +783,7 @@
       </div>
 
       <details id="chatSection" class="hidden hud-card p-5">
-        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">GPT İLE SOHBET</summary>
+        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Analiz hakkında sohbet</summary>
         <div id="chatMessages" class="space-y-3 max-h-80 overflow-y-auto pr-1"></div>
         <div class="mt-4 flex gap-2">
           <input id="chatInput" type="text" placeholder="Bu analiz hakkında soru sorun..." class="mono flex-1 min-w-0 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
@@ -761,7 +794,7 @@
       <div class="hud-card p-6">
         <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
           <details id="feedbackSection">
-            <summary class="mono text-sm text-cyan-200 mb-3 cursor-pointer">DEĞERLENDİRMEYE GERİ BİLDİRİM VER</summary>
+            <summary class="mono text-sm text-cyan-200 mb-3 cursor-pointer">Değerlendirmeye geri bildirim ver</summary>
             <div id="feedbackButtons" class="flex flex-wrap gap-3">
               <button
                 onclick="submitFeedback(true)"
@@ -792,13 +825,13 @@
             id="pdfBtn"
             onclick="downloadPDF()"
             class="mono border border-slate-300/35 text-slate-200 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs self-start"
-          >[ RAPORU İNDİR ]</button>
+          >Raporu indir</button>
         </div>
       </div>
     </section>
 
     <details id="historySection" class="hidden hud-card p-5">
-      <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">GEÇMİŞ ANALİZLER</summary>
+      <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Geçmiş analizler</summary>
       <p id="historyStatus" role="status" class="text-xs text-amber-300 mb-3"></p>
       <div id="historyChart" class="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2 items-end"></div>
       <div class="flex items-center gap-4 mt-3 mono text-[10px] text-cyan-100/40">
@@ -815,7 +848,7 @@
 
       <!-- Controls -->
       <div class="hud-card p-5">
-        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ BÖLGE ANALİZİ — IZGARA TARAMA</h2>
+        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">Bölge analizi</h2>
         <p class="mono text-[11px] text-cyan-100/60 mb-4">
           Haritada tıklayarak anlık nokta raporu, dikdörtgen çizerek ızgara analizi yapın.
           Dikdörtgen çizmek için sol araç çubuğundaki <strong>□</strong> ikonuna tıklayın.
@@ -883,15 +916,15 @@
         <div class="flex flex-wrap gap-3 items-center">
           <button id="analyzeGridBtn" onclick="analyzeGrid()" disabled
             class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider opacity-40 cursor-not-allowed">
-            [ BÖLGE ANALİZ ET ]
+            Bölgeyi analiz et
           </button>
           <button onclick="clearGridOverlay()"
             class="mono border border-slate-400/40 text-slate-300 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs tracking-wider">
-            [ TEMİZLE ]
+            Temizle
           </button>
           <button id="compareRegionBtn" type="button" onclick="toggleRegionCompare()"
             class="mono border border-violet-400/40 text-violet-200 hover:bg-violet-400/10 rounded-md px-4 py-2 text-xs tracking-wider">
-            [ KARŞILAŞTIR ]
+            Karşılaştır
           </button>
           <p id="regionStatus" class="mono text-[11px] text-cyan-100/60"></p>
         </div>
@@ -916,7 +949,7 @@
 
       <!-- Grid summary -->
       <div id="gridSummarySection" class="hidden hud-card p-5">
-        <h3 class="mono text-cyan-300 text-sm mb-4">◈ BÖLGE ANALİZ ÖZETİ</h3>
+        <h3 class="mono text-cyan-300 text-sm mb-4">Bölge analiz özeti</h3>
         <div class="grid grid-cols-3 gap-4 mb-4 text-center">
           <div>
             <p class="mono text-2xl font-extrabold text-green-300" id="summaryUygun">0</p>
@@ -997,7 +1030,7 @@
     <!-- ══ Data source status ════════════════════════════════════════════ -->
     <div id="panel-sources" role="tabpanel" aria-labelledby="tab-btn-sources" class="hidden space-y-4 pt-6">
       <section class="hud-card p-6">
-        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ VERİ KAYNAĞI DENETİMİ</h2>
+        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">Veri kaynakları</h2>
         <p class="mono text-[11px] text-cyan-100/60 mb-4">
           Seçtiğiniz koordinat için etkin hava kaynaklarına gerçek istek gönderilir.
           Anahtarsız kaynaklar da çalışır; diğer sağlayıcılar anahtar yoksa anahtar gerektiriyor olarak gösterilir.
@@ -1016,7 +1049,7 @@
           </div>
           <button id="sourceCheckBtn" type="button" onclick="checkDataSources()"
             class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider">
-            [ KAYNAKLARI KONTROL ET ]
+            Kaynakları kontrol et
           </button>
         </div>
         <p id="sourceCheckStatus" role="status" aria-live="polite" class="mono text-[11px] text-cyan-100/60 mt-3"></p>
@@ -1027,7 +1060,7 @@
     <!-- ══ Tab 3: Settings ════════════════════════════════════════════════ -->
     <div id="panel-settings" role="tabpanel" aria-labelledby="tab-btn-settings" class="hidden space-y-4 pt-6">
       <div class="hud-card p-6">
-        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ UÇUŞ LİMİTLERİ</h2>
+        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">Uçuş limitleri</h2>
         <p class="mono text-[11px] text-cyan-100/60 mb-5">
           Bu limitler tarayıcınızda saklanır; yeni nokta raporlarında ve bölge analizinde kullanılır. Eski raporların limitleri değişmez.
         </p>
@@ -1184,11 +1217,11 @@
         <div class="flex flex-wrap gap-3 mt-6">
           <button onclick="saveSettings()"
             class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider">
-            [ LİMİTLERİ KAYDET ]
+            Limitleri kaydet
           </button>
           <button onclick="resetSettings()"
             class="mono border border-slate-400/40 text-slate-300 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs tracking-wider">
-            [ VARSAYILANLARA DÖNDÜR ]
+            Varsayılanlara döndür
           </button>
         </div>
         <p id="settingsSaved" class="hidden mono text-xs text-green-300 mt-3">✓ LİMİTLER KAYDEDİLDİ</p>
@@ -1197,6 +1230,10 @@
 
     <!-- ══ Tab 4: Live Wind ══════════════════════════════════════════════ -->
     <div id="panel-wind" role="tabpanel" aria-labelledby="tab-btn-wind" class="hidden space-y-5 pt-6">
+      <div class="hud-card p-6">
+        <h2 class="mb-2">Rüzgâr analizi</h2>
+        <p class="text-sm text-cyan-100/75">Seçilen konumun rüzgâr hızını, yönünü ve kaynaklar arasındaki farkları karşılaştırın.</p>
+      </div>
 
       <!-- Loading / Error states -->
       <div id="windLoading" class="hidden hud-card py-10 text-center">
@@ -1262,7 +1299,7 @@
 
         <!-- Source comparison table -->
         <div class="hud-card p-5">
-          <h3 class="mono text-sm text-cyan-300 mb-4">◈ KAYNAK KARŞILAŞTIRMASI</h3>
+          <h3 class="mono text-sm text-cyan-300 mb-4">Kaynak karşılaştırması</h3>
           <div class="overflow-x-auto">
             <table class="w-full text-sm mono" id="windSourceTable">
               <thead>
@@ -1287,7 +1324,7 @@
     <div class="h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent mb-4"></div>
     <span class="inline-flex items-center">
       <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse mr-2"></span>
-      DECIDEFLIGHT SİSTEMİ v2.0 — KÜRESEL UÇUŞ HAVA İSTİHBARATI
+      DecideFlight · Hava koşulları karar desteği · Uçuş öncesi resmî bilgileri kontrol edin.
     </span>
   </footer>
 
@@ -1305,9 +1342,13 @@
       if (cachedHudColors) return cachedHudColors;
       const rootStyles = getComputedStyle(document.documentElement);
       cachedHudColors = {
-        safe: rootStyles.getPropertyValue('--hud-green').trim() || '#00ff88',
-        caution: rootStyles.getPropertyValue('--hud-amber').trim() || '#ffb800',
-        danger: rootStyles.getPropertyValue('--hud-red').trim() || '#ff3d57',
+        safe: rootStyles.getPropertyValue('--hud-green').trim() || '#a6d7bd',
+        caution: rootStyles.getPropertyValue('--hud-amber').trim() || '#e8c587',
+        danger: rootStyles.getPropertyValue('--hud-red').trim() || '#e5a5a5',
+        border: rootStyles.getPropertyValue('--line').trim() || '#333b45',
+        surface: rootStyles.getPropertyValue('--hud-panel').trim() || '#1b2026',
+        muted: rootStyles.getPropertyValue('--muted').trim() || '#a0aab6',
+        accent: rootStyles.getPropertyValue('--hud-cyan').trim() || '#b6c6d8',
       };
       return cachedHudColors;
     }
@@ -1315,25 +1356,25 @@
     const PRECIP_LABELS = { 0: 'Yok', 1: 'Hafif', 2: 'Orta/Şiddetli' };
     const DECISION_CONFIG = {
       'UYGUN': {
-        label: '✦ UÇUŞA UYGUN',
-        banner: 'border border-green-400/40 text-green-300 shadow-[0_0_24px_rgba(0,255,136,0.25)]',
-        background: 'radial-gradient(ellipse at center, rgba(0,255,136,0.07) 0%, transparent 70%), rgba(10, 17, 35, 0.72)',
-        glow: 'rgba(0, 255, 136, 0.28)',
+        label: 'Uçuşa uygun',
+        banner: 'border border-green-400/40 text-green-300',
+        background: '#1e2b24',
+        glow: 'transparent',
         pulse: false,
       },
       'RISKLI': {
-        label: '⚠ DİKKAT — KOŞULLARI GÖZDEN GEÇİRİN',
-        banner: 'border border-amber-400/45 text-amber-300 shadow-[0_0_24px_rgba(255,184,0,0.24)]',
-        background: 'radial-gradient(ellipse at center, rgba(255,184,0,0.07) 0%, transparent 70%), rgba(10, 17, 35, 0.72)',
-        glow: 'rgba(255, 184, 0, 0.26)',
+        label: 'Riskli · Koşulları gözden geçirin',
+        banner: 'border border-amber-400/45 text-amber-300',
+        background: '#2b2720',
+        glow: 'transparent',
         pulse: false,
       },
       'UYGUN_DEGIL': {
-        label: '✕ UÇUŞA UYGUN DEĞİL',
-        banner: 'border border-red-400/45 text-red-300 shadow-[0_0_26px_rgba(255,61,87,0.32)]',
-        background: 'radial-gradient(ellipse at center, rgba(255,61,87,0.07) 0%, transparent 70%), rgba(10, 17, 35, 0.72)',
-        glow: 'rgba(255, 61, 87, 0.28)',
-        pulse: true,
+        label: 'Uçuşa uygun değil',
+        banner: 'border border-red-400/45 text-red-300',
+        background: '#2d2225',
+        glow: 'transparent',
+        pulse: false,
       },
     };
     const PARAM_DECISION_BADGE = {
@@ -1736,7 +1777,8 @@
         const list = document.getElementById('historyList');
         chart.innerHTML = data.reports.map(report => {
           const height = Math.max(18, report.confidence_score);
-          const bg = report.decision === 'UYGUN' ? '#00ff88' : report.decision === 'RISKLI' ? '#ffb800' : '#ff3d57';
+          const colors = getHudColors();
+          const bg = report.decision === 'UYGUN' ? colors.safe : report.decision === 'RISKLI' ? colors.caution : colors.danger;
           return `<div class="history-bar" style="height:${height}px; background:${bg};" title="${report.location} — ${report.decision}"></div>`;
         }).join('');
         list.replaceChildren();
@@ -1759,7 +1801,7 @@
     function toggleRegionCompare() {
       compareMode = !compareMode;
       document.getElementById('regionCompareSection').classList.toggle('hidden', !compareMode);
-      document.getElementById('compareRegionBtn').textContent = compareMode ? '[ KARŞILAŞTIRMAYI GİZLE ]' : '[ KARŞILAŞTIR ]';
+      document.getElementById('compareRegionBtn').textContent = compareMode ? 'Karşılaştırmayı gizle' : 'Karşılaştır';
     }
 
     function captureCurrentRegion(slot) {
@@ -2107,6 +2149,16 @@
       updateFavoriteButton();
 
       document.getElementById('decisionDetail').textContent = data.decision_detail;
+      const parameterValues = new Map(data.parameters.map(p => [p.name, p.value]));
+      for (const [id, name] of [
+        ['metricWind', 'Rüzgar hızı'], ['metricVisibility', 'Görüş mesafesi'],
+        ['metricTemperature', 'Sıcaklık'], ['metricCloudCover', 'Bulutluluk'],
+        ['snapshotPrecipitation', 'Yağış'], ['snapshotHumidity', 'Nem'],
+        ['snapshotCloudBase', 'Bulut tabanı'],
+      ]) {
+        document.getElementById(id).textContent = parameterValues.get(name) || 'N/A';
+      }
+      document.getElementById('snapshotSources').textContent = `${data.sources.length} kaynak`;
       const severity = { UYGUN: 0, RISKLI: 1, UYGUN_DEGIL: 2 };
       const ruleScore = Math.max(...data.parameters.map(p => severity[p.decision]));
       const ruleDecision = Object.keys(severity).find(key => severity[key] === ruleScore);
@@ -2149,13 +2201,14 @@
         ? data.confidence
         : (Number.isFinite(data.confidence_score) ? data.confidence_score : computeConfidence(data.parameters));
       document.getElementById('confidenceLabel').textContent = `UÇUŞ GÜVEN ENDEKSİ: ${conf}%`;
+      document.getElementById('snapshotConfidence').textContent = `%${conf}`;
       animateConfidence(conf);
       renderParameterWeights(data.parameter_weights);
 
       // Wind trend badge
       const windTrendBadge = document.getElementById('windTrendBadge');
       if (data.wind_trend) {
-        windTrendBadge.textContent = '📈 ' + data.wind_trend;
+        windTrendBadge.textContent = data.wind_trend;
         windTrendBadge.classList.remove('hidden');
       } else {
         windTrendBadge.classList.add('hidden');
@@ -2942,27 +2995,28 @@
       const canvas = document.getElementById('windRoseCanvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
+      const colors = getHudColors();
       const cx = 80, cy = 80, r = 60;
       ctx.clearRect(0, 0, 160, 160);
 
       // Background circle
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,212,255,0.2)';
+      ctx.strokeStyle = colors.border;
       ctx.lineWidth = 1;
       ctx.stroke();
-      ctx.fillStyle = 'rgba(0,212,255,0.04)';
+      ctx.fillStyle = colors.surface;
       ctx.fill();
 
       // Inner circle
       ctx.beginPath();
       ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,212,255,0.1)';
+      ctx.strokeStyle = colors.border;
       ctx.stroke();
 
       // Cardinal labels
-      ctx.fillStyle = 'rgba(0,212,255,0.6)';
-      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = colors.muted;
+      ctx.font = '9px ui-monospace, monospace';
       ctx.textAlign = 'center';
       ctx.fillText('N', cx, cy - r + 12);
       ctx.fillText('S', cx, cy + r - 4);
@@ -2991,13 +3045,13 @@
         ctx.stroke();
       }
 
-      // Runway heading arrow (cyan, bidirectional line)
+      // Runway heading arrow (bidirectional line)
       if (runwayHdgDeg != null) {
         const rad = (runwayHdgDeg - 90) * Math.PI / 180;
         ctx.beginPath();
         ctx.moveTo(cx - (r - 6) * Math.cos(rad), cy - (r - 6) * Math.sin(rad));
         ctx.lineTo(cx + (r - 6) * Math.cos(rad), cy + (r - 6) * Math.sin(rad));
-        ctx.strokeStyle = 'rgba(0,212,255,0.35)';
+        ctx.strokeStyle = colors.accent;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([3, 3]);
         ctx.stroke();
@@ -3007,7 +3061,7 @@
       // Wind direction arrow — wind comes FROM windDirDeg, so arrow points INTO the rose
       if (windDirDeg != null) {
         // Wind arrives from windDirDeg, so the vector points toward (windDirDeg + 180)
-        drawArrow(windDirDeg + 180, r - 10, 'rgba(0,255,136,0.85)', 2);
+        drawArrow(windDirDeg + 180, r - 10, getHudColors().safe, 2);
       }
     }
 
@@ -3138,7 +3192,8 @@
 
     function getMarkerColor(pt, mode) {
       if (mode === 'decision') {
-        return { UYGUN: '#00ff88', RISKLI: '#ffb800', UYGUN_DEGIL: '#ff3d57' }[pt.decision] || '#00d4ff';
+        const colors = getHudColors();
+        return { UYGUN: colors.safe, RISKLI: colors.caution, UYGUN_DEGIL: colors.danger }[pt.decision] || colors.accent;
       }
       if (mode === 'wind') {
         // 0 kt = blue (#3080ff), 30+ kt = red (#ff3d57)
@@ -3205,13 +3260,12 @@
       const pLvl = Math.min(pt.precipitation_level, 2);
 
       const row = (label, value, lvl) =>
-        `<tr><td style="color:#9feaff;padding:2px 4px">${label}</td><td style="padding:2px 4px;color:#d8f5ff">${value}</td><td style="padding:2px 4px">${_badge(lvl)}</td></tr>`;
+        `<tr><td>${label}</td><td>${value}</td><td>${_badge(lvl)}</td></tr>`;
 
       return (
-        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff;min-width:220px;' +
-        'background:rgba(7,13,29,0.97);padding:10px;border-radius:6px">' +
+        '<div class="map-report-popup">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">' +
-        '<span style="font-weight:bold;color:#00d4ff">📍 ' + pt.lat.toFixed(4) + ', ' + pt.lon.toFixed(4) + '</span>' +
+        '<span style="font-weight:bold">📍 ' + pt.lat.toFixed(4) + ', ' + pt.lon.toFixed(4) + '</span>' +
         decBadge + '</div>' +
         '<table style="width:100%;border-collapse:collapse">' +
         row('💨 Rüzgar (kt)', pt.wind_speed_knots.toFixed(1), wLvl) +
@@ -3313,7 +3367,7 @@
           polyline: false, polygon: false, circle: false,
           circlemarker: false, marker: false,
           rectangle: {
-            shapeOptions: { color: '#00d4ff', weight: 2, fillOpacity: 0.08 },
+            shapeOptions: { color: getHudColors().accent, weight: 2, fillOpacity: 0.08 },
           },
         },
       });
@@ -3341,7 +3395,7 @@
         const popup = L.popup()
           .setLatLng([lat, lng])
           .setContent(
-            '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff">Yükleniyor...</span>'
+            '<span class="map-report-popup">Yükleniyor...</span>'
           )
           .openOn(map);
 
@@ -3360,7 +3414,7 @@
           const temp = src.temperature_c  != null ? src.temperature_c.toFixed(1)  : '—';
           const hum  = src.humidity_pct   != null ? Math.round(src.humidity_pct)  : '—';
           popup.setContent(
-            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff;min-width:170px">' +
+            '<div class="map-report-popup">' +
             '<p style="font-weight:bold;margin-bottom:5px">' + cfg.label + '</p>' +
             '<p>📍 ' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</p>' +
             '<p>💨 Rüzgar: ' + wind + ' kt</p>' +
@@ -3370,7 +3424,7 @@
           );
         } catch (err) {
           popup.setContent(
-            '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#ff3d57">⚠ ' + err.message + '</span>'
+            '<span class="text-red-300">⚠ ' + err.message + '</span>'
           );
         }
       });
@@ -3498,9 +3552,9 @@
         document.getElementById('summaryRiskli').textContent = s.RISKLI;
         document.getElementById('summaryUygunDegil').textContent = s.UYGUN_DEGIL;
         document.getElementById('summaryBar').innerHTML =
-          '<div style="width:' + (s.UYGUN / total * 100).toFixed(1) + '%;background:#00ff88;height:100%"></div>' +
-          '<div style="width:' + (s.RISKLI / total * 100).toFixed(1) + '%;background:#ffb800;height:100%"></div>' +
-          '<div style="width:' + (s.UYGUN_DEGIL / total * 100).toFixed(1) + '%;background:#ff3d57;height:100%"></div>';
+          '<div style="width:' + (s.UYGUN / total * 100).toFixed(1) + '%;background:' + getHudColors().safe + ';height:100%"></div>' +
+          '<div style="width:' + (s.RISKLI / total * 100).toFixed(1) + '%;background:' + getHudColors().caution + ';height:100%"></div>' +
+          '<div style="width:' + (s.UYGUN_DEGIL / total * 100).toFixed(1) + '%;background:' + getHudColors().danger + ';height:100%"></div>';
         document.getElementById('summaryPercent').textContent =
           s.total + ' nokta — Uygun: ' + (s.UYGUN / total * 100).toFixed(0) + '%';
 
