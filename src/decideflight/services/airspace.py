@@ -51,6 +51,19 @@ def format_limit(limit: dict[str, Any] | None) -> str:
     return " ".join(part for part in (f"{value:g}", unit_text, datum_text) if part)
 
 
+def limit_feet(limit: dict[str, Any] | None) -> int | None:
+    """Approximate vertical limit in feet (flight levels = value x 100; datum ignored)."""
+    if not limit or limit.get("value") is None:
+        return None
+    value = float(limit["value"])
+    unit = limit.get("unit")
+    if unit == 6:
+        return round(value * 100)
+    if unit == 0:
+        return round(value * 3.28084)
+    return round(value)
+
+
 def _round_ring(ring: list[list[float]]) -> list[list[float]]:
     return [[round(point[0], 5), round(point[1], 5)] for point in ring]
 
@@ -70,6 +83,8 @@ def _normalize_feature(raw: dict[str, Any]) -> dict[str, Any] | None:
             "category_label": type_info[1],
             "lower": format_limit(props.get("lowerLimit")),
             "upper": format_limit(props.get("upperLimit")),
+            "lower_ft": limit_feet(props.get("lowerLimit")),
+            "upper_ft": limit_feet(props.get("upperLimit")),
             "updated_at": props.get("updatedAt"),
         },
         "geometry": {

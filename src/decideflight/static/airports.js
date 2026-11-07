@@ -17,13 +17,36 @@
       '<p style="opacity:.75;margin-top:6px">Kaynak: MGM. Bilgilendirme amaçlıdır.</p></div>';
   }
 
+  const CATEGORY_COLORS = { VFR: '#4ade9a', MVFR: '#5aa9ff', IFR: '#ff7a7a', LIFR: '#d36bff' };
+
   function attach(map) {
+    const markers = {};
     const group = L.layerGroup();
     let loaded = false;
     let statusEl = null;
 
     function setStatus(text) {
       if (statusEl) statusEl.textContent = text;
+    }
+
+    async function colorByCategory() {
+      try {
+        const res = await fetch('/api/v1/map-layers/airports/status');
+        const data = await res.json();
+        if (!res.ok) return;
+        let count = 0;
+        Object.keys(data.stations).forEach((icao) => {
+          const marker = markers[icao];
+          const info = data.stations[icao];
+          if (!marker) return;
+          marker.setStyle({ fillColor: CATEGORY_COLORS[info.category], radius: 7 });
+          marker.setTooltipContent(icao + ' · ' + info.category);
+          count += 1;
+        });
+        setStatus(Object.keys(markers).length + ' havalimanı · ' + count + ' METAR kategorisi');
+      } catch (err) {
+        /* markers keep the neutral colour */
+      }
     }
 
     async function load() {
@@ -52,10 +75,12 @@
               popup.setContent('<span class="text-red-300">' + esc(err.message) + '</span>');
             }
           });
+          markers[airport.icao] = marker;
           marker.addTo(group);
         });
         loaded = true;
         setStatus(data.airports.length + ' havalimanı');
+        colorByCategory();
         return true;
       } catch (err) {
         setStatus(err.message);
@@ -71,6 +96,9 @@
       const input = L.DomUtil.create('input', '', row);
       input.type = 'checkbox';
       row.appendChild(document.createTextNode(' METAR / TAF'));
+      const legend = L.DomUtil.create('div', 'airspace-status', box);
+      legend.innerHTML = Object.keys(CATEGORY_COLORS).map((k) =>
+        '<span style="color:' + CATEGORY_COLORS[k] + '">●</span> ' + k).join(' ');
       statusEl = L.DomUtil.create('div', 'airspace-status', box);
       input.addEventListener('change', async () => {
         if (!input.checked) {

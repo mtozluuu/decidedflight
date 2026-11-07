@@ -135,3 +135,76 @@ async def load_layer(level: str) -> dict[str, Any]:
         raise
     _cache[level] = (now, data)
     return data
+
+
+AWC_METAR_URL = "https://aviationweather.gov/api/data/metar"
+AWC_SIGMET_URL = "https://aviationweather.gov/api/data/isigmet"
+LIVE_TTL_SECONDS = 5 * 60
+SIGMET_BOUNDS = (30.0, 46.0, 20.0, 50.0)  # lat min/max, lon min/max
+_live_cache: dict[str, tuple[float, Any]] = {}
+
+
+async def _cached_get(key: str, url: str, params: dict[str, str]) -> Any:
+    now = time.time()
+    cached = _live_cache.get(key)
+    if cached and now - cached[0] < LIVE_TTL_SECONDS:
+        return cached[1]
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json() if response.content else []
+    except (httpx.HTTPError, ValueError) as exc:
+        if cached:
+            return cached[1]
+        raise MapLayerUnavailableError("Havacılık meteoroloji verisi alınamadı.") from exc
+    _live_cache[key] = (now, data)
+    return data
+
+
+def parse_flight_categories(payload: Any) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for row in payload if isinstance(payload, list) else []:
+        icao = row.get("icaoId")
+        category = row.get("fltCat")
+        if icao and category in {"VFR", "MVFR", "IFR", "LIFR"}:
+            result[icao] = {"category": category, "observed": row.get("reportTime")}
+    return result
+
+
+async def flight_categories() -> dict[str, dict[str, Any]]:
+    ids = ",".join(airport["icao"] for airport in turkish_airports())
+    payload = await _cached_get("metar", AWC_METAR_URL, {"ids": ids, "format": "json"})
+    return parse_flight_categories(payload)
+
+
+def parse_sigmets(payload: Any) -> list[dict[str, Any]]:
+    lat_min, lat_max, lon_min, lon_max = SIGMET_BOUNDS
+    items: list[dict[str, Any]] = []
+    for row in payload if isinstance(payload, list) else []:
+        coords = [
+            [c["lat"], c["lon"]]
+            for c in row.get("coords") or []
+            if isinstance(c, dict) and "lat" in c and "lon" in c
+        ]
+        if not coords or not any(lat_min <= la <= lat_max and lon_min <= lo <= lon_max for la, lo in coords):
+            continue
+        items.append(
+            {
+                "fir": row.get("firName") or row.get("firId"),
+                "hazard": row.get("hazard"),
+                "qualifier": row.get("qualifier"),
+                "base_ft": row.get("base"),
+                "top_ft": row.get("top"),
+                "valid_from": row.get("validTimeFrom"),
+                "valid_to": row.get("validTimeTo"),
+                "coords": coords,
+                "raw": row.get("rawSigmet"),
+            }
+        )
+    return items
+
+
+async def sigmets() -> list[dict[str, Any]]:
+    payload = await _cached_get("sigmet", AWC_SIGMET_URL, {"format": "json"})
+    return parse_sigmets(payload)
