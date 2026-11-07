@@ -492,6 +492,25 @@
       <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
     </section>
 
+    <section class="hud-card p-6 mb-4">
+      <h3 class="mono text-sm text-cyan-300 mb-4">MEYDAN METAR / TAF — MGM HEZARFEN</h3>
+      <div class="flex gap-3">
+        <label for="airportIcao" class="sr-only">Meydan ICAO kodu</label>
+        <input id="airportIcao" type="text" maxlength="4" placeholder="ICAO: LTAJ"
+          class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs uppercase" />
+        <button type="button" onclick="loadAirportObservations()" class="mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">GÖSTER / YENİLE</button>
+      </div>
+      <p id="airportObservationStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">ICAO kodu girin veya yakın havalimanı/pist listesinden meydan seçin.</p>
+      <div id="airportObservationData" class="hidden mt-4 space-y-3">
+        <p class="mono text-xs text-cyan-300">METAR</p>
+        <pre id="airportMetar" class="mono text-xs text-cyan-100 whitespace-pre-wrap break-words"></pre>
+        <p class="mono text-xs text-cyan-300">TAF</p>
+        <pre id="airportTaf" class="mono text-xs text-cyan-100 whitespace-pre-wrap break-words"></pre>
+        <a id="airportObservationLink" target="_blank" rel="noopener noreferrer" class="mono text-xs text-cyan-300 underline">MGM Rasat kaynağını aç</a>
+        <p class="mono text-[11px] text-cyan-100/60">Rasat ve geçerlilik saatleri ham metinde UTC olarak yer alır. Bu panel uçuş kararını değiştirmez.</p>
+      </div>
+    </section>
+
     <div id="runwayCard" class="hidden hud-card p-6">
       <h3 class="mono text-sm text-cyan-300 mb-4">◈ PİST &amp; RÜZGAR BİLEŞENLERİ</h3>
 
@@ -2420,11 +2439,50 @@
           sel.appendChild(opt);
         });
         document.getElementById('runwayCard').classList.remove('hidden');
-        sel.addEventListener('change', () => computeWindComponents());
+        sel.onchange = () => {
+          computeWindComponents();
+          const icao = sel.selectedOptions[0]?.dataset.airport;
+          document.getElementById('airportIcao').value = icao || '';
+          loadAirportObservations();
+        };
       } catch(e) {
         console.warn('Runway fetch failed', e);
       }
     }
+
+    let airportObservationController = null;
+
+    async function loadAirportObservations() {
+      airportObservationController?.abort();
+      const controller = new AbortController();
+      airportObservationController = controller;
+      const icao = document.getElementById('airportIcao').value.trim().toUpperCase();
+      const status = document.getElementById('airportObservationStatus');
+      document.getElementById('airportObservationData').classList.add('hidden');
+      if (!/^[A-Z]{4}$/.test(icao)) {
+        status.textContent = 'Dört harfli ICAO kodu girin (örnek: LTAJ).';
+        return;
+      }
+      status.textContent = `${icao} için MGM Rasat sorgulanıyor...`;
+      try {
+        const response = await fetch(`/api/v1/weather/airport-observations/${icao}`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'MGM Rasat verisi alınamadı.');
+        document.getElementById('airportMetar').textContent = data.metar || 'METAR bulunamadı.';
+        document.getElementById('airportTaf').textContent = data.taf || 'TAF bulunamadı.';
+        document.getElementById('airportObservationLink').href = `https://rasat.mgm.gov.tr/result?stations=${icao}&obsType=1&obsType=2&hours=0`;
+        status.textContent = `${icao} — MGM son rasatlar. Kontrol: ${new Date(data.checked_at).toLocaleString('tr-TR')}`;
+        document.getElementById('airportObservationData').classList.remove('hidden');
+      } catch (error) {
+        if (error.name !== 'AbortError') status.textContent = error.message;
+      }
+    }
+
+    document.getElementById('airportIcao').addEventListener('input', () => {
+      airportObservationController?.abort();
+      document.getElementById('airportObservationData').classList.add('hidden');
+      document.getElementById('airportObservationStatus').textContent = 'Seçilen meydan için GÖSTER / YENİLE düğmesine basın.';
+    });
 
     async function computeWindComponents() {
       const report = currentReportData;

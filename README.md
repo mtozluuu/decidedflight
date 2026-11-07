@@ -12,6 +12,7 @@ DecideFlight is an AI-powered flight weather decision system. It combines data f
 - Air quality and wind trends use Open-Meteo. The web UI's **Veri Kaynakları** tab checks provider availability for selected coordinates.
 - Reports show cloud cover (%) from Open-Meteo, OpenWeatherMap and WeatherAPI, weighted over available measurements. Cover up to 50% is suitable; above 50% is risky, never unsuitable on its own. Missing total cloud cover (including Windy's separate cloud layers and METAR observations) is excluded rather than treated as clear sky. Cloud base, ceiling and visibility remain separate checks.
 - The Settings tab saves a cloud-cover suitable maximum (0–100%, default 50%) in the browser for regional/grid analysis. Values above that maximum are risky, not unsuitable; individual reports retain the 50% threshold.
+- Point analysis shows the selected airport's latest raw METAR/TAF from the public MGM Hezarfen Rasat page. Enter an ICAO code or select a nearby airport/runway, then refresh as needed. Observation/validity times remain in UTC in the raw text; failures and missing reports are displayed explicitly. This display-only source does not participate in weather decisions.
 - OpenWeatherMap, WeatherAPI, Windy, and CheckWX require API keys configured in `.env`. AVWX remains optional for runway lookup, and OpenAI remains optional for AI analysis.
 - Extendable service and API module layout
 - Testing and code quality tooling setup

@@ -26,6 +26,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
+from decideflight.services.mgm_observations import fetch_mgm_observations
 from sqlalchemy.orm import Session
 
 from decideflight.config import settings
@@ -124,6 +125,35 @@ class WeatherSourceSchema(BaseModel):
     cloud_base_ft: float | None
     cloud_ceiling_ft: float | None
     wind_direction_deg: float | None = None
+
+
+class AirportObservationsResponse(BaseModel):
+    icao: str
+    metar: str | None
+    taf: str | None
+    checked_at: datetime
+
+
+@router.get("/airport-observations/{icao}", response_model=AirportObservationsResponse)
+async def airport_observations(icao: str) -> AirportObservationsResponse:
+    icao = icao.strip().upper()
+    if len(icao) != 4 or not icao.isascii() or not icao.isalpha():
+        raise HTTPException(status_code=422, detail="Dört harfli ICAO kodu girin.")
+    try:
+        observations = await fetch_mgm_observations(icao)
+    except httpx.HTTPError as exc:
+        logger.warning("MGM Rasat request failed for %s: %s", icao, exc)
+        raise HTTPException(
+            status_code=503, detail="MGM Rasat verisi alınamadı. Tekrar deneyin."
+        ) from exc
+    if not any(observations.values()):
+        raise HTTPException(
+            status_code=404,
+            detail=f"MGM Rasat sayfasında {icao} için METAR/TAF bulunamadı.",
+        )
+    return AirportObservationsResponse(
+        icao=icao, checked_at=datetime.now(timezone.utc), **observations
+    )
 
 
 class WeatherReportResponse(BaseModel):
