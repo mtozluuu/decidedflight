@@ -12,3 +12,5 @@
 .airspace-control .airspace-row input { margin: 0; width: auto; }
 .airspace-status { margin-top: 4px; color: #a0aab6; font-size: 11px; max-width: 190px; }
 .airspace-popup p { margin: 0; }
+.airspace-control .airspace-select { width: 100%; margin-top: 4px; background: #14181d; color: #edf0f3; border: 1px solid #333b45; border-radius: 4px; font-size: 12px; padding: 2px 4px; }
+.wind-arrow-icon { background: none; border: none; }

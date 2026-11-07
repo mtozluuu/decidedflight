@@ -114,4 +114,36 @@ def test_ui_wires_airspace_layer() -> None:
     assert "AirspaceLayer.attach(map)" in index
     assert "'/static/airspace.js'" in (STATIC / "sw.js").read_text()
     assert "/static/radar.js" in index
+    assert "/static/wind.js" in index
     assert "'/static/radar.js'" in (STATIC / "sw.js").read_text()
+
+
+def test_map_layer_grid_and_parsing() -> None:
+    from decideflight.services import map_layers
+
+    points = map_layers.grid_points()
+    assert len(points) == 5 * 13
+    payload = [
+        {"hourly": {"time": ["2026-11-07T21:00"], "wind_speed_850hPa": [16.0], "wind_direction_850hPa": [314], "cloud_cover_850hPa": [14]}}
+        for _ in points
+    ]
+    result = map_layers.parse_response("850", points, payload)
+
+    assert result["valid_time_utc"] == "2026-11-07T21:00"
+    assert result["points"][0] == {
+        "lat": 36.0, "lon": 26.0, "wind_speed_knots": 16.0, "wind_direction_deg": 314, "cloud_cover_pct": 14,
+    }
+    with pytest.raises(map_layers.MapLayerUnavailableError):
+        map_layers.parse_response("850", points, payload[:2])
+
+
+def test_map_layer_endpoint(monkeypatch) -> None:
+    async def fake_layer(level: str):
+        return {"level": level, "label": "x", "valid_time_utc": "t", "points": []}
+
+    monkeypatch.setattr("decideflight.api.map_layers.load_layer", fake_layer)
+    client = TestClient(app)
+
+    ok = client.get("/api/v1/map-layers/wind-cloud?level=700").json()
+    assert ok["level"] == "700" and "Open-Meteo" in ok["source"]
+    assert client.get("/api/v1/map-layers/wind-cloud?level=999").status_code == 422
