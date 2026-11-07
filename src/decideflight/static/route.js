@@ -151,6 +151,7 @@
 
       sections.push('<p style="opacity:.7;margin-top:6px">Düz hat tahminidir; resmî brifing değildir.</p>');
       resultEl.innerHTML = sections.join('');
+      resultEl.closest('.airspace-control').scrollIntoView({ block: 'nearest' });
       setStatus('');
     }
 
