@@ -87,60 +87,119 @@
       setStatus('');
     }
 
-    function find(code) {
-      const q = code.trim().toUpperCase();
-      return airports.find((a) => a.icao === q);
+    function find(text) {
+      const q = text.trim().toUpperCase();
+      const airport = airports.find((a) => a.icao === q);
+      if (airport) return airport;
+      const m = q.match(/^(-?\d+(?:[.,]\d+)?)\s*[,; ]\s*(-?\d+(?:[.,]\d+)?)$/);
+      if (!m) return null;
+      const lat = parseFloat(m[1].replace(',', '.'));
+      const lon = parseFloat(m[2].replace(',', '.'));
+      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+      return { icao: null, name: lat.toFixed(3) + ', ' + lon.toFixed(3), lat, lon };
     }
 
-    async function analyse(from, to) {
+    function parseAltitude(text) {
+      const q = text.trim().toUpperCase().replace(/\s+/g, '');
+      if (!q) return null;
+      let m = q.match(/^FL(\d{2,3})$/);
+      if (m) return Number(m[1]) * 100;
+      m = q.match(/^(\d+(?:[.,]\d+)?)(FT|M)?$/);
+      if (!m) return undefined;
+      const value = parseFloat(m[1].replace(',', '.'));
+      return m[2] === 'M' ? Math.round(value * 3.28084) : Math.round(value);
+    }
+
+    function levelFor(ft) {
+      if (ft == null || ft < 2500) return 'surface';
+      if (ft < 7500) return '850';
+      if (ft < 14000) return '700';
+      return '500';
+    }
+
+    const LEVEL_LABELS = { surface: 'Yüzey (10 m)', 850: '850 hPa (~FL050)', 700: '700 hPa (~FL100)', 500: '500 hPa (~FL180)' };
+
+    function bearing(a, b) {
+      const dLon = rad(b[1] - a[1]);
+      const y = Math.sin(dLon) * Math.cos(rad(b[0]));
+      const x = Math.cos(rad(a[0])) * Math.sin(rad(b[0])) - Math.sin(rad(a[0])) * Math.cos(rad(b[0])) * Math.cos(dLon);
+      return (deg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function label(place) {
+      return place.icao || place.name;
+    }
+
+    async function analyse(from, to, altFt) {
+      const level = levelFor(altFt);
       setStatus('Hesaplanıyor…');
       const { points, km } = samplePath([from.lat, from.lon], [to.lat, to.lon]);
       if (line) map.removeLayer(line);
       line = L.polyline(points, { color: '#ffd166', weight: 3, dashArray: '2 6', interactive: false }).addTo(map);
       map.fitBounds(line.getBounds(), { padding: [60, 60] });
 
-      const [airspace, surface, upper, sigmet, status] = await Promise.allSettled([
+      const [airspace, windData, , sigmet, status] = await Promise.allSettled([
         getJson('/api/v1/airspace?categories=CTR,TMA,FIR'),
-        getJson('/api/v1/map-layers/wind-cloud?level=surface'),
-        getJson('/api/v1/map-layers/wind-cloud?level=700'),
+        getJson('/api/v1/map-layers/wind-cloud?level=' + level),
+        Promise.resolve(null),
         getJson('/api/v1/map-layers/sigmet'),
         getJson('/api/v1/map-layers/airports/status'),
       ]);
 
       const sections = [];
-      sections.push('<p><b>' + esc(from.icao) + ' → ' + esc(to.icao) + '</b> · ' + Math.round(km) + ' km · ' + Math.round(km / 1.852) + ' NM</p>');
+      sections.push('<p><b>' + esc(label(from)) + ' → ' + esc(label(to)) + '</b> · ' + Math.round(km) + ' km · ' + Math.round(km / 1.852) + ' NM' +
+        (altFt != null ? ' · ' + altFt + ' ft' : '') + '</p>');
 
       if (status.status === 'fulfilled') {
         const st = status.value.stations;
-        const cat = (a) => esc(a.icao) + ': ' + (st[a.icao] ? esc(st[a.icao].category) : 'METAR yok');
-        sections.push('<p>Uçuş kategorisi · ' + cat(from) + ' · ' + cat(to) + '</p>');
+        const cat = (a) => (a.icao ? esc(a.icao) + ': ' + (st[a.icao] ? esc(st[a.icao].category) : 'METAR yok') : null);
+        const parts = [cat(from), cat(to)].filter(Boolean);
+        if (parts.length) sections.push('<p>Uçuş kategorisi · ' + parts.join(' · ') + '</p>');
       }
 
       if (airspace.status === 'fulfilled') {
         const hits = [];
         airspace.value.features.forEach((f) => {
-          if (points.some((p) => inFeature(p, f))) hits.push(f.properties);
+          const pr = f.properties;
+          const inAlt = altFt == null || ((pr.lower_ft == null || pr.lower_ft <= altFt) && (pr.upper_ft == null || pr.upper_ft >= altFt));
+          if (inAlt && points.some((p) => inFeature(p, f))) hits.push(pr);
         });
         const order = { CTR: 0, TMA: 1, FIR: 2 };
         hits.sort((a, b) => order[a.category] - order[b.category]);
-        sections.push('<p style="margin-top:6px"><b>Geçilen hava sahaları</b></p>' +
+        sections.push('<p style="margin-top:6px"><b>Geçilen hava sahaları' + (altFt != null ? ' (' + altFt + ' ft)' : '') + '</b></p>' +
           (hits.length ? '<ul>' + hits.map((h) => '<li>' + esc(h.category) + ' ' + esc(h.name) + ' · ' + esc(h.lower) + '–' + esc(h.upper) + '</li>').join('') + '</ul>' : '<p>—</p>'));
       } else {
         sections.push('<p>Hava sahası alınamadı.</p>');
       }
 
-      const stride = Math.max(1, Math.floor(points.length / 12));
-      const along = points.filter((_, i) => i % stride === 0);
-      const summarize = (label, result) => {
-        if (result.status !== 'fulfilled') return '<p>' + label + ': alınamadı</p>';
-        const samples = along.map((p) => nearest(result.value.points, p)).filter((s) => s && s.wind_speed_knots != null);
-        if (!samples.length) return '<p>' + label + ': veri yok</p>';
-        const maxWind = Math.max(...samples.map((s) => s.wind_speed_knots));
-        const cloud = samples.reduce((sum, s) => sum + (s.cloud_cover_pct || 0), 0) / samples.length;
-        return '<p>' + label + ': rüzgâr en çok ' + Math.round(maxWind) + ' kt · ort. bulut %' + Math.round(cloud) + '</p>';
-      };
-      sections.push('<p style="margin-top:6px"><b>Rota boyunca (model tahmini)</b></p>' +
-        summarize('Yüzey', surface) + summarize('700 hPa (~FL100)', upper));
+      const course = bearing([from.lat, from.lon], [to.lat, to.lon]);
+      const count = 8;
+      const along = Array.from({ length: count }, (_, i) => points[Math.round((i / (count - 1)) * (points.length - 1))]);
+      let windHtml;
+      if (windData.status !== 'fulfilled') {
+        windHtml = '<p>Rüzgâr/bulut verisi alınamadı.</p>';
+      } else {
+        const rows = along.map((p, i) => {
+          const g = nearest(windData.value.points, p);
+          if (!g || g.wind_speed_knots == null) return null;
+          const head = g.wind_speed_knots * Math.cos(rad(g.wind_direction_deg - course));
+          return { km: Math.round((km * i) / (count - 1)), g, head };
+        }).filter(Boolean);
+        if (!rows.length) {
+          windHtml = '<p>Veri yok.</p>';
+        } else {
+          const maxWind = Math.max(...rows.map((r) => r.g.wind_speed_knots));
+          const avgHead = rows.reduce((sum, r) => sum + r.head, 0) / rows.length;
+          const avgCloud = rows.reduce((sum, r) => sum + (r.g.cloud_cover_pct || 0), 0) / rows.length;
+          const maxCloud = Math.max(...rows.map((r) => r.g.cloud_cover_pct || 0));
+          windHtml = '<p>Rüzgâr en çok ' + Math.round(maxWind) + ' kt · ort. ' + (avgHead >= 0 ? Math.round(avgHead) + ' kt karşı' : Math.round(-avgHead) + ' kt arka') + ' bileşen (rota ' + Math.round(course) + '°)</p>' +
+            '<p>Bulut ort. %' + Math.round(avgCloud) + ' · en yoğun %' + Math.round(maxCloud) + '</p>' +
+            '<table class="route-table"><tr><th>km</th><th>Rüzgâr</th><th>Bulut</th></tr>' +
+            rows.map((r) => '<tr><td>' + r.km + '</td><td>' + Math.round(r.g.wind_direction_deg) + '°/' + Math.round(r.g.wind_speed_knots) + ' kt</td><td>%' + Math.round(r.g.cloud_cover_pct || 0) + '</td></tr>').join('') +
+            '</table>';
+        }
+      }
+      sections.push('<p style="margin-top:6px"><b>Rota boyunca · ' + esc(LEVEL_LABELS[level]) + '</b></p>' + windHtml);
 
       if (sigmet.status === 'fulfilled') {
         const hit = sigmet.value.sigmets.filter((s) => s.coords.length > 2 &&
@@ -166,11 +225,12 @@
         const input = L.DomUtil.create('input', 'airspace-select', form);
         input.placeholder = placeholder;
         input.setAttribute('list', 'routeAirports');
-        input.maxLength = 4;
         return input;
       };
-      const fromInput = mk('Kalkış ICAO (LTFM)');
-      const toInput = mk('Varış ICAO (LTAC)');
+      const fromInput = mk('Kalkış: LTFM veya 41.2,28.7');
+      const toInput = mk('Varış: LTAC veya 39.9,32.9');
+      const altInput = L.DomUtil.create('input', 'airspace-select route-alt', form);
+      altInput.placeholder = 'İrtifa: FL100, 8000 ft, 2500 m';
       const go = L.DomUtil.create('button', 'airspace-play route-go', form);
       go.type = 'button';
       go.textContent = 'Rotayı analiz et';
@@ -188,12 +248,17 @@
       go.addEventListener('click', async () => {
         const from = find(fromInput.value);
         const to = find(toInput.value);
-        if (!from || !to || from === to) {
-          setStatus('Geçerli ve farklı iki ICAO kodu girin.');
+        const alt = parseAltitude(altInput.value);
+        if (!from || !to || (from.lat === to.lat && from.lon === to.lon)) {
+          setStatus('Kalkış ve varış için farklı ICAO kodu veya "enlem,boylam" girin.');
+          return;
+        }
+        if (alt === undefined) {
+          setStatus('İrtifa: FL100, 8000 ft veya 2500 m biçiminde girin.');
           return;
         }
         try {
-          await analyse(from, to);
+          await analyse(from, to, alt);
         } catch (err) {
           setStatus(err.message);
         }
