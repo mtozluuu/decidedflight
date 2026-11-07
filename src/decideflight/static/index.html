@@ -519,7 +519,7 @@
         <summary class="mono text-xs text-cyan-200 cursor-pointer">NOKTA PROFİLİ · OPEN-METEO</summary>
       <div class="flex flex-wrap items-center gap-4 mt-3">
         <button type="button" onclick="loadPointAirgram()" class="mono border border-cyan-400/40 rounded px-3 py-2 text-xs text-cyan-200">NOKTA PROFİLİNİ YENİLE</button>
-        <a id="windyAirgramLink" target="_blank" rel="noopener noreferrer" class="hidden mono text-xs text-cyan-300 underline">Windy Airgram aç</a>
+        <a id="windyAirgramLink" target="_blank" rel="noopener noreferrer" class="hidden mono text-xs text-cyan-300 underline">Windy Airgram · dış sitede aç</a>
       </div>
       <p id="pointAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">Nokta analizi oluşturunca profil yüklenir.</p>
       <div id="pointAirgramChart" class="overflow-auto max-h-96 mt-3"></div>
@@ -532,7 +532,7 @@
         <summary class="mono text-xs text-cyan-200 cursor-pointer">MEYDAN AIRGRAM · MGM HEZARFEN</summary>
       <p id="mgmAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-4">MGM Airgram için meydan seçin ve GÖSTER / YENİLE düğmesine basın.</p>
       <img id="mgmAirgramImage" class="hidden mt-3 w-full" alt="Seçilen meydanın MGM Hezarfen Airgram görseli" />
-        <a href="https://hezarfen.mgm.gov.tr/HzUsr/Sayisal/Default.aspx" target="_blank" rel="noopener noreferrer" class="inline-block mt-3 mono text-xs text-cyan-300 underline">Hezarfen kaynağını aç</a>
+        <button type="button" onclick="showMgmAirgram()" class="inline-block mt-3 mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">HEZARFEN AIRGRAM GÖSTER / YENİLE</button>
       </details>
     </section>
 
@@ -2522,6 +2522,21 @@
       document.getElementById('mgmAirgramStatus').textContent = 'Yeni meydan için GÖSTER / YENİLE düğmesine basın.';
       document.getElementById('airportObservationStatus').textContent = 'Seçilen meydan için GÖSTER / YENİLE düğmesine basın.';
     });
+
+    function showMgmAirgram() {
+      const icao = document.getElementById('airportIcao').value.trim().toUpperCase();
+      const image = document.getElementById('mgmAirgramImage');
+      image.closest('details').open = true;
+      if (!/^[A-Z]{4}$/.test(icao)) {
+        image.onload = null;
+        image.onerror = null;
+        image.removeAttribute('src');
+        image.classList.add('hidden');
+        document.getElementById('mgmAirgramStatus').textContent = 'Önce dört harfli meydan ICAO kodunu girin veya pist listesinden meydan seçin.';
+        return;
+      }
+      loadMgmAirgram(icao);
+    }
 
     function loadMgmAirgram(icao) {
       const image = document.getElementById('mgmAirgramImage');
