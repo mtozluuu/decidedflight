@@ -251,8 +251,22 @@
     control.addTo(map);
     (window.MapLayerPlugins || []).forEach((plugin) => plugin(map));
 
-    const panels = map.getContainer().querySelectorAll('.airspace-control');
-    panels.forEach((panel, index) => {
+    const panels = [...map.getContainer().querySelectorAll('.airspace-control')];
+    const GROUPS = ['Katmanlar', 'Rota', 'Bölge araçları'];
+    const GROUP_OF = {
+      'Rota': 'Rota',
+      'Bölge özeti': 'Bölge araçları',
+      'Kayıtlı ve uyarı': 'Bölge araçları',
+      'Seviye/saat kıyası': 'Bölge araçları',
+    };
+    const groupOf = (panel) => {
+      const title = panel.querySelector('strong');
+      return (title && GROUP_OF[title.textContent]) || 'Katmanlar';
+    };
+    panels.forEach((panel) => { panel.dataset.group = groupOf(panel); });
+    const inGroup = (group) => panels.filter((panel) => panel.dataset.group === group);
+    const seenGroups = new Set();
+    panels.forEach((panel) => {
       const title = panel.querySelector('strong');
       if (!title) return;
       title.classList.add('airspace-title');
@@ -260,7 +274,7 @@
       title.setAttribute('tabindex', '0');
       const toggle = () => {
         const open = panel.classList.contains('collapsed');
-        panels.forEach((other) => other.classList.add('collapsed'));
+        inGroup(panel.dataset.group).forEach((other) => other.classList.add('collapsed'));
         if (open) {
           panel.classList.remove('collapsed');
           panel.scrollIntoView({ block: 'nearest' });
@@ -270,8 +284,44 @@
       title.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
       });
-      if (index > 0) panel.classList.add('collapsed');
+      if (seenGroups.has(panel.dataset.group)) panel.classList.add('collapsed');
+      seenGroups.add(panel.dataset.group);
     });
+
+    const corner = map.getContainer().querySelector('.leaflet-top.leaflet-right');
+    if (corner) {
+      const tabs = L.DomUtil.create('div', 'leaflet-control airspace-tabs');
+      tabs.setAttribute('role', 'tablist');
+      L.DomEvent.disableClickPropagation(tabs);
+      const compactScreen = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+      let active = GROUPS[0];
+      let closed = compactScreen;
+      const buttons = {};
+      const render = () => {
+        corner.classList.toggle('tools-closed', closed);
+        GROUPS.forEach((group) => {
+          const selected = group === active && !closed;
+          buttons[group].classList.toggle('active', selected);
+          buttons[group].setAttribute('aria-selected', String(selected));
+        });
+        panels.forEach((panel) => panel.classList.toggle('tools-hidden', panel.dataset.group !== active));
+      };
+      GROUPS.forEach((group) => {
+        const btn = L.DomUtil.create('button', 'airspace-tab', tabs);
+        btn.type = 'button';
+        btn.setAttribute('role', 'tab');
+        btn.textContent = group;
+        btn.addEventListener('click', () => {
+          closed = group === active ? !closed : false;
+          active = group;
+          render();
+        });
+        buttons[group] = btn;
+      });
+      corner.insertBefore(tabs, corner.firstChild);
+      render();
+      map._toolsApi = { show(group) { if (GROUPS.includes(group)) { active = group; closed = false; render(); } } };
+    }
 
     const saved = readPrefs();
     const checkboxes = () => [...map.getContainer().querySelectorAll('.airspace-control')].flatMap((panel) => {

@@ -98,3 +98,19 @@
   .route-control, .region-control { max-width: 170px; }
   .route-result { max-width: 160px; }
 }
+
+.airspace-tabs { display: flex; gap: 4px; background: #1b2026; border: 1px solid #333b45; border-radius: 6px; padding: 4px; position: sticky; top: 0; z-index: 2; }
+.airspace-tab { flex: 1; background: transparent; color: #a0aab6; border: 0; border-radius: 4px; padding: 4px 6px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.airspace-tab.active { background: #2b3440; color: #edf0f3; }
+.airspace-control.tools-hidden { display: none; }
+@media (max-width: 640px) {
+  #mapContainer .leaflet-top.leaflet-right { top: auto; left: 0; right: 0; bottom: 24px; max-height: 48%; }
+  #mapContainer .leaflet-top.leaflet-right > .leaflet-control { float: none; margin: 0 6px 6px; }
+  #mapContainer .leaflet-top.leaflet-right > .airspace-control,
+  #mapContainer .leaflet-top.leaflet-right > .route-control,
+  #mapContainer .leaflet-top.leaflet-right > .region-control { max-width: none; width: auto; font-size: 12px; }
+  #mapContainer .leaflet-top.leaflet-right > .route-control .route-result,
+  #mapContainer .leaflet-top.leaflet-right > .region-control .route-result { max-width: none; }
+  #mapContainer .leaflet-top.leaflet-right.tools-closed > .airspace-control { display: none; }
+  .airspace-tab { padding: 8px 6px; font-size: 12px; }
+}

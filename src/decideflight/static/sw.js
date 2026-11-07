@@ -1,4 +1,4 @@
-const CACHE_NAME = 'decideflight-static-v44';
+const CACHE_NAME = 'decideflight-static-v45';
 const DATA_CACHE = 'decideflight-map-data';
 const OFFLINE_API = ['/api/v1/airspace', '/api/v1/map-layers/airports'];
 const STATIC_ASSETS = [
