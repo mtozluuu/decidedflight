@@ -1,4 +1,4 @@
-const CACHE_NAME = 'decideflight-static-v34';
+const CACHE_NAME = 'decideflight-static-v39';
 const DATA_CACHE = 'decideflight-map-data';
 const OFFLINE_API = ['/api/v1/airspace', '/api/v1/map-layers/airports'];
 const STATIC_ASSETS = [
@@ -62,22 +62,21 @@ self.addEventListener('fetch', (event) => {
   ) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
+    fetch(event.request).then((response) => {
+      if (response.ok) {
         const clone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        return response;
-      }).catch((error) => {
-        console.error('Service worker fetch failed:', error);
-        return caches.match('/static/index.html').then(
-          (fallback) => fallback || new Response('Çevrimdışı içerik kullanılamıyor.', {
-            status: 503,
-            statusText: 'Offline',
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-          })
-        );
-      });
+      }
+      return response;
+    }).catch((error) => {
+      console.error('Service worker fetch failed:', error);
+      return caches.match(event.request).then((cached) => cached || caches.match('/static/index.html')).then(
+        (fallback) => fallback || new Response('Çevrimdışı içerik kullanılamıyor.', {
+          status: 503,
+          statusText: 'Offline',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        })
+      );
     })
   );
 });
