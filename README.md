@@ -5,6 +5,7 @@ DecideFlight is an AI-powered flight weather decision system. It combines data f
 ## Features
 
 - FastAPI-based REST API foundation
+- Data timing is separate from retrieval time: METAR older than 60 minutes is flagged as stale, and TAF is checked against its own UTC validity interval. Provider timestamps appear on source cards/status checks when available. Forecast target times are not model issuance times; missing or unverified timestamps are never labeled current. MGM Airgram image production/validity still requires reading the original image. These warnings are informational and do not automatically change the flight decision.
 - Config-driven environment management
 - SQLAlchemy database layer ready for PostgreSQL
 - Initial weather data model

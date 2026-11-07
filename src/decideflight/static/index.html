@@ -505,8 +505,10 @@
       <div id="airportObservationData" class="hidden mt-4 space-y-3 border-t border-cyan-400/20 pt-4">
         <p class="mono text-xs text-cyan-300">METAR</p>
         <pre id="airportMetar" class="mono text-xs text-cyan-100 whitespace-pre-wrap break-words"></pre>
+        <p id="airportMetarTiming" class="mono text-xs text-amber-300"></p>
         <p class="mono text-xs text-cyan-300">TAF</p>
         <pre id="airportTaf" class="mono text-xs text-cyan-100 whitespace-pre-wrap break-words"></pre>
+        <p id="airportTafTiming" class="mono text-xs text-amber-300"></p>
         <a id="airportObservationLink" target="_blank" rel="noopener noreferrer" class="mono text-xs text-cyan-300 underline">MGM Rasat kaynağını aç</a>
         <p class="mono text-[11px] text-cyan-100/60">Rasat ve geçerlilik saatleri ham metinde UTC olarak yer alır. Bu panel uçuş kararını değiştirmez.</p>
       </div>
@@ -2076,6 +2078,7 @@
       const srcContainer = document.getElementById('sourcesTable');
       srcContainer.innerHTML = data.sources.map(s => `
         <div class="source-card mono">
+          <p class="text-[11px] text-amber-300 mb-2">${s.data_time ? new Date(s.data_time).toISOString() : 'Veri zamanı bilinmiyor'} · ${s.freshness_message || 'Güncellik bilinmiyor.'}</p>
           <div class="flex items-center justify-between gap-3 mb-3">
             <p class="text-cyan-300 font-bold">${formatSourceIcon(s.source)} ${formatSourceName(s.source)}</p>
             <span class="text-[10px] text-cyan-100/55">GÜVENİLİRLİK ${formatReliabilityPercent(s.reliability_weight)}%</span>
@@ -2503,8 +2506,19 @@
         if (!response.ok) throw new Error(data.detail || 'MGM Rasat verisi alınamadı.');
         document.getElementById('airportMetar').textContent = data.metar || 'METAR bulunamadı.';
         document.getElementById('airportTaf').textContent = data.taf || 'TAF bulunamadı.';
+        const timingText = timing => {
+          if (!timing) return 'Veri zamanı doğrulanamadı.';
+          const utc = value => new Date(value).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
+          return [
+            timing.issued_at ? `Yayın/gözlem: ${utc(timing.issued_at)}` : '',
+            timing.valid_from && timing.valid_until ? `Geçerlilik: ${utc(timing.valid_from)} – ${utc(timing.valid_until)}` : '',
+            timing.message,
+          ].filter(Boolean).join(' · ');
+        };
+        document.getElementById('airportMetarTiming').textContent = timingText(data.metar_timing);
+        document.getElementById('airportTafTiming').textContent = timingText(data.taf_timing);
         document.getElementById('airportObservationLink').href = `https://rasat.mgm.gov.tr/result?stations=${icao}&obsType=1&obsType=2&hours=0`;
-        status.textContent = `${icao} — MGM son rasatlar. Kontrol: ${new Date(data.checked_at).toLocaleString('tr-TR')}`;
+        status.textContent = `${icao} — MGM rasatları. Alınma zamanı: ${new Date(data.checked_at).toLocaleString('tr-TR')} (rasat zamanı değildir)`;
         document.getElementById('airportObservationData').classList.remove('hidden');
       } catch (error) {
         if (error.name !== 'AbortError') status.textContent = error.message;

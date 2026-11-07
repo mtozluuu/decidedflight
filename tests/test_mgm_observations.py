@@ -52,6 +52,8 @@ def test_endpoint_returns_observations_and_check_time():
     assert response.json()["icao"] == "LTAJ"
     assert response.json()["taf"] is None
     assert response.json()["checked_at"]
+    assert response.json()["metar_timing"]["issued_at"]
+    assert response.json()["taf_timing"]["status"] == "unknown"
     fetch.assert_awaited_once_with("LTAJ")
 
 

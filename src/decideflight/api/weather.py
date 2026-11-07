@@ -28,6 +28,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 from decideflight.services.mgm_observations import fetch_mgm_observations
 from decideflight.services.airgram import fetch_airgram
+from decideflight.services.data_freshness import observation_timing, source_timing
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -118,6 +119,10 @@ class ParameterResultSchema(BaseModel):
 
 class WeatherSourceSchema(BaseModel):
     source: str
+    data_time: datetime | None = None
+    time_kind: str = "observation"
+    freshness: str = "unknown"
+    freshness_message: str = "Veri zamanı doğrulanamadı."
     cloud_cover_pct: float | None = None
     wind_speed_knots: float
     temperature_c: float
@@ -134,6 +139,8 @@ class AirportObservationsResponse(BaseModel):
     metar: str | None
     taf: str | None
     checked_at: datetime
+    metar_timing: dict
+    taf_timing: dict
 
 
 @router.get("/airgram")
@@ -187,8 +194,11 @@ async def airport_observations(icao: str) -> AirportObservationsResponse:
             status_code=404,
             detail=f"MGM Rasat sayfasında {icao} için METAR/TAF bulunamadı.",
         )
+    now = datetime.now(timezone.utc)
     return AirportObservationsResponse(
-        icao=icao, checked_at=datetime.now(timezone.utc), **observations
+        icao=icao, checked_at=now, **observations,
+        metar_timing=observation_timing(observations["metar"], now),
+        taf_timing=observation_timing(observations["taf"], now, taf=True),
     )
 
 
@@ -303,12 +313,20 @@ async def data_source_status(
             source_name in received_sources if received is None else received
         )
         if did_receive:
+            timing_message = "Veri alındı; veri zamanı ve güncelliği doğrulanamadı."
+            if not isinstance(sources, Exception):
+                match = next((s for s in sources if s.source == source_name), None)
+                if match is not None:
+                    timing = source_timing(match, datetime.now(timezone.utc))
+                    timing_message = timing["freshness_message"]
+                    if timing["data_time"]:
+                        timing_message = f'Veri zamanı: {timing["data_time"]}. {timing_message}'
             return DataSourceCheckSchema(
                 name=name,
                 provider=provider,
                 data=data,
                 status="received",
-                message="Bu kontrol sırasında veri alındı.",
+                message=timing_message,
             )
         return DataSourceCheckSchema(
             name=name,
@@ -519,6 +537,7 @@ async def create_weather_report(
         sources=[
             WeatherSourceSchema(
                 source=s.source,
+                **source_timing(s, datetime.now(timezone.utc)),
                 wind_speed_knots=s.wind_speed_knots,
                 temperature_c=s.temperature_c,
                 humidity_pct=s.humidity_pct,
