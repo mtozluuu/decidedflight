@@ -527,17 +527,20 @@
     </div>
 
     <section id="resultSection" class="hidden space-y-5">
-      <div id="decisionBanner" class="hud-card decision-banner p-6 text-center decision-animate">
-        <div id="decisionGlow" class="decision-glow"></div>
+      <div id="decisionBanner" class="hud-card decision-banner p-6">
         <div class="decision-content">
-          <div id="decisionText" class="mono text-3xl sm:text-5xl font-extrabold tracking-wide"></div>
-          <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
-            <p id="locationLabel" class="mono text-xs text-cyan-100/70"></p>
+          <div class="decision-heading">
+            <span class="decision-kicker">Uçuş değerlendirmesi</span>
+            <span id="decisionStatus" class="decision-status"></span>
+          </div>
+          <h2 id="decisionText" class="decision-title"></h2>
+          <p id="locationLabel" class="decision-location"></p>
+          <p id="createdAt" class="decision-timestamp"></p>
+          <div class="decision-actions">
             <button id="favoriteBtn" type="button" onclick="saveCurrentFavorite()" class="hidden mono border border-cyan-400/30 text-cyan-200 rounded-md px-2 py-1 text-[10px]"><svg class="ui-icon" aria-hidden="true"><use href="#icon-star"/></svg> Favoriye ekle</button>
             <span id="aqiBadge" class="hidden mono text-[10px] rounded-full px-2 py-1 border"></span>
           </div>
-          <p id="createdAt" class="mono text-[11px] text-cyan-100/55 mt-1"></p>
-          <p id="savedReportNotice" role="status" class="hidden text-xs text-amber-300 mt-3"></p>
+          <p id="savedReportNotice" role="status" class="hidden text-xs text-cyan-100/70 mt-3"></p>
         </div>
       </div>
 
@@ -1263,24 +1266,18 @@
     const DECISION_CONFIG = {
       'UYGUN': {
         label: 'Uçuşa uygun',
-        banner: 'border border-green-400/40 text-green-300',
-        background: '#1e2b24',
-        glow: 'transparent',
-        pulse: false,
+        title: 'Koşullar uçuş için uygun',
+        tone: 'safe',
       },
       'RISKLI': {
         label: 'Riskli · Koşulları gözden geçirin',
-        banner: 'border border-amber-400/45 text-amber-300',
-        background: '#2b2720',
-        glow: 'transparent',
-        pulse: false,
+        title: 'Uçuş öncesi koşulları değerlendirin',
+        tone: 'caution',
       },
       'UYGUN_DEGIL': {
         label: 'Uçuşa uygun değil',
-        banner: 'border border-red-400/45 text-red-300',
-        background: '#2d2225',
-        glow: 'transparent',
-        pulse: false,
+        title: 'Mevcut koşullarda uçuş önerilmiyor',
+        tone: 'danger',
       },
     };
     const PARAM_DECISION_BADGE = {
@@ -2034,15 +2031,9 @@
 
       const cfg = DECISION_CONFIG[data.decision] || DECISION_CONFIG['RISKLI'];
       const banner = document.getElementById('decisionBanner');
-      const bannerGlow = document.getElementById('decisionGlow');
-      banner.className = `hud-card decision-banner p-6 text-center decision-animate ${cfg.banner}`;
-      banner.style.background = cfg.background;
-      bannerGlow.style.background = cfg.glow;
-      if (cfg.pulse) {
-        banner.classList.add('decision-danger-blink');
-      }
-
-      document.getElementById('decisionText').textContent = cfg.label;
+      banner.dataset.tone = cfg.tone;
+      document.getElementById('decisionStatus').textContent = formatDecisionLabel(data.decision);
+      document.getElementById('decisionText').textContent = cfg.title;
       document.getElementById('locationLabel').textContent = `Konum: ${data.location} (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
       document.getElementById('createdAt').textContent =
         'Rapor zamanı: ' + new Date(data.created_at).toLocaleString('tr-TR');

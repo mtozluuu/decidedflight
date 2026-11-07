@@ -125,9 +125,20 @@ html body table { color: var(--ink); }
 html body th { background: #171c22; color: var(--muted); font-size: 11px; font-weight: 500; }
 html body th, html body td { padding: 12px; }
 html body .table-row:hover { background: #242c35; }
-html body .decision-banner { text-align: left; border-left-width: 3px; }
-html body #decisionText { font-size: clamp(24px, 3vw, 34px); font-weight: 550; line-height: 1.3; letter-spacing: -0.8px; }
-html body #decisionBanner .decision-content > .flex { justify-content: flex-start; }
+html body #decisionBanner { text-align: left; background: var(--hud-panel); border: 1px solid var(--line); border-radius: 8px; }
+.decision-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.decision-kicker { color: var(--muted); font-size: 12px; }
+html body #decisionText { color: var(--ink); font-size: 22px; font-weight: 500; line-height: 1.4; letter-spacing: -0.4px; margin: 14px 0 10px; }
+.decision-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.decision-status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+[data-tone="safe"] .decision-status { color: var(--hud-green); background: #22372c; }
+[data-tone="caution"] .decision-status { color: var(--hud-amber); background: #352e22; }
+[data-tone="danger"] .decision-status { color: var(--hud-red); background: #362629; }
+.decision-location { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.decision-timestamp { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.decision-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; }
+html body #favoriteBtn { font-size: 12px; font-weight: 500; color: var(--muted); padding: 5px 8px; background: none; border-color: var(--line); }
+html body #decisionBanner #aqiBadge { background: none; border: 0; padding: 0; border-radius: 0; font-size: 12px; }
 html body .decision-glow { display: none; }
 html body .decision-danger-blink, html body .decision-animate, html body .blink, html body .animate-pulse { animation: none; }
 html body .reliability-track, html body .weight-track { background: #303a46; border: 0; }

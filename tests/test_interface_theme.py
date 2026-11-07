@@ -76,3 +76,17 @@ def test_typography_and_icons_do_not_reintroduce_legacy_hud_styling():
     assert {"icon-search", "icon-refresh", "icon-star", "icon-globe", "icon-check", "icon-alert"} <= symbols
     assert "stroke: currentColor" in theme
     assert "summary::-webkit-details-marker" in theme
+
+
+def test_decision_card_uses_neutral_surface_and_separate_status():
+    page = (STATIC / "index.html").read_text()
+    theme = (STATIC / "theme.css").read_text()
+    assert 'id="decisionStatus" class="decision-status"' in page
+    assert 'id="decisionText" class="decision-title"' in page
+    assert '<div class="decision-actions">' in page
+    assert "banner.dataset.tone = cfg.tone" in page
+    assert "banner.style.background" not in page
+    assert "background: var(--hud-panel); border: 1px solid var(--line)" in theme
+    assert "html body #decisionText { color: var(--ink); font-size: 22px" in theme
+    for tone in ("safe", "caution", "danger"):
+        assert f'[data-tone="{tone}"] .decision-status' in theme
