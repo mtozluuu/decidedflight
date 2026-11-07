@@ -1,16 +1,52 @@
+@media (min-width: 641px) {
+  html body #mapContainer { height: 680px; }
+}
+
+/* Stack all overlay panels in one scrollable column that stays clear of the attribution bar. */
+#mapContainer .leaflet-top.leaflet-right {
+  bottom: 28px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: none;
+  scrollbar-width: thin;
+}
+#mapContainer .leaflet-top.leaflet-right > .leaflet-control {
+  pointer-events: auto;
+  clear: both;
+  margin-bottom: 6px;
+}
+#mapContainer .leaflet-control-attribution {
+  background: rgba(20, 24, 29, 0.85);
+  color: #a0aab6;
+  font-size: 10px;
+}
+#mapContainer .leaflet-control-attribution a { color: #b6c6d8; }
+
 .airspace-control {
   background: #1b2026;
   color: #edf0f3;
   border: 1px solid #333b45;
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 1.5;
   min-width: 150px;
+  max-width: 200px;
+}
+.airspace-title { display: block; cursor: pointer; }
+.airspace-title::after { content: "▾"; float: right; color: #a0aab6; margin-left: 10px; }
+.airspace-control.collapsed .airspace-title::after { content: "▸"; }
+.airspace-control.collapsed > :not(.airspace-title) { display: none; }
+.airspace-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 10px;
+  border: 2px solid;
+  border-radius: 2px;
 }
 .airspace-control .airspace-row { display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; }
 .airspace-control .airspace-row input { margin: 0; width: auto; }
-.airspace-status { margin-top: 4px; color: #a0aab6; font-size: 11px; max-width: 190px; }
+.airspace-status { margin-top: 4px; color: #a0aab6; font-size: 11px; }
 .airspace-popup p { margin: 0; }
 .airspace-control .airspace-select { width: 100%; margin-top: 4px; background: #14181d; color: #edf0f3; border: 1px solid #333b45; border-radius: 4px; font-size: 12px; padding: 2px 4px; }
 .wind-arrow-icon { background: none; border: none; }

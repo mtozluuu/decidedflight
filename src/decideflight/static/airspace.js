@@ -1,11 +1,11 @@
 (function () {
   const STYLES = {
-    TMA: { color: '#93a9c1', fillOpacity: 0.08, weight: 1.5 },
-    CTR: { color: '#a6d7bd', fillOpacity: 0.12, weight: 1.5 },
-    FIR: { color: '#a0aab6', fillOpacity: 0, weight: 1.5, dashArray: '6 6' },
-    R: { color: '#e5a5a5', fillOpacity: 0.1, weight: 1.5 },
-    D: { color: '#e5a5a5', fillOpacity: 0.06, weight: 1, dashArray: '3 4' },
-    P: { color: '#e5a5a5', fillOpacity: 0.2, weight: 2 },
+    TMA: { color: '#5aa9ff', fillOpacity: 0.16, weight: 2.5 },
+    CTR: { color: '#4ade9a', fillOpacity: 0.26, weight: 2.5 },
+    FIR: { color: '#ffffff', fillOpacity: 0, weight: 3, dashArray: '10 8' },
+    R: { color: '#ff7a7a', fillOpacity: 0.16, weight: 2 },
+    D: { color: '#ff9f6b', fillOpacity: 0.12, weight: 2, dashArray: '4 4' },
+    P: { color: '#ff4d4d', fillOpacity: 0.3, weight: 3 },
   };
   const OPTIONS = [
     ['TMA', 'TMA', true],
@@ -47,7 +47,12 @@
         layers[code] = L.geoJSON(null, {
           style: () => STYLES[code],
           bubblingMouseEvents: false,
-          onEachFeature: (feature, layer) => layer.bindPopup(popupHtml(feature.properties)),
+          onEachFeature: (feature, layer) => {
+            layer.bindPopup(popupHtml(feature.properties));
+            layer.bindTooltip(feature.properties.name, { sticky: true });
+            layer.on('mouseover', () => layer.setStyle({ weight: STYLES[code].weight + 2, fillOpacity: STYLES[code].fillOpacity + 0.15 }));
+            layer.on('mouseout', () => layer.setStyle(STYLES[code]));
+          },
         });
       }
       if (!loaded[code]) {
@@ -77,7 +82,11 @@
         const input = L.DomUtil.create('input', '', row);
         input.type = 'checkbox';
         input.checked = on;
-        row.appendChild(document.createTextNode(' ' + label));
+        const swatch = L.DomUtil.create('span', 'airspace-swatch', row);
+        swatch.style.borderColor = STYLES[code].color;
+        swatch.style.background = STYLES[code].fillOpacity ? STYLES[code].color + '55' : 'transparent';
+        if (STYLES[code].dashArray) swatch.style.borderStyle = 'dashed';
+        row.appendChild(document.createTextNode(label));
         input.addEventListener('change', async () => {
           if (input.checked) {
             if (!(await show(code))) input.checked = false;
@@ -93,6 +102,21 @@
     };
     control.addTo(map);
     (window.MapLayerPlugins || []).forEach((plugin) => plugin(map));
+
+    const panels = map.getContainer().querySelectorAll('.airspace-control');
+    panels.forEach((panel, index) => {
+      const title = panel.querySelector('strong');
+      if (!title) return;
+      title.classList.add('airspace-title');
+      title.setAttribute('role', 'button');
+      title.setAttribute('tabindex', '0');
+      const toggle = () => panel.classList.toggle('collapsed');
+      title.addEventListener('click', toggle);
+      title.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      });
+      if (index > 0) panel.classList.add('collapsed');
+    });
   }
 
   window.AirspaceLayer = { attach };
