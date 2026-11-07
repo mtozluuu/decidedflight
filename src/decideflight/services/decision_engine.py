@@ -14,7 +14,8 @@ import math
 from dataclasses import dataclass
 from typing import Callable
 
-from decideflight.config import settings
+from decideflight.config import Settings, settings
+from decideflight.services.flight_limits import DroneLimit
 from decideflight.services.weather_fetcher import (
     AirQualityData,
     PRECIP_HEAVY,
@@ -45,18 +46,18 @@ _PRECIP_LABELS = {
 # ---------------------------------------------------------------------------
 
 
-def _eval_wind(knots: float) -> str:
-    if knots < settings.wind_ok_max_knots:
+def _eval_wind(knots: float, limits: DroneLimit | Settings = settings) -> str:
+    if knots < limits.wind_ok_max_knots:
         return UYGUN
-    if knots <= settings.wind_risky_max_knots:
+    if knots <= limits.wind_risky_max_knots:
         return RISKLI
     return UYGUN_DEGIL
 
 
-def _eval_visibility(km: float) -> str:
-    if km > settings.visibility_ok_min_km:
+def _eval_visibility(km: float, limits: DroneLimit | Settings = settings) -> str:
+    if km > limits.visibility_ok_min_km:
         return UYGUN
-    if km >= settings.visibility_risky_min_km:
+    if km >= limits.visibility_risky_min_km:
         return RISKLI
     return UYGUN_DEGIL
 
@@ -69,38 +70,38 @@ def _eval_precipitation(level: int) -> str:
     return UYGUN_DEGIL
 
 
-def _eval_temperature(temp_c: float) -> str:
-    if settings.temp_ok_min_c <= temp_c <= settings.temp_ok_max_c:
+def _eval_temperature(temp_c: float, limits: DroneLimit | Settings = settings) -> str:
+    if limits.temp_ok_min_c <= temp_c <= limits.temp_ok_max_c:
         return UYGUN
-    if settings.temp_risky_min_c <= temp_c <= settings.temp_risky_max_c:
+    if limits.temp_risky_min_c <= temp_c <= limits.temp_risky_max_c:
         return RISKLI
     return UYGUN_DEGIL
 
 
-def _eval_humidity(pct: float) -> str:
-    if pct < settings.humidity_ok_max_pct:
+def _eval_humidity(pct: float, limits: DroneLimit | Settings = settings) -> str:
+    if pct < limits.humidity_ok_max_pct:
         return UYGUN
-    if pct <= settings.humidity_risky_max_pct:
+    if pct <= limits.humidity_risky_max_pct:
         return RISKLI
     return UYGUN_DEGIL
 
 
-def _eval_cloud_base(ft: float | None) -> str:
+def _eval_cloud_base(ft: float | None, limits: DroneLimit | Settings = settings) -> str:
     if ft is None:
         return UYGUN  # unknown → assume OK
-    if ft > settings.cloud_base_ok_min_ft:
+    if ft > limits.cloud_base_ok_min_ft:
         return UYGUN
-    if ft >= settings.cloud_base_risky_min_ft:
+    if ft >= limits.cloud_base_risky_min_ft:
         return RISKLI
     return UYGUN_DEGIL
 
 
-def _eval_cloud_ceiling(ft: float | None) -> str:
+def _eval_cloud_ceiling(ft: float | None, limits: DroneLimit | Settings = settings) -> str:
     if ft is None:
         return UYGUN
-    if ft > settings.cloud_ceiling_ok_min_ft:
+    if ft > limits.cloud_ceiling_ok_min_ft:
         return UYGUN
-    if ft >= settings.cloud_ceiling_risky_min_ft:
+    if ft >= limits.cloud_ceiling_risky_min_ft:
         return RISKLI
     return UYGUN_DEGIL
 
@@ -184,8 +185,11 @@ class DecisionResult:
 def make_decision(
     sources: list[WeatherSourceData],
     air_quality: AirQualityData | None = None,
+    limits: DroneLimit | None = None,
 ) -> DecisionResult:
     """Aggregate *sources* and return a ``DecisionResult``."""
+
+    active_limits = limits if limits is not None else settings
 
     def _weighted_pairs(
         getter: Callable[[WeatherSourceData], float | None],
@@ -210,12 +214,12 @@ def make_decision(
         ParameterResult(
             name="Rüzgar hızı",
             value=f"{avg_wind:.1f} knot",
-            decision=_eval_wind(avg_wind),
+            decision=_eval_wind(avg_wind, active_limits),
         ),
         ParameterResult(
             name="Görüş mesafesi",
             value=f"{avg_visibility:.1f} km",
-            decision=_eval_visibility(avg_visibility),
+            decision=_eval_visibility(avg_visibility, active_limits),
         ),
         ParameterResult(
             name="Yağış",
@@ -225,17 +229,17 @@ def make_decision(
         ParameterResult(
             name="Sıcaklık",
             value=f"{avg_temp:.1f} °C",
-            decision=_eval_temperature(avg_temp),
+            decision=_eval_temperature(avg_temp, active_limits),
         ),
         ParameterResult(
             name="Nem",
             value=f"{avg_humidity:.0f}%",
-            decision=_eval_humidity(avg_humidity),
+            decision=_eval_humidity(avg_humidity, active_limits),
         ),
         ParameterResult(
             name="Bulut tabanı",
             value=(f"{avg_cloud_base:.0f} ft" if avg_cloud_base is not None else "N/A"),
-            decision=_eval_cloud_base(avg_cloud_base),
+            decision=_eval_cloud_base(avg_cloud_base, active_limits),
         ),
         ParameterResult(
             name="Bulut tavanı",
@@ -244,7 +248,7 @@ def make_decision(
                 if avg_cloud_ceiling is not None
                 else "N/A"
             ),
-            decision=_eval_cloud_ceiling(avg_cloud_ceiling),
+            decision=_eval_cloud_ceiling(avg_cloud_ceiling, active_limits),
         ),
     ]
     if avg_cloud_cover is not None:
@@ -253,7 +257,9 @@ def make_decision(
             ParameterResult(
                 name="Bulutluluk",
                 value=f"{avg_cloud_cover:.1f}%",
-                decision=RISKLI if avg_cloud_cover > 50 else UYGUN,
+                decision=RISKLI if avg_cloud_cover > (
+                    limits.cloud_cover_ok_max_pct if limits is not None else 50
+                ) else UYGUN,
             ),
         )
     if air_quality is not None:

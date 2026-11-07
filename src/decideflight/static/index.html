@@ -677,6 +677,7 @@
             </thead>
             <tbody id="parametersTable"></tbody>
           </table>
+          <p id="appliedLimitsNotice" class="mono text-[11px] text-cyan-100/60 mt-3"></p>
         </div>
       </div>
 
@@ -1001,7 +1002,7 @@
       <div class="hud-card p-6">
         <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ UÇUŞ LİMİTLERİ</h2>
         <p class="mono text-[11px] text-cyan-100/60 mb-5">
-          Bu limitler tarayıcınızda saklanır ve bölge analizinde karar kriteri olarak kullanılır.
+          Bu limitler tarayıcınızda saklanır; yeni nokta raporlarında ve bölge analizinde kullanılır. Eski raporların limitleri değişmez.
         </p>
 
         <div class="space-y-5">
@@ -1418,6 +1419,7 @@
         name: currentReportData.location,
         lat: currentReportData.lat,
         lon: currentReportData.lon,
+        limits: currentReportData.applied_limits || undefined,
         last_decision: currentReportData.decision,
         last_analyzed: currentReportData.created_at,
       };
@@ -1923,6 +1925,7 @@
         body = { location: raw };
       }
 
+      body.limits = loadSettings();
       try {
         const res = await fetch('/api/v1/weather/report', {
           method: 'POST',
@@ -2076,6 +2079,10 @@
         </tr>`).join('');
 
       const srcContainer = document.getElementById('sourcesTable');
+      const applied = data.applied_limits;
+      document.getElementById('appliedLimitsNotice').textContent = applied
+        ? `Rapor oluşturulurken kaydedilen limitler: Rüzgâr <${applied.wind_ok_max_knots} / ≤${applied.wind_risky_max_knots} kt · Görüş >${applied.visibility_ok_min_km} / ≥${applied.visibility_risky_min_km} km · Nem <${applied.humidity_ok_max_pct} / ≤${applied.humidity_risky_max_pct}% · Bulutluluk ≤${applied.cloud_cover_ok_max_pct}% · Bulut tabanı >${applied.cloud_base_ok_min_ft} / ≥${applied.cloud_base_risky_min_ft} ft · Tavan >${applied.cloud_ceiling_ok_min_ft} / ≥${applied.cloud_ceiling_risky_min_ft} ft · Sıcaklık ${applied.temp_ok_min_c}–${applied.temp_ok_max_c} °C (uygun / riskli eşikler).`
+        : 'Bu rapor sunucu varsayılanlarıyla oluşturuldu; özel limit kaydı yok.';
       srcContainer.innerHTML = data.sources.map(s => `
         <div class="source-card mono">
           <p class="text-[11px] text-amber-300 mb-2">${s.data_time ? new Date(s.data_time).toISOString() : 'Veri zamanı bilinmiyor'} · ${s.freshness_message || 'Güncellik bilinmiyor.'}</p>
@@ -2437,6 +2444,19 @@
         headwind_ok_max_knots: parseFloat(document.getElementById('s_headwind_ok').value),
         headwind_risky_max_knots: parseFloat(document.getElementById('s_headwind_risky').value),
       };
+      const ordered = [
+        [lim.wind_ok_max_knots, lim.wind_risky_max_knots],
+        [lim.visibility_risky_min_km, lim.visibility_ok_min_km],
+        [lim.cloud_base_risky_min_ft, lim.cloud_base_ok_min_ft],
+        [lim.cloud_ceiling_risky_min_ft, lim.cloud_ceiling_ok_min_ft],
+        [lim.humidity_ok_max_pct, lim.humidity_risky_max_pct],
+        [lim.temp_ok_min_c, lim.temp_ok_max_c],
+      ];
+      if (Object.values(lim).some(value => !Number.isFinite(value)) ||
+          ordered.some(([low, high]) => low > high)) {
+        alert('Limitler sayısal olmalı; uygun ve riskli eşiklerin sıralamasını kontrol edin.');
+        return;
+      }
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(lim));
       const notice = document.getElementById('settingsSaved');
       notice.classList.remove('hidden');
@@ -3088,7 +3108,7 @@
           const res = await fetch('/api/v1/weather/report', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat: lat, lon: lng }),
+            body: JSON.stringify({ lat: lat, lon: lng, limits: loadSettings() }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.detail || 'Hata');

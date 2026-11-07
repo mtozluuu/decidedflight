@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field, model_validator
 from decideflight.services.mgm_observations import fetch_mgm_observations
 from decideflight.services.airgram import fetch_airgram
 from decideflight.services.data_freshness import observation_timing, source_timing
+from decideflight.services.flight_limits import DroneLimit
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -97,6 +98,7 @@ def get_db():
 
 
 class WeatherReportRequest(BaseModel):
+    limits: DroneLimit | None = None
     location: str | None = None
     lat: float | None = None
     lon: float | None = None
@@ -203,6 +205,7 @@ async def airport_observations(icao: str) -> AirportObservationsResponse:
 
 
 class WeatherReportResponse(BaseModel):
+    applied_limits: dict | None = None
     report_id: int
     location: str
     lat: float
@@ -470,10 +473,14 @@ async def create_weather_report(
     )
     if air_quality is not None:
         ai_kwargs["air_quality"] = air_quality
+    if body.limits is not None:
+        ai_kwargs["limits"] = body.limits
     decision_result = await make_ai_decision(**ai_kwargs)
 
     # 6. Persist report
     ai_payload: dict[str, Any] = {}
+    if body.limits is not None:
+        ai_payload["applied_limits"] = body.limits.model_dump()
     if isinstance(decision_result, AIDecisionResult):
         ai_payload.update(
             {
@@ -530,6 +537,7 @@ async def create_weather_report(
             ai_recs = decision_result.recommendations
 
     return WeatherReportResponse(
+        applied_limits=body.limits.model_dump() if body.limits is not None else None,
         report_id=report.id,
         location=report.location,
         lat=lat,
@@ -616,7 +624,10 @@ async def download_report_pdf(
         for s in raw_sources
     ]
 
-    decision_result = make_decision(sources)
+    stored_limits = _load_ai_payload(report).get("applied_limits")
+    decision_result = make_decision(
+        sources, limits=DroneLimit.model_validate(stored_limits) if stored_limits else None
+    )
 
     pdf_bytes = generate_pdf(
         location=report.location,
@@ -750,7 +761,11 @@ def _build_report_decision(
     sources = _load_report_sources(report)
     ai_payload = _load_ai_payload(report)
     air_quality = _load_air_quality(report)
-    return make_decision(sources, air_quality=air_quality), ai_payload
+    stored_limits = ai_payload.get("applied_limits")
+    return make_decision(
+        sources, air_quality=air_quality,
+        limits=DroneLimit.model_validate(stored_limits) if stored_limits else None,
+    ), ai_payload
 
 
 def _build_point_source(hour_data: dict[str, Any]) -> WeatherSourceData:
@@ -796,6 +811,7 @@ class NotamResponse(BaseModel):
 
 
 class FlightPlanRequest(BaseModel):
+    limits: DroneLimit | None = None
     lat: float
     lon: float
     date_offset: int
@@ -1057,10 +1073,14 @@ async def forecast_change(
 
     hours: list[ForecastHourSchema] = []
     air_quality = _load_air_quality(report)
+    saved_limits = _load_ai_payload(report).get("applied_limits")
+    limits = DroneLimit.model_validate(saved_limits) if saved_limits else None
     for offset, result in enumerate(results, start=1):
         if result is None:
             continue
-        decision = make_decision([_build_point_source(result)], air_quality=air_quality)
+        decision = make_decision(
+            [_build_point_source(result)], air_quality=air_quality, limits=limits
+        )
         hours.append(
             ForecastHourSchema(
                 offset=offset,
@@ -1134,7 +1154,7 @@ async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
             row = _hourly_row_from_payload(payload, idx)
             if row is None:
                 continue
-            decision = make_decision([_build_point_source(row)])
+            decision = make_decision([_build_point_source(row)], limits=body.limits)
             result.append(
                 FlightPlanHourSchema(
                     hour=timestamp.hour,
@@ -1449,24 +1469,6 @@ async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
 # ---------------------------------------------------------------------------
 # Grid analysis schemas
 # ---------------------------------------------------------------------------
-
-
-class DroneLimit(BaseModel):
-    cloud_cover_ok_max_pct: float = Field(default=50.0, ge=0, le=100)
-    """Configurable drone flight limits used by the grid decision engine."""
-
-    wind_ok_max_knots: float = 15.0
-    wind_risky_max_knots: float = 25.0
-    visibility_ok_min_km: float = 5.0
-    visibility_risky_min_km: float = 1.0
-    cloud_base_ok_min_ft: float = 500.0
-    cloud_base_risky_min_ft: float = 200.0
-    cloud_ceiling_ok_min_ft: float = 1000.0
-    cloud_ceiling_risky_min_ft: float = 500.0
-    humidity_ok_max_pct: float = 85.0
-    humidity_risky_max_pct: float = 95.0
-    temp_ok_min_c: float = 0.0
-    temp_ok_max_c: float = 40.0
 
 
 class GridAnalysisRequest(BaseModel):

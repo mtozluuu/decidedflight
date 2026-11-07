@@ -31,6 +31,7 @@ from decideflight.services.decision_engine import (
     make_decision,
 )
 from decideflight.services.weather_fetcher import AirQualityData, WeatherSourceData
+from decideflight.services.flight_limits import DroneLimit
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ async def make_ai_decision(
     feedback_context: str = "",
     wind_trend: str = "",
     air_quality: AirQualityData | None = None,
+    limits: DroneLimit | None = None,
 ) -> AIDecisionResult:
     """Call GPT-4o for a drone flight decision analysis.
 
@@ -198,7 +200,9 @@ async def make_ai_decision(
         Human-readable wind trend string, e.g. "Son 6 saatte rüzgar: 2.3 kt/h artıyor"
     """
     # Always compute the rule-based result as the fallback/baseline
-    rule_result = make_decision(sources, air_quality=air_quality)
+    rule_result = make_decision(sources, air_quality=air_quality, limits=limits)
+    if limits is not None:
+        feedback_context += "\nBu raporun etkin eşikleri: " + limits.model_dump_json()
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key or _AsyncOpenAI is None:
@@ -396,7 +400,7 @@ def _build_system_prompt(
     rule_decision_section = (
         f"Kural tabanlı karar: {rule_result.decision} "
         f"(güven: {rule_result.confidence_score}%). "
-        "Bulutluluk %0–50 UYGUN, %50 üstü RISKLI; "
+        "Bulutluluk kararı etkin eşiklere göre kural motorunda hesaplanmıştır; "
         "bulutluluk yüzdesi tek başına UYGUN_DEGIL nedeni değildir."
     )
 

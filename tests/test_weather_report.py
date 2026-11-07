@@ -225,6 +225,41 @@ class TestReportGenerator:
 
 
 class TestWeatherReportAPI:
+    def test_custom_limits_are_applied_and_preserved(self, client):
+        from decideflight.api.weather import _build_report_decision
+        from decideflight.database import SessionLocal
+        from decideflight.models.weather_report import WeatherReport
+
+        with (
+            patch(
+                "decideflight.api.weather.fetch_all_sources",
+                new=AsyncMock(return_value=[_make_source(cloud_cover=75)]),
+            ),
+            patch("decideflight.api.weather.fetch_air_quality", new=AsyncMock(return_value=None)),
+            patch("decideflight.api.weather.fetch_wind_trend", new=AsyncMock(return_value=None)),
+        ):
+            response = client.post(
+                "/api/v1/weather/report",
+                json={"lat": 41, "lon": 29, "limits": {"cloud_cover_ok_max_pct": 80}},
+            )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["decision"] == UYGUN
+        assert body["applied_limits"]["cloud_cover_ok_max_pct"] == 80
+        with SessionLocal() as db:
+            report = db.get(WeatherReport, body["report_id"])
+            decision, payload = _build_report_decision(report)
+        assert decision.decision == UYGUN
+        assert payload["applied_limits"]["cloud_cover_ok_max_pct"] == 80
+
+    def test_report_rejects_reversed_limits(self, client):
+        response = client.post(
+            "/api/v1/weather/report",
+            json={"lat": 41, "lon": 29,
+                  "limits": {"wind_ok_max_knots": 30, "wind_risky_max_knots": 20}},
+        )
+        assert response.status_code == 422
+
     def test_report_cloud_cover_survives_storage(self, client):
         from decideflight.api.weather import _load_report_sources
         from decideflight.database import SessionLocal
