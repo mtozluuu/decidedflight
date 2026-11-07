@@ -391,7 +391,7 @@
 </head>
 <body>
   <header class="px-4 pt-6 pb-4">
-    <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-4">
         <div class="relative">
           <img src="/static/decideflight-icon.svg" alt="DecideFlight uygulama logosu" role="img" class="logo-icon h-10 w-10" />
@@ -402,7 +402,7 @@
           <p class="mono text-[10px] sm:text-[11px] text-cyan-100/50 mt-0.5 tracking-widest">UÇUŞ HAVA KOŞULU KARAR ÇEKİRDEĞİ</p>
         </div>
       </div>
-      <div class="text-right" role="timer" aria-label="Eşgüdümlü Evrensel Zaman">
+      <div class="text-right ml-auto" role="timer" aria-label="Eşgüdümlü Evrensel Zaman">
         <p class="mono text-[10px] text-green-300/60 tracking-widest mb-0.5">UTC</p>
         <p id="utcClock" aria-label="Güncel UTC saati" class="mono text-base sm:text-lg font-bold text-green-300" style="text-shadow: 0 0 12px rgba(0,255,136,0.4)">--:--:--</p>
       </div>
@@ -492,7 +492,10 @@
       <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
     </section>
 
-    <section class="hud-card p-6 mb-4">
+    <details id="airportTools" class="hud-card p-4 mb-4">
+      <summary class="mono text-sm text-cyan-300 cursor-pointer">MEYDAN, AIRGRAM VE PİST ARAÇLARI</summary>
+      <p class="text-xs text-cyan-100/60 mt-2">İsteğe bağlı ek bilgiler. Meydan rasatları analiz noktasından ayrı değerlendirilir.</p>
+    <section class="p-2 mt-4 mb-4">
       <h3 class="mono text-sm text-cyan-300 mb-2">MEYDAN RASATLARI</h3>
       <p class="mono text-[11px] text-cyan-100/60 mb-4">MGM Hezarfen · Son METAR ve TAF</p>
       <div class="flex flex-wrap gap-3">
@@ -584,6 +587,7 @@
         <p id="windComponentOverall" class="mono text-center text-sm mt-3"></p>
       </div>
     </div>
+    </details>
 
     <div id="loadingSection" role="status" aria-live="polite" aria-busy="true" class="hidden hud-card py-14 px-6 text-center">
       <div class="flex justify-center mb-6"><div class="radar" aria-label="Hava verisi yükleniyor"></div></div>
@@ -642,16 +646,18 @@
             </div>
             <div id="confidenceBar" class="hidden"></div>
             <div id="parameterWeightsSection" class="hidden mt-5">
-              <h3 class="mono text-cyan-300 text-sm mb-3">AI KARAR AĞIRLIKLARI</h3>
+              <details>
+              <summary class="mono text-cyan-300 text-xs mb-3 cursor-pointer">AI KARAR AĞIRLIKLARI</summary>
               <div id="parameterWeightsChart" class="space-y-2"></div>
+              </details>
             </div>
           </div>
         </div>
       </div>
 
       <!-- AI Summary box (shown when GPT-4o is active) -->
-      <div id="aiSummaryCard" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
-        <h3 class="mono text-sm mb-3 text-violet-300">✦ YAPAY ZEKA ANALİZİ</h3>
+      <details id="aiSummaryCard" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
+        <summary class="mono text-sm mb-3 text-violet-300 cursor-pointer">✦ YAPAY ZEKA ANALİZİ</summary>
         <p id="aiSummaryText" class="text-sm text-violet-100/90 mb-3"></p>
         <div id="aiDetailWrap" class="hidden">
           <details class="text-sm text-cyan-100/75">
@@ -659,20 +665,21 @@
             <p id="aiDetailText" class="mt-2 leading-relaxed whitespace-pre-line"></p>
           </details>
         </div>
-      </div>
+      </details>
 
       <div class="grid lg:grid-cols-2 gap-4 hud-grid">
-        <div id="riskCard" class="hud-card p-5 hidden">
-          <h3 class="mono text-sm mb-3 text-amber-300">⚠ RİSK DEĞERLENDİRMESİ</h3>
+        <details id="riskCard" class="hud-card p-5 hidden">
+          <summary class="mono text-sm mb-3 text-amber-300 cursor-pointer">⚠ EK RİSK DEĞERLENDİRMESİ</summary>
           <ul id="riskList" class="space-y-2 text-sm"></ul>
-        </div>
+        </details>
         <div id="recCard" class="hud-card p-5 hidden">
           <h3 class="mono text-sm mb-3 text-cyan-300">◈ ÖNERİLER</h3>
           <ul id="recList" class="space-y-2 text-sm"></ul>
         </div>
       </div>
-      <div class="hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">◈ UÇUŞ PARAMETRELERİ</h3>
+      <details id="parameterDetails" class="hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">UÇUŞ PARAMETRELERİ VE UYGULANAN LİMİTLER</summary>
+        <div class="mt-4">
         <div class="overflow-x-auto">
           <table class="w-full text-sm mono">
             <thead>
@@ -686,13 +693,18 @@
           </table>
           <p id="appliedLimitsNotice" class="mono text-[11px] text-cyan-100/60 mt-3"></p>
         </div>
-      </div>
+        </div>
+      </details>
 
-      <div class="hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">◈ VERİ KAYNAKLARI</h3>
-        <div id="sourcesTable" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
-      </div>
+      <details id="sourceDetails" class="hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">VERİ KAYNAKLARI VE GÜNCELLİK
+          <span id="sourceTimingOverview" class="block text-xs text-amber-300 mt-2"></span>
+        </summary>
+        <div id="sourcesTable" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-4"></div>
+      </details>
 
+      <details id="planningTools" class="hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">SAATLİK TAHMİN VE UÇUŞ PLANLAMA</summary>
       <div id="forecastSection" class="hidden hud-card p-6">
         <h3 class="mono text-sm text-cyan-300 mb-4">SONRAKİ 6 SAAT TAHMİNİ · UTC</h3>
         <p id="forecastStatus" role="status" class="text-xs text-cyan-100/70 mb-3"></p>
@@ -719,11 +731,12 @@
         <div id="flightPlanTimeline" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 lg:grid-cols-3"></div>
         <p id="flightPlanBest" class="mono text-xs text-cyan-100 mt-3"></p>
       </div>
+      </details>
 
-      <div id="seasonalSection" class="hidden hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">MEVSIMSEL ANALİZ — EN İYİ UÇUŞ AYLARI</h3>
+      <details id="seasonalSection" class="hidden hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">MEVSİMSEL ANALİZ — EN İYİ UÇUŞ AYLARI</summary>
         <div id="seasonalHeatmap" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3"></div>
-      </div>
+      </details>
 
       <div id="notamSection" class="hidden hud-card p-6">
         <h3 class="mono text-sm text-cyan-300 mb-3">NOTAM</h3>
@@ -732,19 +745,19 @@
         </div>
       </div>
 
-      <div id="chatSection" class="hidden hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">GPT İLE SOHBET</h3>
+      <details id="chatSection" class="hidden hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">GPT İLE SOHBET</summary>
         <div id="chatMessages" class="space-y-3 max-h-80 overflow-y-auto pr-1"></div>
         <div class="mt-4 flex gap-2">
-          <input id="chatInput" type="text" placeholder="Bu analiz hakkında soru sorun..." class="mono flex-1 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+          <input id="chatInput" type="text" placeholder="Bu analiz hakkında soru sorun..." class="mono flex-1 min-w-0 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
           <button type="button" onclick="sendChatMessage()" class="mono bg-violet-300 text-slate-950 font-semibold rounded-md px-4 py-2 text-xs">[ GÖNDER ]</button>
         </div>
-      </div>
+      </details>
 
       <div class="hud-card p-6">
         <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
-          <div id="feedbackSection">
-            <p class="mono text-sm text-cyan-200 mb-3">◈ GÖREV GERİ BİLDİRİMİ — BU DEĞERLENDİRME DOĞRU MUYDU?</p>
+          <details id="feedbackSection">
+            <summary class="mono text-sm text-cyan-200 mb-3 cursor-pointer">DEĞERLENDİRMEYE GERİ BİLDİRİM VER</summary>
             <div id="feedbackButtons" class="flex flex-wrap gap-3">
               <button
                 onclick="submitFeedback(true)"
@@ -769,7 +782,7 @@
               >[ GÖNDER ]</button>
             </div>
             <p id="feedbackThanks" class="hidden mono text-xs text-green-300 mt-2">✓ GERİ BİLDİRİM KAYDEDİLDİ</p>
-          </div>
+          </details>
 
           <button
             id="pdfBtn"
@@ -780,8 +793,8 @@
       </div>
     </section>
 
-    <section id="historySection" class="hidden hud-card p-6">
-      <h3 class="mono text-sm text-cyan-300 mb-4">GEÇMİŞ ANALİZLER</h3>
+    <details id="historySection" class="hidden hud-card p-5">
+      <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">GEÇMİŞ ANALİZLER</summary>
       <div id="historyChart" class="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2 items-end"></div>
       <div class="flex items-center gap-4 mt-3 mono text-[10px] text-cyan-100/40">
         <span><span class="inline-block w-2 h-2 rounded-sm bg-green-400/70 mr-1"></span>UYGUN</span>
@@ -789,7 +802,7 @@
         <span><span class="inline-block w-2 h-2 rounded-sm bg-red-400/70 mr-1"></span>UYGUN DEĞİL</span>
       </div>
       <div id="historyList" class="mt-5 max-h-72 overflow-y-auto space-y-2"></div>
-    </section>
+    </details>
     </div><!-- /panel-point -->
 
     <!-- ══ Tab 2: Regional Analysis ══════════════════════════════════════ -->
@@ -2162,6 +2175,11 @@
         </tr>`).join('');
 
       const srcContainer = document.getElementById('sourcesTable');
+      const staleSources = data.sources.filter(source => source.freshness === 'stale').length;
+      const unverifiedSources = data.sources.filter(source => source.freshness !== 'stale' && source.freshness !== 'current').length;
+      document.getElementById('sourceTimingOverview').textContent = data.sources.length
+        ? `${data.sources.length} kaynak · ${staleSources} eski gözlem · ${unverifiedSources} kaynağın güncelliği doğrulanmadı. Zaman ayrıntıları için açın.`
+        : 'Kaynak verisi bulunmuyor.';
       const applied = data.applied_limits;
       document.getElementById('appliedLimitsNotice').textContent = applied
         ? `Rapor oluşturulurken kaydedilen limitler: Rüzgâr <${applied.wind_ok_max_knots} / ≤${applied.wind_risky_max_knots} kt · Görüş >${applied.visibility_ok_min_km} / ≥${applied.visibility_risky_min_km} km · Nem <${applied.humidity_ok_max_pct} / ≤${applied.humidity_risky_max_pct}% · Bulutluluk ≤${applied.cloud_cover_ok_max_pct}% · Bulut tabanı >${applied.cloud_base_ok_min_ft} / ≥${applied.cloud_base_risky_min_ft} ft · Tavan >${applied.cloud_ceiling_ok_min_ft} / ≥${applied.cloud_ceiling_risky_min_ft} ft · Sıcaklık ${applied.temp_ok_min_c}–${applied.temp_ok_max_c} °C (uygun / riskli eşikler).`

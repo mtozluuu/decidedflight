@@ -1,4 +1,4 @@
-const CACHE_NAME = 'decideflight-static-v15';
+const CACHE_NAME = 'decideflight-static-v16';
 const STATIC_ASSETS = [
   '/',
   '/static/index.html',
