@@ -156,6 +156,7 @@ class ParameterResult:
     name: str
     value: str  # human-readable value with unit
     decision: str
+    explanation: str = ""
 
 
 @dataclass
@@ -271,6 +272,51 @@ def make_decision(
             )
         )
 
+    cover_limit = limits.cloud_cover_ok_max_pct if limits is not None else 50
+    ranges = {
+        "Rüzgar hızı": (
+            f"< {active_limits.wind_ok_max_knots:g} knot",
+            f"{active_limits.wind_ok_max_knots:g}–{active_limits.wind_risky_max_knots:g} knot (dahil)",
+            f"> {active_limits.wind_risky_max_knots:g} knot",
+        ),
+        "Görüş mesafesi": (
+            f"> {active_limits.visibility_ok_min_km:g} km",
+            f"{active_limits.visibility_risky_min_km:g}–{active_limits.visibility_ok_min_km:g} km (dahil)",
+            f"< {active_limits.visibility_risky_min_km:g} km",
+        ),
+        "Yağış": ("Yağış yok", "Hafif yağış", "Orta/şiddetli yağış"),
+        "Sıcaklık": (
+            f"{active_limits.temp_ok_min_c:g}–{active_limits.temp_ok_max_c:g} °C (dahil)",
+            f"Uygun aralık dışında; {active_limits.temp_risky_min_c:g}–{active_limits.temp_risky_max_c:g} °C içinde",
+            f"< {active_limits.temp_risky_min_c:g} veya > {active_limits.temp_risky_max_c:g} °C",
+        ),
+        "Nem": (
+            f"< %{active_limits.humidity_ok_max_pct:g}",
+            f"%{active_limits.humidity_ok_max_pct:g}–%{active_limits.humidity_risky_max_pct:g} (dahil)",
+            f"> %{active_limits.humidity_risky_max_pct:g}",
+        ),
+        "Bulutluluk": (
+            f"≤ %{cover_limit:g}",
+            f"> %{cover_limit:g}; tek başına UYGUN DEĞİL yapmaz",
+            "",
+        ),
+        "Hava kalitesi": ("AQI ≤ 100", "100 < AQI ≤ 150", "AQI > 150"),
+    }
+    for name, ok_min, risky_min in (
+        ("Bulut tabanı", active_limits.cloud_base_ok_min_ft, active_limits.cloud_base_risky_min_ft),
+        ("Bulut tavanı", active_limits.cloud_ceiling_ok_min_ft, active_limits.cloud_ceiling_risky_min_ft),
+    ):
+        ranges[name] = (
+            f"> {ok_min:g} ft",
+            f"{risky_min:g}–{ok_min:g} ft (dahil)",
+            f"< {risky_min:g} ft",
+        )
+    for parameter in params:
+        if parameter.value == "N/A":
+            parameter.explanation = "Veri yok; mevcut kurallarda kararı ağırlaştırmıyor."
+        else:
+            parameter.explanation = ranges[parameter.name][_SCORE[parameter.decision]]
+
     worst_score = max(_SCORE[p.decision] for p in params)
     overall = _LABEL[worst_score]
 
@@ -282,7 +328,7 @@ def make_decision(
         lines = []
         for p in bad:
             label = "⚠️ Riskli" if p.decision == RISKLI else "❌ Uygun Değil"
-            lines.append(f"{p.name}: {p.value} – {label}")
+            lines.append(f"{p.name}: {p.value} – {label} ({p.explanation})")
         detail = "\n".join(lines)
 
     metar_sources = [s for s in sources if s.source == "METAR (AVWX)"]

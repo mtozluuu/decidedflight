@@ -118,6 +118,7 @@ class ParameterResultSchema(BaseModel):
     name: str
     value: str
     decision: str
+    explanation: str = ""
 
 
 class WeatherSourceSchema(BaseModel):
@@ -578,6 +579,7 @@ async def create_weather_report(
                 name=p.name,
                 value=p.value,
                 decision=p.decision,
+                explanation=p.explanation,
             )
             for p in decision_result.parameters
         ],

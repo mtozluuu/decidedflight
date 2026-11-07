@@ -635,6 +635,11 @@
           <div>
             <h3 class="mono text-cyan-300 text-sm mb-2">◈ ANALİZ ÖZETİ</h3>
             <p id="decisionDetail" class="text-sm leading-relaxed text-cyan-100/85 whitespace-pre-line"></p>
+            <div class="mt-4 border-t border-cyan-400/20 pt-3">
+              <h4 class="mono text-xs text-cyan-300 mb-2">KARARI BELİRLEYEN KURALLAR</h4>
+              <p id="ruleDecisionNotice" class="text-xs text-cyan-100/70 mb-2"></p>
+              <ul id="decisionReasons" class="space-y-2 text-sm text-cyan-100/85"></ul>
+            </div>
             <div id="confidenceBar" class="hidden"></div>
             <div id="parameterWeightsSection" class="hidden mt-5">
               <h3 class="mono text-cyan-300 text-sm mb-3">AI KARAR AĞIRLIKLARI</h3>
@@ -1995,6 +2000,28 @@
       updateFavoriteButton();
 
       document.getElementById('decisionDetail').textContent = data.decision_detail;
+      const severity = { UYGUN: 0, RISKLI: 1, UYGUN_DEGIL: 2 };
+      const ruleScore = Math.max(...data.parameters.map(p => severity[p.decision]));
+      const ruleDecision = Object.keys(severity).find(key => severity[key] === ruleScore);
+      document.getElementById('ruleDecisionNotice').textContent =
+        `Kural sonucu: ${formatDecisionLabel(ruleDecision)}. ` +
+        (severity[data.decision] > ruleScore
+          ? 'AI, kural sonucunu daha ihtiyatlı hale getirdi.'
+          : 'Nihai karar kural sonucuyla aynı seviyede; AI bu sınırı hafifletemez.');
+      const reasons = document.getElementById('decisionReasons');
+      reasons.replaceChildren();
+      const decisive = data.parameters.filter(p => p.decision !== 'UYGUN');
+      if (!decisive.length) {
+        const item = document.createElement('li');
+        item.textContent = 'Değerlendirilen parametrelerde riskli veya uygun olmayan sınır aşımı yok.';
+        reasons.appendChild(item);
+      }
+      decisive.forEach(p => {
+        const item = document.createElement('li');
+        item.textContent = `${p.name}: ${p.value} → ${formatDecisionLabel(p.decision)}. ${p.explanation || ''}` +
+          (severity[p.decision] === ruleScore ? ' Kural sonucunu belirleyen en yüksek risk seviyesi.' : '');
+        reasons.appendChild(item);
+      });
 
       // Load nearby runways in background (non-blocking)
       loadNearbyRunways(data.lat, data.lon);
@@ -2072,7 +2099,9 @@
       const paramTbody = document.getElementById('parametersTable');
       paramTbody.innerHTML = data.parameters.map(p => `
         <tr class="table-row border-b border-cyan-400/15 ${getParameterRowClass(p.decision)}">
-          <td class="py-2.5 pl-3 text-cyan-100/85 font-semibold">${p.name}</td>
+          <td class="py-2.5 pl-3 text-cyan-100/85 font-semibold">${p.name}
+            <p class="text-[11px] font-normal text-cyan-100/60 mt-1">${p.explanation || ''}</p>
+          </td>
           <td class="py-2.5 text-cyan-100/70">
             <span class="value-badge ${getDecisionTone(p.decision)}" aria-label="Parametre durumu: ${formatDecisionLabel(p.decision)}">
               <span class="value-dot" aria-hidden="true"></span>

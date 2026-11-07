@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 from datetime import datetime, timezone
 from typing import Any
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -356,16 +357,19 @@ def generate_pdf(
     # ------------------------------------------------------------------
     story.append(Paragraph("Parametre Değerlendirmesi", _SECTION_STYLE))
 
-    param_data = [["Parametre", "Değer", "Durum"]]
+    param_data = [["Parametre", "Değer", "Durum", "Uygulanan kural"]]
     for p in decision_result.parameters:
         label = {
             UYGUN: "✅ Uygun",
             RISKLI: "⚠️ Riskli",
             UYGUN_DEGIL: "❌ Uygun Değil",
         }.get(p.decision, p.decision)
-        param_data.append([p.name, p.value, label])
+        param_data.append([
+            p.name, p.value, label,
+            Paragraph(escape(p.explanation), _STYLES["Normal"]),
+        ])
 
-    param_table = Table(param_data, colWidths=[5 * cm, 4 * cm, 4 * cm])
+    param_table = Table(param_data, colWidths=[3 * cm, 3 * cm, 3 * cm, 7 * cm])
     pts = [
         ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
