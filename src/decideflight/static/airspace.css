@@ -67,3 +67,8 @@
 .route-form { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .route-form .airspace-select { height: 30px; min-height: 0; margin: 0; padding: 2px 6px; font-size: 12px; }
 .route-form .route-go { grid-column: span 1; height: 28px; font-size: 11px; }
+
+.route-form .route-alt { grid-column: span 2; }
+.route-table { width: 100%; border-collapse: collapse; margin: 2px 0; }
+.route-table th, .route-table td { text-align: left; padding: 1px 4px 1px 0; font-weight: normal; }
+.route-table th { color: #a0aab6; }
