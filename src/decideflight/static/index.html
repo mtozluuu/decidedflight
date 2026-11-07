@@ -21,7 +21,7 @@
       --hud-cyan: #b6c6d8;
       --hud-cyan-soft: #93a9c1;
       --hud-green: #a6d7bd;
-      --hud-amber: #e8c587;
+      --hud-amber: #c5cdd6;
       --hud-red: #e5a5a5;
     }
 
@@ -1252,7 +1252,7 @@
       const rootStyles = getComputedStyle(document.documentElement);
       cachedHudColors = {
         safe: rootStyles.getPropertyValue('--hud-green').trim() || '#a6d7bd',
-        caution: rootStyles.getPropertyValue('--hud-amber').trim() || '#e8c587',
+        caution: rootStyles.getPropertyValue('--hud-amber').trim() || '#c5cdd6',
         danger: rootStyles.getPropertyValue('--hud-red').trim() || '#e5a5a5',
         border: rootStyles.getPropertyValue('--line').trim() || '#333b45',
         surface: rootStyles.getPropertyValue('--hud-panel').trim() || '#1b2026',

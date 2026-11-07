@@ -46,7 +46,7 @@ def test_theme_retains_accessible_status_colors():
         ("#edf0f3", "#1b2026"),
         ("#a0aab6", "#1b2026"),
         ("#a6d7bd", "#22372c"),
-        ("#e8c587", "#352e22"),
+        ("#c5cdd6", "#2a3139"),
         ("#e5a5a5", "#362629"),
         ("#17202a", "#d4dce5"),
     ):
@@ -90,3 +90,12 @@ def test_decision_card_uses_neutral_surface_and_separate_status():
     assert "html body #decisionText { color: var(--ink); font-size: 22px" in theme
     for tone in ("safe", "caution", "danger"):
         assert f'[data-tone="{tone}"] .decision-status' in theme
+
+
+def test_warning_text_uses_neutral_palette_in_all_templates():
+    page = (STATIC / "index.html").read_text()
+    theme = (STATIC / "theme.css").read_text()
+    assert "--hud-amber: #c5cdd6" in page
+    assert "--hud-amber: #c5cdd6" in theme
+    assert "#e8c587" not in page + theme
+    assert '[class*="text-amber-"], html body [class*="text-yellow-"] { color: var(--hud-amber); }' in theme
