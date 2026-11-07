@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -55,3 +56,23 @@ def test_theme_retains_accessible_status_colors():
     assert "prefers-reduced-motion" in theme
     assert "summary:focus-visible" in theme
     assert ".leaflet-tile { filter: brightness(0.75) saturate(0.35); }" in theme
+
+
+def test_typography_and_icons_do_not_reintroduce_legacy_hud_styling():
+    page = (STATIC / "index.html").read_text()
+    theme = (STATIC / "theme.css").read_text()
+    assert "JetBrains Mono" not in page
+    assert "Space Grotesk" not in page
+    assert "--ui-font:" in theme
+    assert "font-family: var(--ui-font)" in theme
+    assert not re.search(r"[\U0001f000-\U0001ffff\u2600-\u27bf]", page)
+    assert not re.search(r"\[ [A-ZÇĞİÖŞÜ /]+ \]", page)
+    for color in ("#00d4ff", "#00ff88", "#ff3d57", "rgba(0, 212, 255"):
+        assert color not in page
+    symbols = set(re.findall(r'<symbol id="([^"]+)"', page))
+    references = set(re.findall(r'<use href="#([a-z-]+)"', page))
+    references.update("icon-" + name for name in re.findall(r"uiIcon\('([a-z]+)'\)", page))
+    assert references <= symbols
+    assert {"icon-search", "icon-refresh", "icon-star", "icon-globe", "icon-check", "icon-alert"} <= symbols
+    assert "stroke: currentColor" in theme
+    assert "summary::-webkit-details-marker" in theme
