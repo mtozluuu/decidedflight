@@ -18,14 +18,24 @@ class DroneLimit(BaseModel):
     humidity_risky_max_pct: float = Field(default=95, ge=0, le=100)
     temp_ok_min_c: float = Field(default=0, allow_inf_nan=False)
     temp_ok_max_c: float = Field(default=40, allow_inf_nan=False)
+    temp_risky_min_override_c: float | None = Field(default=None, allow_inf_nan=False)
+    temp_risky_max_override_c: float | None = Field(default=None, allow_inf_nan=False)
 
     @property
     def temp_risky_min_c(self) -> float:
-        return self.temp_ok_min_c - 5
+        return (
+            self.temp_risky_min_override_c
+            if self.temp_risky_min_override_c is not None
+            else self.temp_ok_min_c - 5
+        )
 
     @property
     def temp_risky_max_c(self) -> float:
-        return self.temp_ok_max_c + 5
+        return (
+            self.temp_risky_max_override_c
+            if self.temp_risky_max_override_c is not None
+            else self.temp_ok_max_c + 5
+        )
 
     @model_validator(mode="after")
     def ordered_thresholds(self):
@@ -36,6 +46,8 @@ class DroneLimit(BaseModel):
             (self.cloud_ceiling_risky_min_ft, self.cloud_ceiling_ok_min_ft),
             (self.humidity_ok_max_pct, self.humidity_risky_max_pct),
             (self.temp_ok_min_c, self.temp_ok_max_c),
+            (self.temp_risky_min_c, self.temp_ok_min_c),
+            (self.temp_ok_max_c, self.temp_risky_max_c),
         )
         if any(low > high for low, high in pairs):
             raise ValueError("Uygun ve riskli limitlerin sıralaması geçersiz.")

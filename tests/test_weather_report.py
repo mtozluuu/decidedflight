@@ -61,6 +61,28 @@ def _make_source(
 
 
 class TestDecisionEngine:
+    @pytest.mark.parametrize("wind, boundary", [(15, "15–25"), (25, "15–25"), (25.1, "> 25")])
+    def test_wind_explanation_matches_boundary(self, wind, boundary):
+        result = make_decision([_make_source(wind_knots=wind)])
+        parameter = result.parameters[0]
+        assert boundary in parameter.explanation
+        assert parameter.explanation in result.detail
+
+    def test_explanations_use_custom_limits_without_changing_decisions(self):
+        from decideflight.services.flight_limits import DroneLimit
+
+        limits = DroneLimit(wind_ok_max_knots=8, wind_risky_max_knots=12)
+        result = make_decision([_make_source(wind_knots=10)], limits=limits)
+        assert result.decision == RISKLI
+        assert "8–12" in result.parameters[0].explanation
+
+    def test_missing_cloud_data_explanation_is_not_current_or_safe_claim(self):
+        result = make_decision([_make_source(cloud_base=None, cloud_ceiling=None)])
+        assert result.decision == UYGUN
+        clouds = [p for p in result.parameters if p.value == "N/A"]
+        assert len(clouds) == 2
+        assert all("Veri yok" in p.explanation for p in clouds)
+
     @pytest.mark.parametrize(
         "cover, expected", [(0, UYGUN), (50, UYGUN), (50.1, RISKLI), (100, RISKLI)]
     )
@@ -309,6 +331,7 @@ class TestWeatherReportAPI:
         assert body["sources"][0]["cloud_cover_pct"] == 75
         assert next(p for p in body["parameters"] if p["name"] == "Bulutluluk") == {
             "name": "Bulutluluk", "value": "75.0%", "decision": RISKLI,
+            "explanation": "> %50; tek başına UYGUN DEĞİL yapmaz",
         }
         with SessionLocal() as db:
             report = db.get(WeatherReport, body["report_id"])

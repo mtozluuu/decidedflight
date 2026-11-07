@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 from datetime import datetime, timezone
 from typing import Any
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -231,6 +232,8 @@ def generate_pdf(
     decision_result: DecisionResult,
     created_at: datetime | None = None,
     limits: DroneLimit | None = None,
+    source_checks: list[dict[str, str]] | None = None,
+    parameter_snapshot_available: bool = True,
 ) -> bytes:
     """Return PDF bytes for the given weather report data."""
     if created_at is None:
@@ -355,17 +358,28 @@ def generate_pdf(
     # Per-parameter assessment
     # ------------------------------------------------------------------
     story.append(Paragraph("Parametre Değerlendirmesi", _SECTION_STYLE))
+    if not parameter_snapshot_available:
+        story.append(Paragraph(
+            "Eski raporun parametre anlık kaydı yoktur. Bu tablo kayıtlı kaynaklardan "
+            "yeniden hesaplanmıştır; kayıtlı nihai karar ve açıklama korunmuştur."
+            + (" Dönem limitleri kaydedilmemiştir; referans tablosu güncel sunucu limitleridir."
+               if limits is None else ""),
+            _STYLES["Normal"],
+        ))
 
-    param_data = [["Parametre", "Değer", "Durum"]]
+    param_data = [["Parametre", "Değer", "Durum", "Uygulanan kural"]]
     for p in decision_result.parameters:
         label = {
             UYGUN: "✅ Uygun",
             RISKLI: "⚠️ Riskli",
             UYGUN_DEGIL: "❌ Uygun Değil",
         }.get(p.decision, p.decision)
-        param_data.append([p.name, p.value, label])
+        param_data.append([
+            p.name, p.value, label,
+            Paragraph(escape(p.explanation), _STYLES["Normal"]),
+        ])
 
-    param_table = Table(param_data, colWidths=[5 * cm, 4 * cm, 4 * cm])
+    param_table = Table(param_data, colWidths=[3 * cm, 3 * cm, 3 * cm, 7 * cm])
     pts = [
         ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -383,6 +397,25 @@ def generate_pdf(
 
     param_table.setStyle(TableStyle(pts))
     story.append(param_table)
+    story.append(Paragraph("Rapor Oluşturulurken Kaynak Durumları", _SECTION_STYLE))
+    if source_checks is None:
+        story.append(Paragraph(
+            "Bu raporda kaynak sorgu durumları kaydedilmemiştir; alınamayan kaynaklar bilinmiyor.",
+            _STYLES["Normal"],
+        ))
+    else:
+        labels = {
+            "received": "Veri alındı",
+            "no_data": "Veri alınamadı",
+            "not_configured": "Yapılandırılmamış",
+            "outside_coverage": "Kapsama dışında",
+        }
+        for check in source_checks:
+            text = (
+                f'{check["provider"]} / {check["name"]}: '
+                f'{labels.get(check["status"], check["status"])}. {check["message"]}'
+            )
+            story.append(Paragraph(escape(text), _STYLES["Normal"]))
     story.append(Spacer(1, 0.4 * cm))
 
     # ------------------------------------------------------------------

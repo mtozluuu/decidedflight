@@ -225,22 +225,22 @@ class TestNewWeatherEndpoints:
 
     def test_forecast_change_endpoint_returns_six_hours(self, client: TestClient):
         report_id = _create_report(client, location="Tahmin Noktası")
-        hourly_points = [
-            {
-                "wind_speed_knots": 8 + offset,
-                "temperature_c": 20.0,
-                "humidity_pct": 60.0,
-                "visibility_km": 9.0,
-                "cloud_base_ft": 1800.0,
-                "cloud_ceiling_ft": 2000.0,
-                "precipitation_level": 0,
-            }
-            for offset in range(6)
-        ]
+        from datetime import timedelta
+
+        start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        payload = {"hourly": {
+            "time": [(start + timedelta(hours=i)).isoformat() for i in range(7)],
+            "temperature_2m": [20.0] * 7,
+            "wind_speed_10m": [i / 0.539957 for i in range(7, 14)],
+            "relative_humidity_2m": [60.0] * 7,
+            "visibility": [9000.0] * 7,
+            "precipitation": [0.0] * 7,
+            "cloud_cover": [10.0] * 7,
+        }}
 
         with patch(
-            "decideflight.api.weather._fetch_grid_point_weather",
-            new=AsyncMock(side_effect=hourly_points),
+            "decideflight.api.weather._fetch_open_meteo_hourly",
+            new=AsyncMock(return_value=payload),
         ):
             response = client.post(
                 f"/api/v1/weather/report/{report_id}/forecast-change"
@@ -251,9 +251,13 @@ class TestNewWeatherEndpoints:
         assert len(body["hours"]) == 6
         assert body["hours"][0]["offset"] == 1
         assert body["hours"][-1]["wind_kt"] == pytest.approx(13.0)
+        assert datetime.fromisoformat(body["hours"][0]["time"]) == start + timedelta(hours=1)
+        assert body["missing_offsets"] == []
 
     def test_flight_plan_endpoint_returns_best_window(self, client: TestClient):
-        today = datetime.now(timezone.utc).date()
+        from datetime import timedelta
+
+        today = datetime.now(timezone.utc).date() + timedelta(days=1)
         payload = {
             "hourly": {
                 "time": [
@@ -279,7 +283,7 @@ class TestNewWeatherEndpoints:
                 json={
                     "lat": 41.0,
                     "lon": 28.9,
-                    "date_offset": 0,
+                    "date_offset": 1,
                     "start_hour": 9,
                     "end_hour": 11,
                 },

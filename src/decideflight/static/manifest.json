@@ -4,8 +4,8 @@
   "description": "Drone uçuş hava koşulu karar desteği",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0e1a",
-  "theme_color": "#0a0e1a",
+  "background_color": "#14181d",
+  "theme_color": "#14181d",
   "icons": [
     {
       "src": "/static/decideflight-icon.svg",

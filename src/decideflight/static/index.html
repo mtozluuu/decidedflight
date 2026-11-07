@@ -7,101 +7,64 @@
   <link rel="icon" type="image/svg+xml" href="/static/decideflight-icon.svg" />
   <link rel="apple-touch-icon" href="/static/decideflight-icon.svg" />
   <link rel="manifest" href="/static/manifest.json" />
-  <meta name="theme-color" content="#0a0e1a" />
+  <meta name="theme-color" content="#14181d" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin=""></script>
+  <link rel="stylesheet" href="/static/airspace.css"/>
+  <script src="/static/airspace.js"></script>
+  <script src="/static/radar.js"></script>
+  <script src="/static/wind.js"></script>
+  <script src="/static/airports.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
-
     :root {
-      --hud-bg: #0a0e1a;
-      --hud-panel: rgba(10, 17, 35, 0.72);
-      --hud-panel-strong: rgba(7, 13, 29, 0.92);
-      --hud-cyan: #00d4ff;
-      --hud-cyan-soft: #0ea5e9;
-      --hud-green: #00ff88;
-      --hud-amber: #ffb800;
-      --hud-red: #ff3d57;
+      --hud-bg: #14181d;
+      --hud-panel: #1b2026;
+      --hud-panel-strong: #20262d;
+      --hud-cyan: #b6c6d8;
+      --hud-cyan-soft: #93a9c1;
+      --hud-green: #a6d7bd;
+      --hud-amber: #c5cdd6;
+      --hud-red: #e5a5a5;
     }
 
     body {
-      font-family: 'Space Grotesk', sans-serif;
-      background:
-        radial-gradient(ellipse at 15% 10%, rgba(0, 212, 255, 0.18) 0%, transparent 40%),
-        radial-gradient(ellipse at 85% 5%, rgba(99, 102, 241, 0.14) 0%, transparent 35%),
-        radial-gradient(ellipse at 50% 90%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
-        linear-gradient(180deg, #060b18 0%, #04080f 100%);
-      color: #d8f5ff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--hud-bg);
+      color: #edf0f3;
       min-height: 100vh;
-    }
-
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(0, 212, 255, 0.012) 2px,
-        rgba(0, 212, 255, 0.012) 4px
-      );
-      pointer-events: none;
-      z-index: 0;
     }
 
     main, header, footer { position: relative; z-index: 1; }
 
-    .mono { font-family: 'JetBrains Mono', monospace; }
+    .mono { font-family: inherit; }
 
     .hud-card {
-      background: linear-gradient(135deg, rgba(14, 24, 48, 0.85) 0%, rgba(8, 15, 32, 0.9) 100%);
-      border: 1px solid rgba(0, 212, 255, 0.22);
-      border-radius: 16px;
-      box-shadow:
-        0 0 0 1px rgba(0, 212, 255, 0.06) inset,
-        0 4px 24px rgba(0, 0, 0, 0.4),
-        0 0 40px rgba(0, 160, 220, 0.06);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      animation: slideUp 0.55s ease both;
-    }
-
-    .logo-icon {
-      filter: drop-shadow(0 0 12px rgba(0, 212, 255, 0.7)) drop-shadow(0 0 24px rgba(0, 212, 255, 0.35));
+      background: var(--hud-panel);
+      border: 1px solid #333b45;
+      border-radius: 8px;
     }
 
     input:focus, select:focus {
-      background: rgba(0, 212, 255, 0.06) !important;
-      border-color: rgba(0, 212, 255, 0.7) !important;
-      box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.12), 0 0 16px rgba(0, 212, 255, 0.15) !important;
+      border-color: var(--hud-cyan);
       outline: none !important;
     }
 
     .btn-primary-glow {
-      background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%);
-      box-shadow: 0 0 20px rgba(0, 212, 255, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
-      transition: all 0.2s ease;
-    }
-    .btn-primary-glow:hover {
-      box-shadow: 0 0 32px rgba(0, 212, 255, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
-      transform: translateY(-1px);
+      background: #d4dce5;
+      color: #17202a;
     }
 
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 2px; }
-    ::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.3); border-radius: 2px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(0,212,255,0.5); }
+    ::-webkit-scrollbar-thumb { background: #455260; border-radius: 2px; }
 
     .section-label {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: inherit;
       font-size: 0.65rem;
-      letter-spacing: 0.2em;
-      color: rgba(0, 212, 255, 0.5);
-      text-transform: uppercase;
+      color: #a0aab6;
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -110,80 +73,33 @@
       content: '';
       flex: 1;
       height: 1px;
-      background: linear-gradient(90deg, rgba(0,212,255,0.25), transparent);
-    }
-
-    .hud-grid > * { animation: slideUp 0.55s ease both; }
-    .hud-grid > *:nth-child(2) { animation-delay: 0.06s; }
-    .hud-grid > *:nth-child(3) { animation-delay: 0.12s; }
-
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(14px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .headline-glow {
-      letter-spacing: 0.2em;
-      text-shadow: 0 0 14px rgba(0, 212, 255, 0.65);
+      background: #333b45;
     }
 
     .chip {
-      border: 1px solid rgba(0, 212, 255, 0.35);
-      background: rgba(4, 20, 35, 0.65);
-      color: #9feaff;
-      font-family: 'JetBrains Mono', monospace;
+      border: 1px solid #333b45;
+      background: var(--hud-panel-strong);
+      color: #edf0f3;
+      font-family: inherit;
     }
-
-    .chip:hover { box-shadow: 0 0 16px rgba(0, 212, 255, 0.3); }
 
     .radar {
-      width: 116px;
-      height: 116px;
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
-      border: 2px solid rgba(0, 255, 136, 0.35);
+      border: 2px solid #394450;
       position: relative;
-      background: radial-gradient(circle, rgba(0, 255, 136, 0.08), rgba(0, 255, 136, 0.01));
       overflow: hidden;
-      box-shadow: 0 0 25px rgba(0, 255, 136, 0.2);
-    }
-
-    .radar::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: conic-gradient(from 0deg, transparent 0deg, rgba(0, 255, 136, 0.35) 55deg, transparent 100deg);
-      animation: radarSweep 1.35s linear infinite;
-    }
-
-    .radar::after {
-      content: '';
-      position: absolute;
-      inset: 20%;
-      border: 1px solid rgba(0, 255, 136, 0.2);
-      border-radius: 50%;
-      box-shadow: 0 0 0 30% rgba(0, 255, 136, 0.04);
     }
 
     @keyframes radarSweep { to { transform: rotate(360deg); } }
-    @keyframes blinkText { 50% { opacity: 0.35; } }
-    @keyframes linePulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
-    .blink { animation: blinkText 1.1s steps(2, start) infinite; }
-    .header-line { animation: linePulse 2.5s ease-in-out infinite; }
-
-    .decision-animate { animation: decisionPop 0.42s ease; }
-    @keyframes decisionPop {
-      0% { transform: scale(0.96); opacity: 0.4; }
-      100% { transform: scale(1); opacity: 1; }
-    }
-
-    .decision-danger-blink { animation: dangerBlink 0.85s steps(2, start) infinite; }
-    @keyframes dangerBlink { 50% { opacity: 0.45; } }
-
-    .table-row:hover { background: rgba(0, 212, 255, 0.08); }
+    .table-row:hover { background: #242c35; }
 
     .source-card {
-      border: 1px solid rgba(0, 212, 255, 0.28);
-      background: rgba(7, 18, 37, 0.7);
+      min-width: 0;
+      overflow-wrap: anywhere;
+      border: 1px solid #333b45;
+      background: var(--hud-panel);
       border-radius: 10px;
       padding: 0.9rem;
     }
@@ -194,14 +110,7 @@
       isolation: isolate;
     }
 
-    .decision-glow {
-      position: absolute;
-      inset: 18% 14%;
-      border-radius: 9999px;
-      filter: blur(40px);
-      opacity: 0.75;
-      pointer-events: none;
-    }
+    .decision-glow { display: none; }
 
     .decision-content {
       position: relative;
@@ -221,10 +130,10 @@
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
     }
 
-    .param-row-safe { border-left: 2px solid rgba(0, 255, 136, 0.8); }
-    .param-row-caution { border-left: 2px solid rgba(255, 184, 0, 0.8); }
-    .param-row-danger { border-left: 2px solid rgba(255, 61, 87, 0.8); }
-    .param-row-default { border-left: 2px solid rgba(0, 212, 255, 0.8); }
+    .param-row-safe { border-left: 2px solid var(--hud-green); }
+    .param-row-caution { border-left: 2px solid var(--hud-amber); }
+    .param-row-danger { border-left: 2px solid var(--hud-red); }
+    .param-row-default { border-left: 2px solid var(--hud-cyan); }
 
     .value-badge {
       display: inline-flex;
@@ -249,15 +158,13 @@
       height: 4px;
       border-radius: 9999px;
       overflow: hidden;
-      background: rgba(148, 163, 184, 0.12);
-      border: 1px solid rgba(0, 212, 255, 0.12);
+      background: #303a46;
     }
 
     .reliability-fill {
       height: 100%;
       border-radius: 9999px;
-      background: linear-gradient(90deg, rgba(0, 212, 255, 0.45), rgba(0, 255, 136, 0.75));
-      box-shadow: 0 0 12px rgba(0, 212, 255, 0.28);
+      background: #8ba3bd;
     }
 
     .source-grid {
@@ -297,13 +204,12 @@
 
     /* ── Tabs ─────────────────────────────────────────────────────────── */
     .tab-btn {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: inherit;
       font-size: 0.8rem;
-      letter-spacing: 0.1em;
       padding: 0.6rem 1.1rem;
       border-bottom: 2px solid transparent;
-      color: rgba(209, 245, 255, 0.5);
-      transition: color 0.2s, border-color 0.2s, text-shadow 0.2s;
+      color: #a0aab6;
+      transition: color 0.2s, border-color 0.2s;
       white-space: nowrap;
       background: none;
       cursor: pointer;
@@ -311,55 +217,51 @@
     .tab-btn.active {
       color: var(--hud-cyan);
       border-bottom: 3px solid var(--hud-cyan);
-      text-shadow: 0 0 10px rgba(0,212,255,0.6);
     }
     .tab-btn:hover:not(.active) {
-      color: rgba(209, 245, 255, 0.85);
+      color: #edf0f3;
     }
 
     /* ── Leaflet dark theme ───────────────────────────────────────────── */
     #mapContainer { height: 500px; }
     .leaflet-tile {
-      filter: invert(100%) hue-rotate(180deg) brightness(95%)
-              contrast(90%) saturate(70%);
+      filter: brightness(0.75) saturate(0.35);
     }
     .leaflet-popup-content-wrapper {
-      background: rgba(7, 13, 29, 0.96);
-      border: 1px solid rgba(0, 212, 255, 0.4);
-      color: #d8f5ff;
+      background: var(--hud-panel);
+      border: 1px solid #333b45;
+      color: #edf0f3;
       border-radius: 8px;
-      box-shadow: 0 0 20px rgba(0, 160, 220, 0.25);
     }
     .leaflet-popup-tip {
-      background: rgba(7, 13, 29, 0.96);
+      background: var(--hud-panel);
     }
-    .leaflet-popup-close-button { color: rgba(0, 212, 255, 0.7) !important; }
-    .leaflet-container { background: #0a0e1a; }
+    .leaflet-popup-close-button { color: #a0aab6 !important; }
+    .leaflet-container { background: var(--hud-bg); }
     .leaflet-draw-toolbar a,
     .leaflet-draw-toolbar a:hover {
-      background-color: rgba(10, 17, 35, 0.92) !important;
-      border-color: rgba(0, 212, 255, 0.35) !important;
-      color: #00d4ff !important;
+      background-color: #242b33 !important;
+      border-color: #333b45 !important;
+      color: var(--hud-cyan) !important;
     }
     .leaflet-bar a, .leaflet-bar a:hover {
-      background-color: rgba(10, 17, 35, 0.92) !important;
-      border-color: rgba(0, 212, 255, 0.3) !important;
-      color: #00d4ff !important;
+      background-color: #242b33 !important;
+      border-color: #333b45 !important;
+      color: var(--hud-cyan) !important;
     }
     .leaflet-draw-tooltip {
-      background: rgba(7, 13, 29, 0.9);
-      border: 1px solid rgba(0, 212, 255, 0.4);
-      color: #d8f5ff;
-      font-family: 'JetBrains Mono', monospace;
+      background: var(--hud-panel);
+      border: 1px solid #333b45;
+      color: #edf0f3;
+      font-family: inherit;
       font-size: 11px;
     }
     /* Settings form range-like input accent */
     input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
     /* Filter bar active button */
     .filter-btn.filter-active {
-      border-color: #00d4ff !important;
-      box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
-      color: #00d4ff !important;
+      border-color: var(--hud-cyan) !important;
+      color: #edf0f3 !important;
     }
     /* Popup param table */
     .popup-param-table { width: 100%; border-collapse: collapse; }
@@ -371,76 +273,99 @@
       font-size: 10px;
       font-weight: bold;
     }
-    .popup-badge-ok   { background: rgba(0,255,136,0.18); color: #00ff88; }
-    .popup-badge-warn { background: rgba(255,184,0,0.18); color: #ffb800; }
-    .popup-badge-bad  { background: rgba(255,61,87,0.18);  color: #ff3d57; }
+    .popup-badge-ok   { background: #22372c; color: var(--hud-green); }
+    .popup-badge-warn { background: #352e22; color: var(--hud-amber); }
+    .popup-badge-bad  { background: #362629; color: var(--hud-red); }
 
-    .weight-track { background: rgba(8, 20, 38, 0.82); border: 1px solid rgba(0, 212, 255, 0.16); }
-    .timeline-dot { width: 14px; height: 14px; border-radius: 999px; box-shadow: 0 0 12px currentColor; }
-    .chat-bubble-user { background: rgba(0, 212, 255, 0.12); border: 1px solid rgba(0, 212, 255, 0.35); }
-    .chat-bubble-ai { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(167, 139, 250, 0.35); }
+    .weight-track { background: #303a46; border: 1px solid #333b45; }
+    .timeline-dot { width: 14px; height: 14px; border-radius: 999px; }
+    .chat-bubble-user { background: #263342; border: 1px solid #425468; }
+    .chat-bubble-ai { background: #232b33; border: 1px solid #3a4551; }
     .history-bar { min-height: 18px; border-radius: 4px 4px 0 0; transition: all 0.2s ease; cursor: pointer; position: relative; }
-    .history-bar:hover { filter: brightness(1.3); box-shadow: 0 -4px 12px currentColor; }
     .month-tile { min-height: 80px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
     .month-tile:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
     #historyChart { align-items: flex-end; padding: 0.5rem 0; gap: 0.25rem; }
-    .aqi-good { color: #00ff88; border-color: rgba(0,255,136,0.35); background: rgba(0,255,136,0.08); }
-    .aqi-mid { color: #ffb800; border-color: rgba(255,184,0,0.35); background: rgba(255,184,0,0.08); }
-    .aqi-bad { color: #ff3d57; border-color: rgba(255,61,87,0.35); background: rgba(255,61,87,0.08); }
+    .aqi-good { color: var(--hud-green); border-color: #3d6550; background: #22372c; }
+    .aqi-mid { color: var(--hud-amber); border-color: #756345; background: #352e22; }
+    .aqi-bad { color: var(--hud-red); border-color: #70464c; background: #362629; }
   </style>
+  <link rel="stylesheet" href="/static/theme.css" />
 </head>
 <body>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></symbol>
+      <symbol id="icon-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></symbol>
+      <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="icon-alert" viewBox="0 0 24 24"><path d="m12 3 10 18H2Z"/><path d="M12 9v5M12 17h.01"/></symbol>
+    </defs>
+  </svg>
   <header class="px-4 pt-6 pb-4">
-    <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-4">
         <div class="relative">
           <img src="/static/decideflight-icon.svg" alt="DecideFlight uygulama logosu" role="img" class="logo-icon h-10 w-10" />
-          <div class="absolute inset-0 rounded-full bg-cyan-400/10 blur-xl"></div>
         </div>
         <div>
-          <p class="mono text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-widest" style="text-shadow: 0 0 20px rgba(0,212,255,0.5)">DECIDEFLIGHT</p>
-          <p class="mono text-[10px] sm:text-[11px] text-cyan-100/50 mt-0.5 tracking-widest">UÇUŞ HAVA KOŞULU KARAR ÇEKİRDEĞİ</p>
+          <p class="brand-name">DecideFlight</p>
+          <p class="brand-subtitle">Uçuş hava durumu ve karar desteği</p>
         </div>
       </div>
-      <div class="text-right" role="timer" aria-label="Eşgüdümlü Evrensel Zaman">
+      <div class="clock-card text-right ml-auto" role="timer" aria-label="Eşgüdümlü Evrensel Zaman">
         <p class="mono text-[10px] text-green-300/60 tracking-widest mb-0.5">UTC</p>
-        <p id="utcClock" aria-label="Güncel UTC saati" class="mono text-base sm:text-lg font-bold text-green-300" style="text-shadow: 0 0 12px rgba(0,255,136,0.4)">--:--:--</p>
+        <p id="utcClock" aria-label="Güncel UTC saati" class="mono text-base sm:text-lg font-bold">--:--:--</p>
       </div>
     </div>
     <div class="header-line max-w-6xl mx-auto mt-4 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent"></div>
   </header>
 
   <!-- Tab navigation -->
-  <div class="max-w-6xl mx-auto px-4 pt-4">
+  <div class="workspace-nav max-w-6xl mx-auto px-4 pt-4">
+    <div class="sidebar-brand">
+      <img src="/static/decideflight-icon.svg" alt="" />
+      <span>DecideFlight</span>
+    </div>
     <nav class="flex gap-0 overflow-x-auto border-b border-cyan-400/15 bg-gradient-to-b from-cyan-400/[0.03] to-transparent rounded-t-lg px-2" role="tablist" aria-label="Uygulama sekmeleri">
       <button id="tab-btn-point" role="tab" aria-selected="true" aria-controls="panel-point"
-        onclick="switchTab('point')" class="tab-btn active">◈ NOKTA ANALİZİ</button>
+        onclick="switchTab('point')" class="tab-btn active">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 21s7-6 7-12a7 7 0 0 0-14 0c0 6 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        Nokta analizi</button>
       <button id="tab-btn-region" role="tab" aria-selected="false" aria-controls="panel-region"
-        onclick="switchTab('region')" class="tab-btn">◈ BÖLGE ANALİZİ</button>
+        onclick="switchTab('region')" class="tab-btn">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5ZM9 3v16M15 5v16"/></svg>
+        Bölge analizi</button>
       <button id="tab-btn-wind" role="tab" aria-selected="false" aria-controls="panel-wind"
-        onclick="switchTab('wind')" class="tab-btn">◈ RÜZGAR</button>
+        onclick="switchTab('wind')" class="tab-btn">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h12a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h6"/></svg>
+        Rüzgâr</button>
       <button id="tab-btn-sources" role="tab" aria-selected="false" aria-controls="panel-sources"
-        onclick="switchTab('sources')" class="tab-btn">◈ VERİ KAYNAKLARI</button>
+        onclick="switchTab('sources')" class="tab-btn">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/></svg>
+        Veri kaynakları</button>
       <button id="tab-btn-settings" role="tab" aria-selected="false" aria-controls="panel-settings"
-        onclick="switchTab('settings')" class="tab-btn">◈ AYARLAR</button>
+        onclick="switchTab('settings')" class="tab-btn">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--hud-bg)"/><circle cx="15" cy="17" r="3" fill="var(--hud-bg)"/></svg>
+        Ayarlar</button>
     </nav>
+    <p class="sidebar-caption">Uçuş operasyonları<br />Hava koşulları karar desteği</p>
   </div>
 
   <main class="max-w-6xl mx-auto px-4 pb-8">
 
     <!-- ══ Tab 1: Point Analysis ══════════════════════════════════════════ -->
     <div id="panel-point" role="tabpanel" aria-labelledby="tab-btn-point" class="space-y-6 pt-6">
-    <section class="hud-card p-6 sm:p-8 text-center">
-      <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">UÇUŞ HAVA ANALİZİ</h1>
-      <p class="mono text-xs sm:text-sm text-cyan-100/75 mt-3">KONUM VEYA KOORDİNAT GİRİN — DÜNYA GENELİ KAPSAM</p>
+    <section id="locationSearch" class="hud-card p-6 sm:p-8">
+      <h1 class="headline-glow text-cyan-300 font-extrabold text-lg sm:text-2xl">Uçuş hava analizi</h1>
 
-      <div class="mt-6 flex flex-col sm:flex-row gap-3">
+      <div class="mt-3 flex flex-col sm:flex-row gap-3">
         <div class="relative flex-1">
-          <span class="mono absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300/80">▶</span>
+          <svg class="ui-icon absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300/80" aria-hidden="true"><use href="#icon-search"/></svg>
           <input
             id="locationInput"
             type="text"
-            placeholder="ŞEHİR ADI VEYA ENLEM, BOYLAM GİRİN..."
+            placeholder="Şehir adı veya enlem, boylam"
             aria-label="Konum veya koordinat girişi"
             class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md pl-9 pr-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
           />
@@ -449,12 +374,14 @@
           id="reportBtn"
           onclick="generateReport()"
           class="mono btn-primary-glow text-slate-950 font-bold rounded-lg px-6 py-3 text-sm tracking-wider"
-        >[ ANALİZ ET ]</button>
+        >Analiz et</button>
       </div>
 
+      <details id="locationOptions" class="mt-3">
+      <summary class="text-xs text-cyan-100/70 cursor-pointer">Ülke, şehir ve favorilerden seç</summary>
       <div class="mt-4 grid sm:grid-cols-2 gap-3 text-left">
         <div>
-          <label for="countrySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ÜLKE SEÇİMİ</label>
+          <label for="countrySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Ülke</label>
           <select
             id="countrySelect"
             aria-label="Ülke seçimi"
@@ -465,7 +392,7 @@
           </select>
         </div>
         <div>
-          <label for="citySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ŞEHİR SEÇİMİ</label>
+          <label for="citySelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Şehir</label>
           <select
             id="citySelect"
             aria-label="Şehir seçimi"
@@ -479,27 +406,30 @@
 
       <div class="mt-4 grid sm:grid-cols-[1fr_auto] gap-3 items-end text-left">
         <div>
-          <label for="favoritesSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">FAVORİLER</label>
+          <label for="favoritesSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Favori konumlar</label>
           <select id="favoritesSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
             <option value="">Favori konum seçin</option>
           </select>
         </div>
-        <button id="installBtn" type="button" class="hidden mono border border-cyan-400/40 text-cyan-200 hover:bg-cyan-400/10 rounded-md px-4 py-2.5 text-xs tracking-wider">[ TELEFONA EKLE ]</button>
+        <button id="installBtn" type="button" class="hidden mono border border-cyan-400/40 text-cyan-200 hover:bg-cyan-400/10 rounded-md px-4 py-2.5 text-xs">Uygulamayı yükle</button>
       </div>
       <p id="installStatus" class="mono text-[11px] text-cyan-100/55 mt-2"></p>
 
       <p id="cityDataStatus" class="mono text-[11px] text-cyan-100/60 mt-3">Şehir verisi hazırlanıyor...</p>
-      <p class="mono text-[11px] text-cyan-100/50 mt-2">İsterseniz şehir adını veya "enlem, boylam" biçiminde koordinatı manuel yazabilirsiniz.</p>
+      </details>
     </section>
 
-    <section class="hud-card p-6 mb-4">
-      <h3 class="mono text-sm text-cyan-300 mb-2">MEYDAN RASATLARI</h3>
+    <details id="airportTools" class="hud-card p-4 mb-4">
+      <summary class="mono text-sm text-cyan-300 cursor-pointer">Meydan, Airgram ve pist araçları</summary>
+      <p class="text-xs text-cyan-100/60 mt-2">İsteğe bağlı ek bilgiler. Meydan rasatları analiz noktasından ayrı değerlendirilir.</p>
+    <section class="p-2 mt-4 mb-4">
+      <h3 class="mono text-sm text-cyan-300 mb-2">Meydan rasatları</h3>
       <p class="mono text-[11px] text-cyan-100/60 mb-4">MGM Hezarfen · Son METAR ve TAF</p>
       <div class="flex flex-wrap gap-3">
         <label for="airportIcao" class="sr-only">Meydan ICAO kodu</label>
         <input id="airportIcao" type="text" maxlength="4" placeholder="ICAO: LTAJ"
           class="mono w-36 bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs uppercase" />
-        <button type="button" onclick="loadAirportObservations()" class="mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">GÖSTER / YENİLE</button>
+        <button type="button" onclick="loadAirportObservations()" class="mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">Gözlemleri yenile</button>
       </div>
       <p id="airportObservationStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">ICAO kodu girin veya yakın havalimanı/pist listesinden meydan seçin.</p>
       <p id="pointLocationContext" class="mono text-xs text-cyan-100/70 mt-3">Analiz noktası: henüz seçilmedi.</p>
@@ -517,12 +447,12 @@
     </section>
 
     <section class="hud-card p-6 mb-4">
-      <h3 class="mono text-sm text-cyan-300 mb-2">AIRGRAM &amp; İRTİFA PROFİLİ</h3>
+      <h3 class="mono text-sm text-cyan-300 mb-2">Airgram ve irtifa profili</h3>
       <p class="mono text-[11px] text-cyan-100/60">Görmek istediğiniz kaynağı açın. Nokta profili ve meydan görseli ayrı kaynaklardır.</p>
       <details class="mt-4 border border-cyan-400/20 rounded-lg p-3">
-        <summary class="mono text-xs text-cyan-200 cursor-pointer">NOKTA PROFİLİ · OPEN-METEO</summary>
+        <summary class="mono text-xs text-cyan-200 cursor-pointer">Nokta profili · Open-Meteo</summary>
       <div class="flex flex-wrap items-center gap-4 mt-3">
-        <button type="button" onclick="loadPointAirgram()" class="mono border border-cyan-400/40 rounded px-3 py-2 text-xs text-cyan-200">NOKTA PROFİLİNİ YENİLE</button>
+        <button type="button" onclick="loadPointAirgram()" class="mono border border-cyan-400/40 rounded px-3 py-2 text-xs text-cyan-200">Nokta profilini yenile</button>
         <a id="windyAirgramLink" target="_blank" rel="noopener noreferrer" class="hidden mono text-xs text-cyan-300 underline">Windy Airgram · dış sitede aç</a>
       </div>
       <p id="pointAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">Nokta analizi oluşturunca profil yüklenir.</p>
@@ -533,25 +463,25 @@
       </details>
       </details>
       <details class="mt-3 border border-cyan-400/20 rounded-lg p-3">
-        <summary class="mono text-xs text-cyan-200 cursor-pointer">MEYDAN AIRGRAM · MGM HEZARFEN</summary>
+        <summary class="mono text-xs text-cyan-200 cursor-pointer">Meydan Airgram · MGM Hezarfen</summary>
       <p id="mgmAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-4">MGM Airgram için meydan seçin ve GÖSTER / YENİLE düğmesine basın.</p>
       <img id="mgmAirgramImage" class="hidden mt-3 w-full" alt="Seçilen meydanın MGM Hezarfen Airgram görseli" />
-        <button type="button" onclick="showMgmAirgram()" class="inline-block mt-3 mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">HEZARFEN AIRGRAM GÖSTER / YENİLE</button>
+        <button type="button" onclick="showMgmAirgram()" class="inline-block mt-3 mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">Meydan Airgramını yenile</button>
       </details>
     </section>
 
     <div id="runwayCard" class="hidden hud-card p-6">
-      <h3 class="mono text-sm text-cyan-300 mb-4">◈ PİST &amp; RÜZGAR BİLEŞENLERİ</h3>
+      <h3 class="mono text-sm text-cyan-300 mb-4">Pist ve rüzgâr bileşenleri</h3>
 
       <div class="grid sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label class="mono text-[11px] text-cyan-100/70 block mb-1">YAKIN HAVALİMANI / PİST</label>
+          <label class="mono text-[11px] text-cyan-100/70 block mb-1">Yakın havalimanı / pist</label>
           <select id="runwaySelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
             <option value="">Konum seçince otomatik yüklenir...</option>
           </select>
         </div>
         <div>
-          <label class="mono text-[11px] text-cyan-100/70 block mb-1">VEYA MANUEL PİST YÖNÜ (°)</label>
+          <label class="mono text-[11px] text-cyan-100/70 block mb-1">Manuel pist yönü (°)</label>
           <input id="manualRunwayHeading" type="number" min="0" max="360" placeholder="örn: 270"
             class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
         </div>
@@ -560,17 +490,17 @@
       <div id="windComponentResult" class="hidden">
         <div class="grid grid-cols-3 gap-3 mt-4">
           <div class="text-center p-3 rounded-lg border border-cyan-400/20 bg-slate-900/40">
-            <p class="mono text-[10px] text-cyan-100/50 mb-1">BAŞ RÜZGARI</p>
+            <p class="mono text-[10px] text-cyan-100/50 mb-1">Baş rüzgârı</p>
             <p id="headwindVal" class="mono text-xl font-bold text-cyan-300">— kt</p>
             <span id="headwindBadge" class="mt-1 inline-block"></span>
           </div>
           <div class="text-center p-3 rounded-lg border border-cyan-400/20 bg-slate-900/40">
-            <p class="mono text-[10px] text-cyan-100/50 mb-1">YAN RÜZGAR</p>
+            <p class="mono text-[10px] text-cyan-100/50 mb-1">Yan rüzgâr</p>
             <p id="crosswindVal" class="mono text-xl font-bold text-cyan-300">— kt</p>
             <span id="crosswindBadge" class="mt-1 inline-block"></span>
           </div>
           <div class="text-center p-3 rounded-lg border border-cyan-400/20 bg-slate-900/40">
-            <p class="mono text-[10px] text-cyan-100/50 mb-1">KUYRUK RÜZGARI</p>
+            <p class="mono text-[10px] text-cyan-100/50 mb-1">Kuyruk rüzgârı</p>
             <p id="tailwindVal" class="mono text-xl font-bold text-cyan-300">— kt</p>
             <span id="tailwindBadge" class="mt-1 inline-block"></span>
           </div>
@@ -584,10 +514,11 @@
         <p id="windComponentOverall" class="mono text-center text-sm mt-3"></p>
       </div>
     </div>
+    </details>
 
     <div id="loadingSection" role="status" aria-live="polite" aria-busy="true" class="hidden hud-card py-14 px-6 text-center">
       <div class="flex justify-center mb-6"><div class="radar" aria-label="Hava verisi yükleniyor"></div></div>
-      <p class="mono text-green-300 text-sm blink tracking-widest">HAVA VERİSİ TOPLANIYOR...</p>
+      <p class="mono text-sm text-cyan-100/70">Hava verisi toplanıyor...</p>
       <p class="mono text-[11px] text-cyan-100/50 mt-3 tracking-wider">OPEN-METEO · METAR · OWM · WEATHERAPI</p>
       <div class="mt-4 flex justify-center gap-1">
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400/60 animate-bounce" style="animation-delay:0s"></span>
@@ -597,30 +528,40 @@
     </div>
 
     <div id="errorSection" class="hidden hud-card px-5 py-4 border-red-500/40 text-red-300 mono text-sm">
-      ⚠ <span id="errorMsg"></span>
+      <svg class="ui-icon" aria-hidden="true"><use href="#icon-alert"/></svg> <span id="errorMsg"></span>
     </div>
 
     <section id="resultSection" class="hidden space-y-5">
-      <div id="decisionBanner" class="hud-card decision-banner p-6 text-center decision-animate">
-        <div id="decisionGlow" class="decision-glow"></div>
+      <div id="decisionBanner" class="hud-card decision-banner p-6">
         <div class="decision-content">
-          <div id="decisionText" class="mono text-3xl sm:text-5xl font-extrabold tracking-wide"></div>
-          <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
-            <p id="locationLabel" class="mono text-xs text-cyan-100/70"></p>
-            <button id="favoriteBtn" type="button" onclick="saveCurrentFavorite()" class="hidden mono border border-cyan-400/30 text-cyan-200 rounded-md px-2 py-1 text-[10px]">☆ FAVORİYE EKLE</button>
+          <div class="decision-heading">
+            <span class="decision-kicker">Uçuş değerlendirmesi</span>
+            <span id="decisionStatus" class="decision-status"></span>
+          </div>
+          <h2 id="decisionText" class="decision-title"></h2>
+          <p id="locationLabel" class="decision-location"></p>
+          <p id="createdAt" class="decision-timestamp"></p>
+          <div class="decision-actions">
+            <button id="favoriteBtn" type="button" onclick="saveCurrentFavorite()" class="hidden mono border border-cyan-400/30 text-cyan-200 rounded-md px-2 py-1 text-[10px]"><svg class="ui-icon" aria-hidden="true"><use href="#icon-star"/></svg> Favoriye ekle</button>
             <span id="aqiBadge" class="hidden mono text-[10px] rounded-full px-2 py-1 border"></span>
           </div>
-          <p id="createdAt" class="mono text-[11px] text-cyan-100/55 mt-1"></p>
+          <p id="savedReportNotice" role="status" class="hidden text-xs text-cyan-100/70 mt-3"></p>
         </div>
       </div>
 
-      <div class="hud-card p-6 hud-grid">
+      <div class="analysis-main hud-card p-6 hud-grid">
+        <div class="metric-grid" aria-label="Temel hava parametreleri">
+          <div class="metric-item"><p class="metric-label">Rüzgâr</p><p id="metricWind" class="metric-value">—</p></div>
+          <div class="metric-item"><p class="metric-label">Görüş</p><p id="metricVisibility" class="metric-value">—</p></div>
+          <div class="metric-item"><p class="metric-label">Sıcaklık</p><p id="metricTemperature" class="metric-value">—</p></div>
+          <div class="metric-item"><p class="metric-label">Bulutluluk</p><p id="metricCloudCover" class="metric-value">—</p></div>
+        </div>
         <div class="grid md:grid-cols-[220px_1fr] gap-6 items-center">
-          <div class="text-center">
+          <div class="confidence-panel text-center">
             <div class="relative w-40 h-40 mx-auto">
               <svg class="w-40 h-40 -rotate-90" role="img" aria-label="Güven puanı göstergesi" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="52" stroke="rgba(14,165,233,0.25)" stroke-width="8" fill="none"></circle>
-                <circle id="confidenceRing" cx="60" cy="60" r="52" stroke="#00d4ff" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="0" stroke-dashoffset="0"></circle>
+                <circle cx="60" cy="60" r="52" stroke="var(--line)" stroke-width="8" fill="none"></circle>
+                <circle id="confidenceRing" cx="60" cy="60" r="52" stroke="var(--hud-cyan)" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="0" stroke-dashoffset="0"></circle>
               </svg>
               <div class="absolute inset-0 flex flex-col items-center justify-center">
                 <p id="confidencePercent" class="mono text-3xl font-extrabold text-cyan-300">0%</p>
@@ -629,94 +570,129 @@
               </div>
             </div>
             <p id="confidenceLabel" class="mono text-xs text-cyan-100/60 mt-2"></p>
-            <p id="windTrendBadge" class="hidden mono text-[11px] mt-1 text-cyan-300/80"></p>
           </div>
 
           <div>
-            <h3 class="mono text-cyan-300 text-sm mb-2">◈ ANALİZ ÖZETİ</h3>
+            <h3 class="mono text-cyan-300 text-sm mb-2">Analiz özeti</h3>
             <p id="decisionDetail" class="text-sm leading-relaxed text-cyan-100/85 whitespace-pre-line"></p>
+            <div class="mt-4 border-t border-cyan-400/20 pt-3">
+              <h4 class="mono text-xs text-cyan-300 mb-2">Kararı belirleyen kurallar</h4>
+              <p id="ruleDecisionNotice" class="text-xs text-cyan-100/70 mb-2"></p>
+              <ul id="decisionReasons" class="space-y-2 text-sm text-cyan-100/85"></ul>
+            </div>
             <div id="confidenceBar" class="hidden"></div>
             <div id="parameterWeightsSection" class="hidden mt-5">
-              <h3 class="mono text-cyan-300 text-sm mb-3">AI KARAR AĞIRLIKLARI</h3>
+              <details>
+              <summary class="mono text-cyan-300 text-xs mb-3 cursor-pointer">AI karar ağırlıkları</summary>
               <div id="parameterWeightsChart" class="space-y-2"></div>
+              </details>
             </div>
           </div>
         </div>
       </div>
 
+      <aside id="weatherSnapshot" class="weather-summary hud-card p-5" aria-label="Rapor hava özeti">
+        <p class="workspace-kicker">Rapor özeti</p>
+        <h3>Hava koşulları</h3>
+        <dl>
+          <div><dt>Yağış</dt><dd id="snapshotPrecipitation">—</dd></div>
+          <div><dt>Nem</dt><dd id="snapshotHumidity">—</dd></div>
+          <div><dt>Bulut tabanı</dt><dd id="snapshotCloudBase">—</dd></div>
+          <div><dt>Güven endeksi</dt><dd id="snapshotConfidence">—</dd></div>
+          <div><dt>Veri kaynağı</dt><dd id="snapshotSources">—</dd></div>
+        </dl>
+        <div class="source-summary-block">
+          <h4 class="text-xs">Kaynak durumu</h4>
+          <p id="reportSourceSummary" class="text-xs text-cyan-100/70 mt-2"></p>
+          <a href="#sourceDetails" id="sourceSummaryLink" class="text-xs text-cyan-100 underline">Kaynak ayrıntıları</a>
+        </div>
+        <p id="windTrendBadge" class="hidden mono text-xs mt-4 text-cyan-300/80"></p>
+        <p class="text-xs text-cyan-100/60 mt-4">Değerler bu rapora aittir. Güncellik ve kaynak bilgilerini ayrıntılardan kontrol edin.</p>
+      </aside>
+
       <!-- AI Summary box (shown when GPT-4o is active) -->
-      <div id="aiSummaryCard" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
-        <h3 class="mono text-sm mb-3 text-violet-300">✦ YAPAY ZEKA ANALİZİ</h3>
+      <details id="aiSummaryCard" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
+        <summary class="mono text-sm mb-3 text-violet-300 cursor-pointer">Yapay zekâ analizi</summary>
         <p id="aiSummaryText" class="text-sm text-violet-100/90 mb-3"></p>
         <div id="aiDetailWrap" class="hidden">
           <details class="text-sm text-cyan-100/75">
-            <summary class="mono text-[11px] text-cyan-300/70 cursor-pointer hover:text-cyan-300">◈ Detaylı Analizi Göster</summary>
+            <summary class="mono text-[11px] text-cyan-300/70 cursor-pointer hover:text-cyan-300">Detaylı analiz</summary>
             <p id="aiDetailText" class="mt-2 leading-relaxed whitespace-pre-line"></p>
           </details>
         </div>
-      </div>
+      </details>
 
       <div class="grid lg:grid-cols-2 gap-4 hud-grid">
-        <div id="riskCard" class="hud-card p-5 hidden">
-          <h3 class="mono text-sm mb-3 text-amber-300">⚠ RİSK DEĞERLENDİRMESİ</h3>
+        <details id="riskCard" class="hud-card p-5 hidden">
+          <summary class="mono text-sm mb-3 text-amber-300 cursor-pointer">Ek risk değerlendirmesi</summary>
           <ul id="riskList" class="space-y-2 text-sm"></ul>
-        </div>
+        </details>
         <div id="recCard" class="hud-card p-5 hidden">
-          <h3 class="mono text-sm mb-3 text-cyan-300">◈ ÖNERİLER</h3>
+          <h3 class="mono text-sm mb-3 text-cyan-300">Öneriler</h3>
           <ul id="recList" class="space-y-2 text-sm"></ul>
         </div>
       </div>
-      <div class="hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">◈ UÇUŞ PARAMETRELERİ</h3>
+      <details id="parameterDetails" class="hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">Uçuş parametreleri ve uygulanan limitler</summary>
+        <div class="mt-4">
         <div class="overflow-x-auto">
           <table class="w-full text-sm mono">
             <thead>
               <tr class="text-cyan-100/60 border-b border-cyan-400/20 text-left">
-                <th class="pb-2 font-semibold">PARAMETRE</th>
-                <th class="pb-2 font-semibold">DEĞER</th>
-                <th class="pb-2 font-semibold">DURUM</th>
+                <th class="pb-2 font-semibold">Parametre</th>
+                <th class="pb-2 font-semibold">Değer</th>
+                <th class="pb-2 font-semibold">Durum</th>
               </tr>
             </thead>
             <tbody id="parametersTable"></tbody>
           </table>
           <p id="appliedLimitsNotice" class="mono text-[11px] text-cyan-100/60 mt-3"></p>
         </div>
-      </div>
+        </div>
+      </details>
 
-      <div class="hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">◈ VERİ KAYNAKLARI</h3>
-        <div id="sourcesTable" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
-      </div>
+      <details id="sourceDetails" class="hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">Veri kaynakları ve güncellik
+          <span id="sourceTimingOverview" class="block text-xs text-amber-300 mt-2"></span>
+        </summary>
+        <div id="reportSourceChecks" class="mt-3 space-y-2 text-xs"></div>
+        <div id="sourcesTable" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-4"></div>
+      </details>
 
+      <details id="planningTools" class="hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 cursor-pointer">Saatlik tahmin ve uçuş planlama</summary>
       <div id="forecastSection" class="hidden hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">SONRAKİ 6 SAAT TAHMİNİ</h3>
-        <div id="forecastTimeline" class="grid grid-cols-2 md:grid-cols-6 gap-3"></div>
+        <h3 class="mono text-sm text-cyan-300 mb-4">Sonraki 6 saat · UTC</h3>
+        <p id="forecastStatus" role="status" class="text-xs text-cyan-100/70 mb-3"></p>
+        <div id="forecastTimeline" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
       </div>
 
       <div class="hud-card p-6">
         <div class="flex flex-col md:flex-row md:items-end gap-3 justify-between">
           <div>
-            <h3 class="mono text-sm text-cyan-300 mb-2">UÇUŞ PLANLAMA</h3>
-            <p class="mono text-[11px] text-cyan-100/60">Bugün veya yarın için en uygun saat penceresini çıkarın.</p>
+            <h3 class="mono text-sm text-cyan-300 mb-2">Uçuş planlama</h3>
+            <p class="mono text-[11px] text-cyan-100/60">Gün ve saatler UTC'dir (Türkiye: UTC+3). Raporun kaydedilmiş limitleri kullanılır. Geçmiş saatler önerilmez.</p>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full md:w-auto">
-            <select id="flightPlanDate" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs">
-              <option value="0">Bugün</option>
-              <option value="1">Yarın</option>
+            <select id="flightPlanDate" aria-label="Plan günü (UTC)" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs">
+              <option value="0">Bugün (UTC)</option>
+              <option value="1">Yarın (UTC)</option>
             </select>
-            <select id="flightPlanStart" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
-            <select id="flightPlanEnd" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
-            <button type="button" onclick="fetchFlightPlan()" class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-4 py-2 text-xs">[ PLANLA ]</button>
+            <select id="flightPlanStart" aria-label="İlk saat (UTC)" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
+            <select id="flightPlanEnd" aria-label="Son saat (dahil, UTC)" class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs"></select>
+            <button type="button" onclick="fetchFlightPlan()" class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-4 py-2 text-xs">Planla</button>
           </div>
         </div>
-        <div id="flightPlanTimeline" class="mt-4 grid gap-2 md:grid-cols-6"></div>
-        <p id="flightPlanBest" class="mono text-[11px] text-green-300 mt-3"></p>
+        <p id="flightPlanStatus" role="status" class="text-xs text-cyan-100/70 mt-3"></p>
+        <div id="flightPlanTimeline" class="mt-4"></div>
+        <p id="flightPlanBest" class="mono text-xs text-cyan-100 mt-3"></p>
       </div>
+      </details>
 
-      <div id="seasonalSection" class="hidden hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">MEVSIMSEL ANALİZ — EN İYİ UÇUŞ AYLARI</h3>
+      <details id="seasonalSection" class="hidden hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Mevsimsel analiz · Uygun uçuş ayları</summary>
         <div id="seasonalHeatmap" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3"></div>
-      </div>
+      </details>
 
       <div id="notamSection" class="hidden hud-card p-6">
         <h3 class="mono text-sm text-cyan-300 mb-3">NOTAM</h3>
@@ -725,28 +701,28 @@
         </div>
       </div>
 
-      <div id="chatSection" class="hidden hud-card p-6">
-        <h3 class="mono text-sm text-cyan-300 mb-4">GPT İLE SOHBET</h3>
+      <details id="chatSection" class="hidden hud-card p-5">
+        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Analiz hakkında sohbet</summary>
         <div id="chatMessages" class="space-y-3 max-h-80 overflow-y-auto pr-1"></div>
         <div class="mt-4 flex gap-2">
-          <input id="chatInput" type="text" placeholder="Bu analiz hakkında soru sorun..." class="mono flex-1 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
-          <button type="button" onclick="sendChatMessage()" class="mono bg-violet-300 text-slate-950 font-semibold rounded-md px-4 py-2 text-xs">[ GÖNDER ]</button>
+          <input id="chatInput" type="text" placeholder="Bu analiz hakkında soru sorun..." class="mono flex-1 min-w-0 bg-slate-950/70 border border-cyan-400/35 rounded-md px-3 py-2 text-xs text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
+          <button type="button" onclick="sendChatMessage()" class="mono btn-primary-glow font-semibold rounded-md px-4 py-2 text-xs">Gönder</button>
         </div>
-      </div>
+      </details>
 
       <div class="hud-card p-6">
         <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
-          <div id="feedbackSection">
-            <p class="mono text-sm text-cyan-200 mb-3">◈ GÖREV GERİ BİLDİRİMİ — BU DEĞERLENDİRME DOĞRU MUYDU?</p>
+          <details id="feedbackSection">
+            <summary class="mono text-sm text-cyan-200 mb-3 cursor-pointer">Değerlendirmeye geri bildirim ver</summary>
             <div id="feedbackButtons" class="flex flex-wrap gap-3">
               <button
                 onclick="submitFeedback(true)"
                 class="mono border border-green-400/70 text-green-300 hover:bg-green-400/10 rounded-md px-4 py-2 text-xs tracking-wider"
-              >[ DOĞRU ]</button>
+              >Doğru</button>
               <button
                 onclick="submitFeedback(false)"
                 class="mono border border-red-400/70 text-red-300 hover:bg-red-400/10 rounded-md px-4 py-2 text-xs tracking-wider"
-              >[ YANLIŞ ]</button>
+              >Yanlış</button>
             </div>
             <div id="feedbackComment" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
               <input
@@ -758,23 +734,31 @@
               />
               <button
                 onclick="confirmFeedback()"
-                class="mono bg-cyan-300 text-slate-950 font-semibold rounded-md px-4 py-2 text-xs"
-              >[ GÖNDER ]</button>
+                class="mono btn-primary-glow font-semibold rounded-md px-4 py-2 text-xs"
+              >Gönder</button>
             </div>
-            <p id="feedbackThanks" class="hidden mono text-xs text-green-300 mt-2">✓ GERİ BİLDİRİM KAYDEDİLDİ</p>
-          </div>
+            <p id="feedbackThanks" class="hidden mono text-xs text-green-300 mt-2">Geri bildirim kaydedildi.</p>
+          </details>
 
           <button
             id="pdfBtn"
             onclick="downloadPDF()"
             class="mono border border-slate-300/35 text-slate-200 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs self-start"
-          >[ RAPORU İNDİR ]</button>
+          >Raporu indir</button>
         </div>
       </div>
     </section>
 
-    <section id="historySection" class="hidden hud-card p-6">
-      <h3 class="mono text-sm text-cyan-300 mb-4">GEÇMİŞ ANALİZLER</h3>
+    <details id="historySection" class="hidden hud-card p-5">
+      <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Geçmiş analizler</summary>
+      <form id="historyFilters" class="history-filters">
+        <label class="history-field">Konum<input id="historyLocation" type="search" placeholder="Şehir veya konum" maxlength="200" /></label>
+        <label class="history-field">İlk tarih (UTC)<input id="historyStartDate" type="date" /></label>
+        <label class="history-field">Son tarih (UTC)<input id="historyEndDate" type="date" /></label>
+        <button type="submit" class="btn-primary-glow px-3 py-2">Filtrele</button>
+        <button type="button" id="historyReset" class="border border-cyan-400/30 px-3 py-2">Temizle</button>
+      </form>
+      <p id="historyStatus" role="status" class="text-xs text-amber-300 mb-3"></p>
       <div id="historyChart" class="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2 items-end"></div>
       <div class="flex items-center gap-4 mt-3 mono text-[10px] text-cyan-100/40">
         <span><span class="inline-block w-2 h-2 rounded-sm bg-green-400/70 mr-1"></span>UYGUN</span>
@@ -782,7 +766,14 @@
         <span><span class="inline-block w-2 h-2 rounded-sm bg-red-400/70 mr-1"></span>UYGUN DEĞİL</span>
       </div>
       <div id="historyList" class="mt-5 max-h-72 overflow-y-auto space-y-2"></div>
-    </section>
+      <div class="report-compare-controls">
+        <label class="history-field">Rapor A<select id="compareReportA" class="history-select"><option value="">Rapor seçin</option></select></label>
+        <label class="history-field">Rapor B<select id="compareReportB" class="history-select"><option value="">Rapor seçin</option></select></label>
+        <button id="compareReportsBtn" type="button" class="btn-primary-glow px-3 py-2">Karşılaştır</button>
+      </div>
+      <p id="reportCompareStatus" role="status" class="text-xs text-cyan-100/70 mt-3"></p>
+      <div id="reportComparison" class="overflow-x-auto mt-3"></div>
+    </details>
     </div><!-- /panel-point -->
 
     <!-- ══ Tab 2: Regional Analysis ══════════════════════════════════════ -->
@@ -790,21 +781,21 @@
 
       <!-- Controls -->
       <div class="hud-card p-5">
-        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ BÖLGE ANALİZİ — IZGARA TARAMA</h2>
+        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">Bölge analizi</h2>
         <p class="mono text-[11px] text-cyan-100/60 mb-4">
           Haritada tıklayarak anlık nokta raporu, dikdörtgen çizerek ızgara analizi yapın.
           Dikdörtgen çizmek için sol araç çubuğundaki <strong>□</strong> ikonuna tıklayın.
         </p>
         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <div>
-            <label for="gridSizeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">IZGARA BOYUTU</label>
+            <label for="gridSizeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Izgara boyutu</label>
             <select id="gridSizeSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
               <option value="25">5×5 = 25 Nokta</option>
               <option value="100">10×10 = 100 Nokta</option>
             </select>
           </div>
           <div>
-            <label for="altitudeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">İRTİFA KATI</label>
+            <label for="altitudeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">İrtifa katı</label>
             <select id="altitudeSelect" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
               <option value="1000">0–1000 ft (Yüzey)</option>
               <option value="2000">2000 ft</option>
@@ -817,14 +808,14 @@
             </select>
           </div>
           <div>
-            <label for="timeModeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">ZAMAN MODU</label>
+            <label for="timeModeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Zaman modu</label>
             <select id="timeModeSelect" onchange="onTimeModeChange()" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
               <option value="instant">Anlık</option>
               <option value="forecast">Sonraki 24 Saat</option>
             </select>
           </div>
           <div>
-            <label for="colorModeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">RENK MODU</label>
+            <label for="colorModeSelect" class="mono text-[11px] text-cyan-100/70 block mb-1">Renk modu</label>
             <select id="colorModeSelect" onchange="onColorModeChange()" class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40">
               <option value="decision">Karara Göre</option>
               <option value="wind">Rüzgara Göre</option>
@@ -838,7 +829,7 @@
         <!-- 24-hour time slider (shown only in forecast mode) -->
         <div id="timeSliderSection" class="hidden mb-3 p-3 bg-slate-900/50 rounded-md border border-cyan-400/20">
           <div class="flex items-center gap-3">
-            <label class="mono text-[11px] text-cyan-100/70 whitespace-nowrap">SAAT OFSETİ</label>
+            <label class="mono text-[11px] text-cyan-100/70 whitespace-nowrap">Saat farkı</label>
             <input id="timeSlider" type="range" min="0" max="24" step="1" value="0"
               oninput="onTimeSliderChange(this.value)"
               class="flex-1 accent-cyan-400 cursor-pointer" />
@@ -858,15 +849,15 @@
         <div class="flex flex-wrap gap-3 items-center">
           <button id="analyzeGridBtn" onclick="analyzeGrid()" disabled
             class="mono bg-cyan-300 text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider opacity-40 cursor-not-allowed">
-            [ BÖLGE ANALİZ ET ]
+            Bölgeyi analiz et
           </button>
           <button onclick="clearGridOverlay()"
             class="mono border border-slate-400/40 text-slate-300 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs tracking-wider">
-            [ TEMİZLE ]
+            Temizle
           </button>
           <button id="compareRegionBtn" type="button" onclick="toggleRegionCompare()"
             class="mono border border-violet-400/40 text-violet-200 hover:bg-violet-400/10 rounded-md px-4 py-2 text-xs tracking-wider">
-            [ KARŞILAŞTIR ]
+            Karşılaştır
           </button>
           <p id="regionStatus" class="mono text-[11px] text-cyan-100/60"></p>
         </div>
@@ -880,18 +871,18 @@
       <!-- Grid loading -->
       <div id="gridLoadingSection" class="hidden hud-card py-6 px-6 text-center">
         <div class="flex justify-center"><div class="radar" aria-label="Izgara analizi yükleniyor"></div></div>
-        <p class="mono text-green-300 mt-4 blink">IZGARA VERİSİ TOPLANIYOR...</p>
-        <p class="mono text-[11px] text-cyan-100/60 mt-2">TÜM NOKTALARA BAĞLANILIYOR...</p>
+        <p class="mono text-cyan-100/70 mt-4">Bölge verisi toplanıyor...</p>
+        <p class="mono text-[11px] text-cyan-100/60 mt-2">Analiz noktaları sorgulanıyor...</p>
       </div>
 
       <!-- Grid error -->
       <div id="gridErrorSection" class="hidden hud-card px-5 py-4 border-red-500/40 text-red-300 mono text-sm">
-        ⚠ <span id="gridErrorMsg"></span>
+        <svg class="ui-icon" aria-hidden="true"><use href="#icon-alert"/></svg> <span id="gridErrorMsg"></span>
       </div>
 
       <!-- Grid summary -->
       <div id="gridSummarySection" class="hidden hud-card p-5">
-        <h3 class="mono text-cyan-300 text-sm mb-4">◈ BÖLGE ANALİZ ÖZETİ</h3>
+        <h3 class="mono text-cyan-300 text-sm mb-4">Bölge analiz özeti</h3>
         <div class="grid grid-cols-3 gap-4 mb-4 text-center">
           <div>
             <p class="mono text-2xl font-extrabold text-green-300" id="summaryUygun">0</p>
@@ -914,23 +905,23 @@
         <!-- Extended statistics -->
         <div class="grid sm:grid-cols-2 gap-4 mb-4">
           <div class="bg-slate-900/40 rounded-md p-3 border border-cyan-400/15">
-            <p class="mono text-[10px] text-cyan-100/50 mb-2 tracking-wider">ORT. PARAMETRE DEĞERLERİ</p>
+            <p class="mono text-[10px] text-cyan-100/50 mb-2">Ortalama parametre değerleri</p>
             <div class="space-y-1">
-              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">💨 Ort. Rüzgar</span><span class="mono text-[11px] text-cyan-200" id="avgWind">—</span></div>
-              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">☁ Ort. Bulutluluk</span><span class="mono text-[11px] text-cyan-200" id="avgCloud">—</span></div>
-              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">💧 Ort. Nem</span><span class="mono text-[11px] text-cyan-200" id="avgHumidity">—</span></div>
-              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">🌡 Ort. Sıcaklık</span><span class="mono text-[11px] text-cyan-200" id="avgTemp">—</span></div>
+              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">Ortalama rüzgâr</span><span class="mono text-[11px] text-cyan-200" id="avgWind">—</span></div>
+              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">Ortalama bulutluluk</span><span class="mono text-[11px] text-cyan-200" id="avgCloud">—</span></div>
+              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">Ortalama nem</span><span class="mono text-[11px] text-cyan-200" id="avgHumidity">—</span></div>
+              <div class="flex justify-between"><span class="mono text-[11px] text-cyan-100/70">Ortalama sıcaklık</span><span class="mono text-[11px] text-cyan-200" id="avgTemp">—</span></div>
             </div>
           </div>
           <div class="bg-slate-900/40 rounded-md p-3 border border-cyan-400/15">
-            <p class="mono text-[10px] text-cyan-100/50 mb-2 tracking-wider">EN İYİ / EN KÖTÜ NOKTA</p>
+            <p class="mono text-[10px] text-cyan-100/50 mb-2">En iyi / en kötü nokta</p>
             <div class="space-y-2">
               <div>
-                <p class="mono text-[10px] text-green-300/70">🟢 EN İYİ NOKTA (UYGUN)</p>
+                <p class="mono text-[10px] text-green-300/70">En iyi nokta · Uygun</p>
                 <button id="bestPointBtn" onclick="panToBestPoint()" class="mono text-[11px] text-green-300 hover:text-green-200 hover:underline cursor-pointer text-left">—</button>
               </div>
               <div>
-                <p class="mono text-[10px] text-red-300/70">🔴 EN KÖTÜ NOKTA (UYGUN DEĞİL)</p>
+                <p class="mono text-[10px] text-red-300/70">En kötü nokta · Uygun değil</p>
                 <button id="worstPointBtn" onclick="panToWorstPoint()" class="mono text-[11px] text-red-300 hover:text-red-200 hover:underline cursor-pointer text-left">—</button>
               </div>
             </div>
@@ -940,12 +931,12 @@
 
       <!-- AI Grid Summary -->
       <div id="gridAiLoadingSection" class="hidden hud-card p-4 text-center">
-        <p class="mono text-xs text-violet-300/80 animate-pulse">✦ Yapay zeka bölge analizi hazırlanıyor...</p>
+        <p class="mono text-xs text-violet-300/80">Bölge değerlendirmesi hazırlanıyor...</p>
       </div>
       <div id="gridAiSummarySection" class="hidden hud-card p-5 border border-violet-400/30 bg-violet-950/20">
         <div class="flex items-center gap-2 mb-3">
-          <h3 class="mono text-sm text-violet-300">✦ YAPAY ZEKA BÖLGE DEĞERLENDİRMESİ</h3>
-          <span id="gridAiModelBadge" class="hidden mono text-[10px] px-2 py-1 rounded-full border border-violet-400/40 text-violet-200 bg-violet-900/40">✦ GPT-4o</span>
+          <h3 class="mono text-sm text-violet-300">Yapay zekâ bölge değerlendirmesi</h3>
+          <span id="gridAiModelBadge" class="hidden mono text-[10px] px-2 py-1 rounded-full border border-violet-400/40 text-violet-200 bg-violet-900/40">GPT-4o</span>
         </div>
         <p id="gridAiSummaryText" class="text-sm text-violet-100/90 leading-relaxed"></p>
       </div>
@@ -953,12 +944,12 @@
       <div id="regionCompareSection" class="hidden hud-card p-5">
         <div class="flex flex-wrap gap-2 justify-between items-start mb-4">
           <div>
-            <h3 class="mono text-sm text-cyan-300 mb-1">BÖLGE KARŞILAŞTIRMA</h3>
+            <h3 class="mono text-sm text-cyan-300 mb-1">Bölge karşılaştırması</h3>
             <p class="mono text-[11px] text-cyan-100/60">Bir bölgeyi analiz ettikten sonra A veya B yuvasına kaydedin; ikinci bölge ile yan yana kıyaslayın.</p>
           </div>
           <div class="flex flex-wrap gap-2">
-            <button type="button" onclick="captureCurrentRegion('A')" class="mono border border-cyan-400/35 text-cyan-200 rounded-md px-3 py-2 text-[11px]">[ A OLARAK KAYDET ]</button>
-            <button type="button" onclick="captureCurrentRegion('B')" class="mono border border-violet-400/35 text-violet-200 rounded-md px-3 py-2 text-[11px]">[ B OLARAK KAYDET ]</button>
+            <button type="button" onclick="captureCurrentRegion('A')" class="mono border border-cyan-400/35 text-cyan-200 rounded-md px-3 py-2 text-[11px]">A olarak kaydet</button>
+            <button type="button" onclick="captureCurrentRegion('B')" class="mono border border-violet-400/35 text-violet-200 rounded-md px-3 py-2 text-[11px]">B olarak kaydet</button>
           </div>
         </div>
         <p id="regionCompareResult" class="mono text-[11px] text-green-300 mb-4"></p>
@@ -972,7 +963,7 @@
     <!-- ══ Data source status ════════════════════════════════════════════ -->
     <div id="panel-sources" role="tabpanel" aria-labelledby="tab-btn-sources" class="hidden space-y-4 pt-6">
       <section class="hud-card p-6">
-        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ VERİ KAYNAĞI DENETİMİ</h2>
+        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">Veri kaynakları</h2>
         <p class="mono text-[11px] text-cyan-100/60 mb-4">
           Seçtiğiniz koordinat için etkin hava kaynaklarına gerçek istek gönderilir.
           Anahtarsız kaynaklar da çalışır; diğer sağlayıcılar anahtar yoksa anahtar gerektiriyor olarak gösterilir.
@@ -980,18 +971,18 @@
         </p>
         <div class="grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
           <div>
-            <label for="sourceCheckLat" class="mono text-[11px] text-cyan-100/70 block mb-1">ENLEM</label>
+            <label for="sourceCheckLat" class="mono text-[11px] text-cyan-100/70 block mb-1">Enlem</label>
             <input id="sourceCheckLat" type="number" min="-90" max="90" step="any" value="39"
               class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs" />
           </div>
           <div>
-            <label for="sourceCheckLon" class="mono text-[11px] text-cyan-100/70 block mb-1">BOYLAM</label>
+            <label for="sourceCheckLon" class="mono text-[11px] text-cyan-100/70 block mb-1">Boylam</label>
             <input id="sourceCheckLon" type="number" min="-180" max="180" step="any" value="35"
               class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs" />
           </div>
           <button id="sourceCheckBtn" type="button" onclick="checkDataSources()"
             class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider">
-            [ KAYNAKLARI KONTROL ET ]
+            Kaynakları kontrol et
           </button>
         </div>
         <p id="sourceCheckStatus" role="status" aria-live="polite" class="mono text-[11px] text-cyan-100/60 mt-3"></p>
@@ -1002,7 +993,7 @@
     <!-- ══ Tab 3: Settings ════════════════════════════════════════════════ -->
     <div id="panel-settings" role="tabpanel" aria-labelledby="tab-btn-settings" class="hidden space-y-4 pt-6">
       <div class="hud-card p-6">
-        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">◈ UÇUŞ LİMİTLERİ</h2>
+        <h2 class="mono text-cyan-300 text-sm font-bold mb-2">Uçuş limitleri</h2>
         <p class="mono text-[11px] text-cyan-100/60 mb-5">
           Bu limitler tarayıcınızda saklanır; yeni nokta raporlarında ve bölge analizinde kullanılır. Eski raporların limitleri değişmez.
         </p>
@@ -1010,7 +1001,7 @@
         <div class="space-y-5">
           <!-- Wind -->
           <div>
-            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">RÜZGAR HIZI (knot)</h3>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Rüzgâr hızı (knot)</h3>
             <div class="grid sm:grid-cols-2 gap-3">
               <div>
                 <label for="s_wind_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Uygun (≤)</label>
@@ -1027,7 +1018,7 @@
 
           <!-- Visibility -->
           <div>
-            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">GÖRÜŞ MESAFESİ (km)</h3>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Görüş mesafesi (km)</h3>
             <div class="grid sm:grid-cols-2 gap-3">
               <div>
                 <label for="s_vis_ok" class="mono text-[11px] text-green-300/80 block mb-1">Min. Uygun (&gt;)</label>
@@ -1044,7 +1035,7 @@
 
           <!-- Cloud base -->
           <div>
-            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">BULUT TABANI (ft AGL)</h3>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Bulut tabanı (ft AGL)</h3>
             <div class="grid sm:grid-cols-2 gap-3">
               <div>
                 <label for="s_cloud_base_ok" class="mono text-[11px] text-green-300/80 block mb-1">Min. Uygun (&gt;)</label>
@@ -1061,7 +1052,7 @@
 
           <!-- Cloud ceiling -->
           <div>
-            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">BULUT TAVANI (ft)</h3>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Bulut tavanı (ft)</h3>
             <div class="grid sm:grid-cols-2 gap-3">
               <div>
                 <label for="s_cloud_ceil_ok" class="mono text-[11px] text-green-300/80 block mb-1">Min. Uygun (&gt;)</label>
@@ -1078,7 +1069,7 @@
 
           <!-- Humidity -->
           <div>
-            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">NEM (%)</h3>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Nem (%)</h3>
             <div class="grid sm:grid-cols-2 gap-3">
               <div>
                 <label for="s_hum_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Uygun (&lt;)</label>
@@ -1094,7 +1085,7 @@
           </div>
 
           <div>
-            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">BULUTLULUK (%)</h3>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Bulutluluk (%)</h3>
             <label for="s_cloud_cover_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Uygun (≤)</label>
             <input id="s_cloud_cover_ok" type="number" step="1" min="0" max="100"
               class="mono w-full bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/40" />
@@ -1103,7 +1094,7 @@
 
           <!-- Temperature -->
           <div>
-            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">SICAKLIK (°C) — UYGUN ARALIK</h3>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Sıcaklık (°C) · Uygun aralık</h3>
             <div class="grid sm:grid-cols-2 gap-3">
               <div>
                 <label for="s_temp_min" class="mono text-[11px] text-green-300/80 block mb-1">Min. Sıcaklık (≥)</label>
@@ -1120,7 +1111,7 @@
 
           <!-- Wind component limits -->
           <div>
-            <h3 class="mono text-[11px] text-cyan-100/55 mb-2 tracking-wider">RÜZGAR BİLEŞEN LİMİTLERİ (knot)</h3>
+            <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Rüzgâr bileşen limitleri (knot)</h3>
             <div class="grid sm:grid-cols-2 gap-3">
               <div>
                 <label for="s_crosswind_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Yan Rüzgar Uygun (≤)</label>
@@ -1159,24 +1150,28 @@
         <div class="flex flex-wrap gap-3 mt-6">
           <button onclick="saveSettings()"
             class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider">
-            [ LİMİTLERİ KAYDET ]
+            Limitleri kaydet
           </button>
           <button onclick="resetSettings()"
             class="mono border border-slate-400/40 text-slate-300 hover:bg-slate-100/10 rounded-md px-4 py-2 text-xs tracking-wider">
-            [ VARSAYILANLARA DÖNDÜR ]
+            Varsayılanlara döndür
           </button>
         </div>
-        <p id="settingsSaved" class="hidden mono text-xs text-green-300 mt-3">✓ LİMİTLER KAYDEDİLDİ</p>
+        <p id="settingsSaved" class="hidden mono text-xs text-green-300 mt-3">Limitler kaydedildi.</p>
       </div>
     </div><!-- /panel-settings -->
 
     <!-- ══ Tab 4: Live Wind ══════════════════════════════════════════════ -->
     <div id="panel-wind" role="tabpanel" aria-labelledby="tab-btn-wind" class="hidden space-y-5 pt-6">
+      <div class="hud-card p-6">
+        <h2 class="mb-2">Rüzgâr analizi</h2>
+        <p class="text-sm text-cyan-100/75">Seçilen konumun rüzgâr hızını, yönünü ve kaynaklar arasındaki farkları karşılaştırın.</p>
+      </div>
 
       <!-- Loading / Error states -->
       <div id="windLoading" class="hidden hud-card py-10 text-center">
         <div class="flex justify-center mb-4"><div class="radar" aria-label="Rüzgar verisi yükleniyor"></div></div>
-        <p class="mono text-green-300 text-sm blink tracking-widest">RÜZGAR VERİSİ ALINIYOR...</p>
+        <p class="mono text-cyan-100/70 text-sm">Rüzgâr verisi alınıyor...</p>
       </div>
       <div id="windError" class="hidden hud-card px-5 py-4 border-red-500/40 text-red-300 mono text-sm"></div>
 
@@ -1195,25 +1190,25 @@
             <div class="flex-shrink-0">
               <svg id="windRoseSvg" width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
                 <!-- Compass circle -->
-                <circle cx="60" cy="60" r="54" stroke="rgba(0,212,255,0.20)" stroke-width="1.5" fill="none"/>
-                <circle cx="60" cy="60" r="3" fill="rgba(0,212,255,0.5)"/>
+                <circle cx="60" cy="60" r="54" stroke="var(--line)" stroke-width="1.5" fill="none"/>
+                <circle cx="60" cy="60" r="3" fill="var(--hud-cyan)"/>
                 <!-- Cardinal labels -->
-                <text x="60" y="10" text-anchor="middle" fill="rgba(0,212,255,0.7)" font-size="9" font-family="monospace">N</text>
-                <text x="113" y="63" text-anchor="middle" fill="rgba(0,212,255,0.5)" font-size="9" font-family="monospace">E</text>
-                <text x="60" y="116" text-anchor="middle" fill="rgba(0,212,255,0.5)" font-size="9" font-family="monospace">S</text>
-                <text x="7" y="63" text-anchor="middle" fill="rgba(0,212,255,0.5)" font-size="9" font-family="monospace">W</text>
+                <text x="60" y="10" text-anchor="middle" fill="var(--muted)" font-size="9">N</text>
+                <text x="113" y="63" text-anchor="middle" fill="var(--muted)" font-size="9">E</text>
+                <text x="60" y="116" text-anchor="middle" fill="var(--muted)" font-size="9">S</text>
+                <text x="7" y="63" text-anchor="middle" fill="var(--muted)" font-size="9">W</text>
                 <!-- Wind arrow (rotated by JS) -->
                 <g id="windArrowGroup" transform="rotate(0, 60, 60)">
                   <!-- Arrow tail -->
-                  <line x1="60" y1="60" x2="60" y2="18" stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round"/>
+                  <line x1="60" y1="60" x2="60" y2="18" stroke="var(--hud-cyan)" stroke-width="2.5" stroke-linecap="round"/>
                   <!-- Arrowhead -->
-                  <polygon points="60,10 55,22 65,22" fill="#00d4ff"/>
+                  <polygon points="60,10 55,22 65,22" fill="var(--hud-cyan)"/>
                 </g>
               </svg>
             </div>
             <!-- Consensus numbers -->
             <div class="flex-1 text-center sm:text-left">
-              <p class="mono text-[11px] text-cyan-100/50 tracking-wider mb-1">KONSENSÜS RÜZGAR</p>
+              <p class="mono text-[11px] text-cyan-100/50 mb-1">Kaynakların ortak rüzgâr değeri</p>
               <div class="flex flex-wrap items-end gap-4">
                 <div>
                   <p class="mono text-4xl font-extrabold text-cyan-300" id="windConsensusSpeed">— kt</p>
@@ -1229,7 +1224,7 @@
             <!-- Refresh button -->
             <div class="flex-shrink-0">
               <button onclick="refreshWindData()" class="mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs hover:border-cyan-300 hover:bg-cyan-400/10 transition-colors">
-                🔄 Yenile
+                <svg class="ui-icon" aria-hidden="true"><use href="#icon-refresh"/></svg> Yenile
               </button>
             </div>
           </div>
@@ -1237,15 +1232,15 @@
 
         <!-- Source comparison table -->
         <div class="hud-card p-5">
-          <h3 class="mono text-sm text-cyan-300 mb-4">◈ KAYNAK KARŞILAŞTIRMASI</h3>
+          <h3 class="mono text-sm text-cyan-300 mb-4">Kaynak karşılaştırması</h3>
           <div class="overflow-x-auto">
             <table class="w-full text-sm mono" id="windSourceTable">
               <thead>
                 <tr class="border-b border-cyan-400/20 text-left">
-                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4 tracking-wider">KAYNAK</th>
-                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4 tracking-wider">YÖN</th>
-                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4 tracking-wider">HIZ (kt)</th>
-                  <th class="mono text-[10px] text-cyan-100/50 pb-2 tracking-wider">GÜVENİLİRLİK</th>
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4">Kaynak</th>
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4">Yön</th>
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4">Hız (kt)</th>
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2">Güvenilirlik</th>
                 </tr>
               </thead>
               <tbody id="windSourceTableBody"></tbody>
@@ -1262,7 +1257,7 @@
     <div class="h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent mb-4"></div>
     <span class="inline-flex items-center">
       <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse mr-2"></span>
-      DECIDEFLIGHT SİSTEMİ v2.0 — KÜRESEL UÇUŞ HAVA İSTİHBARATI
+      DecideFlight · Hava koşulları karar desteği · Uçuş öncesi resmî bilgileri kontrol edin.
     </span>
   </footer>
 
@@ -1280,9 +1275,13 @@
       if (cachedHudColors) return cachedHudColors;
       const rootStyles = getComputedStyle(document.documentElement);
       cachedHudColors = {
-        safe: rootStyles.getPropertyValue('--hud-green').trim() || '#00ff88',
-        caution: rootStyles.getPropertyValue('--hud-amber').trim() || '#ffb800',
-        danger: rootStyles.getPropertyValue('--hud-red').trim() || '#ff3d57',
+        safe: rootStyles.getPropertyValue('--hud-green').trim() || '#a6d7bd',
+        caution: rootStyles.getPropertyValue('--hud-amber').trim() || '#c5cdd6',
+        danger: rootStyles.getPropertyValue('--hud-red').trim() || '#e5a5a5',
+        border: rootStyles.getPropertyValue('--line').trim() || '#333b45',
+        surface: rootStyles.getPropertyValue('--hud-panel').trim() || '#1b2026',
+        muted: rootStyles.getPropertyValue('--muted').trim() || '#a0aab6',
+        accent: rootStyles.getPropertyValue('--hud-cyan').trim() || '#b6c6d8',
       };
       return cachedHudColors;
     }
@@ -1290,25 +1289,19 @@
     const PRECIP_LABELS = { 0: 'Yok', 1: 'Hafif', 2: 'Orta/Şiddetli' };
     const DECISION_CONFIG = {
       'UYGUN': {
-        label: '✦ UÇUŞA UYGUN',
-        banner: 'border border-green-400/40 text-green-300 shadow-[0_0_24px_rgba(0,255,136,0.25)]',
-        background: 'radial-gradient(ellipse at center, rgba(0,255,136,0.07) 0%, transparent 70%), rgba(10, 17, 35, 0.72)',
-        glow: 'rgba(0, 255, 136, 0.28)',
-        pulse: false,
+        label: 'Uçuşa uygun',
+        title: 'Koşullar uçuş için uygun',
+        tone: 'safe',
       },
       'RISKLI': {
-        label: '⚠ DİKKAT — KOŞULLARI GÖZDEN GEÇİRİN',
-        banner: 'border border-amber-400/45 text-amber-300 shadow-[0_0_24px_rgba(255,184,0,0.24)]',
-        background: 'radial-gradient(ellipse at center, rgba(255,184,0,0.07) 0%, transparent 70%), rgba(10, 17, 35, 0.72)',
-        glow: 'rgba(255, 184, 0, 0.26)',
-        pulse: false,
+        label: 'Riskli · Koşulları gözden geçirin',
+        title: 'Uçuş öncesi koşulları değerlendirin',
+        tone: 'caution',
       },
       'UYGUN_DEGIL': {
-        label: '✕ UÇUŞA UYGUN DEĞİL',
-        banner: 'border border-red-400/45 text-red-300 shadow-[0_0_26px_rgba(255,61,87,0.32)]',
-        background: 'radial-gradient(ellipse at center, rgba(255,61,87,0.07) 0%, transparent 70%), rgba(10, 17, 35, 0.72)',
-        glow: 'rgba(255, 61, 87, 0.28)',
-        pulse: true,
+        label: 'Uçuşa uygun değil',
+        title: 'Mevcut koşullarda uçuş önerilmiyor',
+        tone: 'danger',
       },
     };
     const PARAM_DECISION_BADGE = {
@@ -1343,9 +1336,9 @@
 
     function getAqiMeta(score) {
       if (score == null) return null;
-      if (score > 150) return { label: 'HAVA KALİTESİ: KÖTÜ', className: 'aqi-bad' };
-      if (score > 100) return { label: 'HAVA KALİTESİ: ORTA', className: 'aqi-mid' };
-      return { label: 'HAVA KALİTESİ: İYİ', className: 'aqi-good' };
+      if (score > 150) return { label: 'Hava kalitesi: Kötü', className: 'aqi-bad' };
+      if (score > 100) return { label: 'Hava kalitesi: Orta', className: 'aqi-mid' };
+      return { label: 'Hava kalitesi: İyi', className: 'aqi-good' };
     }
 
     function renderAqiBadge(data) {
@@ -1431,7 +1424,7 @@
       saveFavorites(favorites);
       renderFavorites();
       const btn = document.getElementById('favoriteBtn');
-      btn.textContent = '★ FAVORİLERE KAYDEDİLDİ';
+      btn.innerHTML = uiIcon('check') + ' Favorilere kaydedildi';
     }
 
     function applyFavorite(index) {
@@ -1448,7 +1441,7 @@
         return;
       }
       const exists = loadFavorites().some(item => item.name === currentReportData.location);
-      btn.textContent = exists ? '★ FAVORİLERDE' : '☆ FAVORİYE EKLE';
+      btn.innerHTML = uiIcon(exists ? 'check' : 'star') + (exists ? ' Favorilerde' : ' Favoriye ekle');
       btn.classList.remove('hidden');
     }
 
@@ -1526,86 +1519,189 @@
       }
     }
 
+    let forecastRequestVersion = 0;
+    let planRequestVersion = 0;
+
+    function renderHourlyCards(container, hours, label) {
+      container.replaceChildren();
+      hours.forEach(hour => {
+        const card = document.createElement('div');
+        card.className = `rounded-md border ${getDecisionTone(hour.decision)} px-3 py-3 min-w-0`;
+        const title = document.createElement('p');
+        title.className = 'mono text-xs font-semibold';
+        title.textContent = `${label(hour)} · ${formatDecisionLabel(hour.decision)}${hour.is_past ? ' (Geçmiş)' : ''}`;
+        const values = document.createElement('p');
+        values.className = 'text-xs mt-2 leading-relaxed';
+        values.textContent = `Rüzgâr ${hour.wind_kt.toFixed(1)} kt · ${hour.temperature_c.toFixed(1)} °C · Görüş ${hour.visibility_km.toFixed(1)} km · Nem %${hour.humidity_pct.toFixed(0)} · Yağış ${PRECIP_LABELS[hour.precipitation_level]} · Bulutluluk ${hour.cloud_cover_pct == null ? 'N/A' : '%' + hour.cloud_cover_pct.toFixed(1)}`;
+        const details = document.createElement('details');
+        details.className = 'text-xs mt-2';
+        const summary = document.createElement('summary');
+        summary.className = 'cursor-pointer';
+        summary.textContent = 'Karar gerekçesi';
+        const explanation = document.createElement('p');
+        explanation.className = 'whitespace-pre-line mt-2';
+        explanation.textContent = plainAnalysisText(hour.detail);
+        details.append(summary, explanation);
+        card.append(title, values, details);
+        container.appendChild(card);
+      });
+    }
+
+    function utcForecastLabel(hour) {
+      return new Date(hour.time).toLocaleString('tr-TR', {
+        timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+      }) + ' UTC';
+    }
+
+    function renderFlightPlanTimeline(container, data, startHour, endHour) {
+      container.replaceChildren();
+      const strip = document.createElement('div');
+      strip.className = 'plan-hour-strip';
+      strip.setAttribute('role', 'group');
+      strip.setAttribute('aria-label', 'Saatlik uçuş koşulları · UTC');
+      const detail = document.createElement('div');
+      detail.className = 'plan-hour-detail';
+      const hours = new Map(data.hours.map(hour => [hour.hour, hour]));
+      const preferred = data.best_window?.start_hour ?? data.hours.find(hour => !hour.is_past)?.hour ?? data.hours[0]?.hour;
+      function selectHour(hour, button) {
+        strip.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        renderHourlyCards(detail, [hour], utcForecastLabel);
+        detail.querySelector('details').open = true;
+      }
+      for (let index = startHour; index <= endHour; index++) {
+        const hour = hours.get(index);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'plan-hour';
+        const time = document.createElement('strong');
+        time.textContent = String(index).padStart(2, '0') + ':00';
+        const state = document.createElement('span');
+        state.textContent = hour ? formatDecisionLabel(hour.decision) : 'Veri yok';
+        button.append(time, state);
+        if (hour) {
+          button.dataset.tone = getDecisionToneName(hour.decision);
+          button.setAttribute('aria-pressed', 'false');
+          if (hour.is_past) {
+            const past = document.createElement('small');
+            past.textContent = 'Geçmiş';
+            button.appendChild(past);
+          } else if (data.best_window && index >= data.best_window.start_hour && index <= data.best_window.end_hour) {
+            const windowLabel = document.createElement('small');
+            windowLabel.textContent = 'Uygun pencere';
+            button.appendChild(windowLabel);
+          }
+          button.addEventListener('click', () => selectHour(hour, button));
+        } else {
+          button.disabled = true;
+        }
+        strip.appendChild(button);
+        if (index === preferred && hour) selectHour(hour, button);
+      }
+      container.append(strip, detail);
+    }
+
+    function getDecisionToneName(decision) {
+      return { UYGUN: 'safe', RISKLI: 'caution', UYGUN_DEGIL: 'danger' }[decision] || 'unknown';
+    }
+
     async function fetchForecastChange() {
       if (currentReportId == null) return;
+      const reportId = currentReportId;
+      const version = ++forecastRequestVersion;
       const section = document.getElementById('forecastSection');
       const timeline = document.getElementById('forecastTimeline');
+      const status = document.getElementById('forecastStatus');
       timeline.innerHTML = '';
+      section.classList.remove('hidden');
+      status.textContent = 'Saatlik tahmin yükleniyor…';
       try {
-        const response = await fetch(`/api/v1/weather/report/${currentReportId}/forecast-change`, { method: 'POST' });
+        const response = await fetch(`/api/v1/weather/report/${reportId}/forecast-change`, { method: 'POST' });
         const data = await response.json();
+        if (version !== forecastRequestVersion || reportId !== currentReportId) return;
         if (!response.ok) throw new Error(data.detail || 'Tahmin alınamadı.');
-        timeline.innerHTML = data.hours.map(item => {
-          const color = item.decision === 'UYGUN' ? '#00ff88' : item.decision === 'RISKLI' ? '#ffb800' : '#ff3d57';
-          return `
-            <div class="rounded-md border border-cyan-400/15 bg-slate-950/40 p-3 text-center">
-              <p class="mono text-[11px] text-cyan-100/60">+${item.offset} SAAT</p>
-              <div class="timeline-dot mx-auto my-2" style="background:${color}; color:${color};"></div>
-              <p class="mono text-sm text-cyan-100">${item.wind_kt.toFixed(1)} kt</p>
-            </div>`;
-        }).join('');
-        section.classList.remove('hidden');
-      } catch (_) {
-        section.classList.add('hidden');
+        renderHourlyCards(timeline, data.hours, utcForecastLabel);
+        status.textContent = data.missing_offsets.length
+          ? `Eksik tahmin: +${data.missing_offsets.join(', +')} saat. Eksik saatler uygun sayılmaz.`
+          : 'Open-Meteo saatlik tahmini; rapor limitleri kullanılır. Varsa AQI kontrolü kaydedilen rapora aittir, saatlik AQI tahmini değildir.';
+      } catch (error) {
+        if (version !== forecastRequestVersion || reportId !== currentReportId) return;
+        status.textContent = error.message || 'Saatlik tahmin alınamadı.';
       }
     }
 
     async function fetchNotam() {
       if (!currentReportData) return;
+      const report = currentReportData;
       try {
-        const response = await fetch(`/api/v1/weather/notam?lat=${currentReportData.lat}&lon=${currentReportData.lon}`);
+        const response = await fetch(`/api/v1/weather/notam?lat=${report.lat}&lon=${report.lon}`);
         const data = await response.json();
+        if (report !== currentReportData) return;
         if (!response.ok) throw new Error();
         document.getElementById('notamDisclaimer').textContent = data.disclaimer || '';
         document.getElementById('notamSection').classList.remove('hidden');
       } catch (_) {
+        if (report !== currentReportData) return;
         document.getElementById('notamSection').classList.add('hidden');
       }
     }
 
     async function fetchFlightPlan() {
       if (!currentReportData) return;
+      const report = currentReportData;
+      const version = ++planRequestVersion;
       const timeline = document.getElementById('flightPlanTimeline');
       const best = document.getElementById('flightPlanBest');
+      const status = document.getElementById('flightPlanStatus');
       timeline.innerHTML = '';
       best.textContent = '';
+      const startHour = Number(document.getElementById('flightPlanStart').value);
+      const endHour = Number(document.getElementById('flightPlanEnd').value);
+      if (endHour < startHour) {
+        status.textContent = 'Son saat ilk saatten küçük olamaz.';
+        return;
+      }
+      status.textContent = 'Uçuş planı yükleniyor…';
       try {
         const response = await fetch('/api/v1/weather/flight-plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            lat: currentReportData.lat,
-            lon: currentReportData.lon,
+            lat: report.lat,
+            lon: report.lon,
+            limits: report.applied_limits || null,
             date_offset: parseInt(document.getElementById('flightPlanDate').value, 10),
-            start_hour: parseInt(document.getElementById('flightPlanStart').value, 10),
-            end_hour: parseInt(document.getElementById('flightPlanEnd').value, 10),
+            start_hour: startHour,
+            end_hour: endHour,
           }),
         });
         const data = await response.json();
+        if (version !== planRequestVersion || report !== currentReportData) return;
         if (!response.ok) throw new Error(data.detail || 'Plan verisi alınamadı.');
-        timeline.innerHTML = data.hours.map(hour => `
-          <div class="rounded-md border ${getDecisionTone(hour.decision)} px-3 py-3 text-center">
-            <p class="mono text-[11px]">${String(hour.hour).padStart(2, '0')}:00</p>
-            <p class="mono text-sm mt-2">${hour.wind_kt.toFixed(1)} kt</p>
-            <p class="text-[11px] mt-1">${hour.decision.replaceAll('_', ' ')}</p>
-          </div>`).join('');
+        renderFlightPlanTimeline(timeline, data, startHour, endHour);
+        status.textContent = `${data.date} · UTC · ${data.hours.length} saat değerlendirildi. Ayrıntılar için bir saat seçin.` +
+          (data.missing_hours.length ? ` Veri yok: ${data.missing_hours.map(h => String(h).padStart(2, '0') + ':00').join(', ')}. Eksik saatler uygun sayılmaz.` : '');
         if (data.best_window) {
-          best.textContent = `En iyi pencere: ${String(data.best_window.start_hour).padStart(2, '0')}:00 – ${String(data.best_window.end_hour).padStart(2, '0')}:00`;
+          best.textContent = `Kesintisiz uygun pencere: ${String(data.best_window.start_hour).padStart(2, '0')}:00 – ${String(data.best_window.end_hour + 1).padStart(2, '0')}:00 UTC (${data.best_window.length} saat). Yalnızca hava koşulları değerlendirmesidir.`;
+        } else {
+          best.textContent = 'Seçilen aralıkta geçmiş olmayan, uygun bir saat penceresi bulunamadı.';
         }
       } catch (error) {
-        best.textContent = error.message || 'Plan üretilemedi.';
+        if (version !== planRequestVersion || report !== currentReportData) return;
+        status.textContent = error.message || 'Plan üretilemedi.';
       }
     }
 
     async function fetchSeasonal() {
       if (!currentReportData) return;
+      const report = currentReportData;
       try {
         const response = await fetch('/api/v1/weather/seasonal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat: currentReportData.lat, lon: currentReportData.lon }),
+          body: JSON.stringify({ lat: report.lat, lon: report.lon }),
         });
         const data = await response.json();
+        if (report !== currentReportData) return;
         if (!response.ok) throw new Error();
         document.getElementById('seasonalHeatmap').innerHTML = data.months.map(month => `
           <div class="month-tile rounded-md border border-cyan-400/15 p-3 ${getDecisionTone(month.decision)}">
@@ -1615,12 +1711,13 @@
           </div>`).join('');
         document.getElementById('seasonalSection').classList.remove('hidden');
       } catch (_) {
+        if (report !== currentReportData) return;
         document.getElementById('seasonalSection').classList.add('hidden');
       }
     }
 
     function timeAgo(value) {
-      const diffMs = Date.now() - new Date(value).getTime();
+      const diffMs = Date.now() - reportTimestamp(value).getTime();
       const minutes = Math.max(1, Math.round(diffMs / 60000));
       if (minutes < 60) return `${minutes} dk önce`;
       const hours = Math.round(minutes / 60);
@@ -1628,36 +1725,227 @@
       return `${Math.round(hours / 24)} gün önce`;
     }
 
-    async function fetchHistory() {
+    function reportTimestamp(value) {
+      // SQLite returns the stored UTC timestamp without an offset.
+      return new Date(/(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : value + 'Z');
+    }
+
+    let historyLoadVersion = 0;
+    let historyListVersion = 0;
+    let reportCompareVersion = 0;
+
+    async function openSavedReport(reportId) {
+      const version = ++historyLoadVersion;
+      const status = document.getElementById('historyStatus');
+      status.textContent = 'Kayıtlı rapor açılıyor…';
       try {
-        const response = await fetch('/api/v1/weather/history?limit=30');
+        const response = await fetch(`/api/v1/weather/report/${reportId}`);
         const data = await response.json();
-        if (!response.ok) throw new Error();
+        if (version !== historyLoadVersion) return;
+        if (!response.ok) throw new Error(data.detail || 'Kayıtlı rapor alınamadı.');
+        renderResult(data);
+        show('resultSection');
+        switchTab('point');
+        document.getElementById('decisionBanner').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        status.textContent = 'Kayıtlı rapor açıldı; yeniden analiz yapılmadı.';
+      } catch (error) {
+        if (version !== historyLoadVersion) return;
+        status.textContent = error.message || 'Kayıtlı rapor alınamadı.';
+      }
+    }
+
+    async function fetchHistory() {
+      const section = document.getElementById('historySection');
+      const status = document.getElementById('historyStatus');
+      const version = ++historyListVersion;
+      const location = document.getElementById('historyLocation').value.trim();
+      const start = document.getElementById('historyStartDate').value;
+      const end = document.getElementById('historyEndDate').value;
+      if (start && end && end < start) {
+        status.textContent = 'Son tarih ilk tarihten önce olamaz.';
+        return;
+      }
+      status.textContent = 'Geçmiş yükleniyor…';
+      ++reportCompareVersion;
+      document.getElementById('reportComparison').replaceChildren();
+      document.getElementById('reportCompareStatus').textContent = '';
+      document.getElementById('compareReportsBtn').disabled = true;
+      document.getElementById('historyChart').replaceChildren();
+      document.getElementById('historyList').replaceChildren();
+      const query = new URLSearchParams({ limit: '100' });
+      if (location) query.set('location', location);
+      if (start) query.set('start_date', start);
+      if (end) query.set('end_date', end);
+      try {
+        const response = await fetch('/api/v1/weather/history?' + query);
+        const data = await response.json();
+        if (version !== historyListVersion) return;
+        if (!response.ok) throw new Error(data.detail || 'Rapor geçmişi alınamadı.');
+        ++reportCompareVersion;
+        document.getElementById('reportComparison').replaceChildren();
+        document.getElementById('reportCompareStatus').textContent = '';
+        for (const id of ['compareReportA', 'compareReportB']) {
+          const select = document.getElementById(id);
+          const selected = select.value;
+          select.replaceChildren(new Option('Rapor seçin', ''));
+          data.reports.forEach(report => select.add(new Option(
+            `#${report.report_id} · ${report.location} · ${reportTimestamp(report.created_at).toLocaleString('tr-TR', { timeZone: 'UTC' })} UTC`,
+            String(report.report_id),
+          )));
+          if (data.reports.some(report => String(report.report_id) === selected)) select.value = selected;
+        }
         const chart = document.getElementById('historyChart');
         const list = document.getElementById('historyList');
-        chart.innerHTML = data.reports.map(report => {
+        chart.replaceChildren();
+        data.reports.forEach(report => {
           const height = Math.max(18, report.confidence_score);
-          const bg = report.decision === 'UYGUN' ? '#00ff88' : report.decision === 'RISKLI' ? '#ffb800' : '#ff3d57';
-          return `<div class="history-bar" style="height:${height}px; background:${bg};" title="${report.location} — ${report.decision}"></div>`;
-        }).join('');
-        list.innerHTML = data.reports.map(report => `
-          <div class="rounded-md border border-cyan-400/15 bg-slate-950/40 px-3 py-3 flex items-center justify-between gap-3">
-            <div>
-              <p class="mono text-xs text-cyan-100">${report.location}</p>
-              <p class="text-[11px] text-cyan-100/55 mt-1">${timeAgo(report.created_at)}</p>
-            </div>
-            <span class="mono text-[10px] rounded-full border px-2 py-1 ${getDecisionTone(report.decision)}">${report.decision.replaceAll('_', ' ')}</span>
-          </div>`).join('');
-        document.getElementById('historySection').classList.remove('hidden');
-      } catch (_) {
-        document.getElementById('historySection').classList.add('hidden');
+          const colors = getHudColors();
+          const bg = report.decision === 'UYGUN' ? colors.safe : report.decision === 'RISKLI' ? colors.caution : colors.danger;
+          const bar = document.createElement('div');
+          bar.className = 'history-bar';
+          bar.style.height = height + 'px';
+          bar.style.background = bg;
+          bar.title = `${report.location} — ${formatDecisionLabel(report.decision)}`;
+          chart.appendChild(bar);
+        });
+        list.replaceChildren();
+        data.reports.forEach(report => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `w-full text-left rounded-md border ${getDecisionTone(report.decision)} bg-slate-950/40 px-3 py-3`;
+          button.textContent = `${report.location} · ${formatDecisionLabel(report.decision)} · ${timeAgo(report.created_at)} · Kayıtlı raporu aç`;
+          button.addEventListener('click', () => openSavedReport(report.report_id));
+          list.appendChild(button);
+        });
+        section.classList.remove('hidden');
+        document.getElementById('compareReportsBtn').disabled = data.reports.length < 2;
+        status.textContent = data.reports.length
+          ? `${data.reports.length} kayıt gösteriliyor${data.reports.length === 100 ? ' (en fazla 100; aramayı tarih veya konumla daraltın)' : ''}. Tarihler UTC.`
+          : 'Bu filtrelere uyan kayıtlı rapor yok.';
+      } catch (error) {
+        if (version !== historyListVersion) return;
+        section.classList.remove('hidden');
+        status.textContent = error.message || 'Rapor geçmişi alınamadı.';
       }
+    }
+
+    async function compareSavedReports() {
+      const version = ++reportCompareVersion;
+      const a = document.getElementById('compareReportA').value;
+      const b = document.getElementById('compareReportB').value;
+      const status = document.getElementById('reportCompareStatus');
+      const container = document.getElementById('reportComparison');
+      container.replaceChildren();
+      if (!a || !b || a === b) {
+        status.textContent = 'Karşılaştırmak için iki farklı rapor seçin.';
+        return;
+      }
+      status.textContent = 'Kayıtlı raporlar yükleniyor…';
+      try {
+        const reports = await Promise.all([a, b].map(async id => {
+          const response = await fetch(`/api/v1/weather/report/${id}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || 'Rapor karşılaştırması alınamadı.');
+          return data;
+        }));
+        if (version !== reportCompareVersion) return;
+        renderReportComparison(container, reports);
+        status.textContent = 'Kayıtlı değerler karşılaştırılıyor; yeni hava sorgusu veya AI değerlendirmesi yapılmadı.';
+      } catch (error) {
+        if (version !== reportCompareVersion) return;
+        status.textContent = error.message || 'Raporlar karşılaştırılamadı.';
+      }
+    }
+
+    function renderReportComparison(container, reports) {
+      const table = document.createElement('table');
+      table.className = 'report-comparison-table w-full text-xs';
+      function row(label, values, heading = false) {
+        const tr = document.createElement('tr');
+        const name = document.createElement('th');
+        name.scope = 'row';
+        name.textContent = label;
+        tr.appendChild(name);
+        values.forEach(value => {
+          const cell = document.createElement(heading ? 'th' : 'td');
+          if (heading) cell.scope = 'col';
+          cell.textContent = value;
+          tr.appendChild(cell);
+        });
+        table.appendChild(tr);
+      }
+      row('Kayıtlı rapor', reports.map(report => `#${report.report_id} · ${report.location}`), true);
+      row('Rapor zamanı (UTC)', reports.map(report => reportTimestamp(report.created_at).toLocaleString('tr-TR', { timeZone: 'UTC' })));
+      row('Nihai karar', reports.map(report => formatDecisionLabel(report.decision)));
+      row('Açıklama', reports.map(report => plainAnalysisText(report.decision_detail)));
+      row('Parametre kaydı', reports.map(report => report.parameter_snapshot_available
+        ? 'Oluşturulduğu haliyle kaydedildi' : 'Özgün parametre kaydı yok; kayıtlı kaynaklardan yeniden hesaplandı'));
+      const names = [...new Set(reports.flatMap(report => report.parameters.map(parameter => parameter.name)))];
+      names.forEach(name => row(name, reports.map(report => {
+        const parameter = report.parameters.find(item => item.name === name);
+        return parameter ? `${parameter.value} · ${formatDecisionLabel(parameter.decision)}\n${parameter.explanation || ''}` : 'Kaydedilmemiş';
+      })));
+      row('Güven endeksi', reports.map(report => `%${report.confidence ?? report.confidence_score}`));
+      row('Kaynak durumu', reports.map(report => sourceSummaryText(report)));
+      row('Uygulanan limitler', reports.map(report => formatSavedLimits(report.applied_limits)));
+      container.replaceChildren(table);
+    }
+
+    function formatSavedLimits(limits) {
+      if (!limits) return 'Limit kaydı yok; dönem limitleri bilinmiyor';
+      return [
+        `Rüzgâr (uygun/riskli üst sınır): ${limits.wind_ok_max_knots} / ${limits.wind_risky_max_knots} kt`,
+        `Görüş (uygun/riskli alt sınır): ${limits.visibility_ok_min_km} / ${limits.visibility_risky_min_km} km`,
+        `Bulut tabanı (uygun/riskli alt sınır): ${limits.cloud_base_ok_min_ft} / ${limits.cloud_base_risky_min_ft} ft`,
+        `Bulut tavanı (uygun/riskli alt sınır): ${limits.cloud_ceiling_ok_min_ft} / ${limits.cloud_ceiling_risky_min_ft} ft`,
+        `Nem (uygun/riskli üst sınır): %${limits.humidity_ok_max_pct} / %${limits.humidity_risky_max_pct}`,
+        `Bulutluluk (uygun üst sınır): %${limits.cloud_cover_ok_max_pct}`,
+        `Sıcaklık (uygun): ${limits.temp_ok_min_c}–${limits.temp_ok_max_c} °C`,
+        `Sıcaklık (riskli): ${limits.temp_risky_min_override_c ?? limits.temp_ok_min_c - 5}–${limits.temp_risky_max_override_c ?? limits.temp_ok_max_c + 5} °C`,
+      ].join('\n');
+    }
+
+    function sourceSummaryText(report) {
+      const sources = report.sources;
+      const current = sources.filter(source => source.freshness === 'current').length;
+      const stale = sources.filter(source => source.freshness === 'stale').length;
+      const unknown = sources.length - current - stale;
+      const parts = [`${current} güncel · ${stale} eski · ${unknown} güncelliği bilinmeyen`];
+      if (report.source_checks) {
+        const missing = report.source_checks.filter(check => check.status === 'no_data').length;
+        const unconfigured = report.source_checks.filter(check => check.status === 'not_configured').length;
+        parts.push(`${missing} sorgu sonuçsuz · ${unconfigured} yapılandırılmamış`);
+      } else {
+        parts.push('Alınamayan kaynakların sorgu kaydı yok');
+      }
+      return parts.join('. ');
+    }
+
+    document.getElementById('sourceSummaryLink').addEventListener('click', () => {
+      document.getElementById('sourceDetails').open = true;
+    });
+
+    document.getElementById('historyFilters').addEventListener('submit', event => {
+      event.preventDefault();
+      fetchHistory();
+    });
+    document.getElementById('historyReset').addEventListener('click', () => {
+      document.getElementById('historyFilters').reset();
+      fetchHistory();
+    });
+    document.getElementById('compareReportsBtn').addEventListener('click', compareSavedReports);
+    for (const id of ['compareReportA', 'compareReportB']) {
+      document.getElementById(id).addEventListener('change', () => {
+        ++reportCompareVersion;
+        document.getElementById('reportComparison').replaceChildren();
+        document.getElementById('reportCompareStatus').textContent = '';
+      });
     }
 
     function toggleRegionCompare() {
       compareMode = !compareMode;
       document.getElementById('regionCompareSection').classList.toggle('hidden', !compareMode);
-      document.getElementById('compareRegionBtn').textContent = compareMode ? '[ KARŞILAŞTIRMAYI GİZLE ]' : '[ KARŞILAŞTIR ]';
+      document.getElementById('compareRegionBtn').textContent = compareMode ? 'Karşılaştırmayı gizle' : 'Karşılaştır';
     }
 
     function captureCurrentRegion(slot) {
@@ -1914,6 +2202,7 @@
       }
 
       hide('errorSection');
+      const version = ++historyLoadVersion;
       hide('resultSection');
       hide('loadingSection');
       show('loadingSection');
@@ -1936,12 +2225,14 @@
         });
 
         const data = await res.json();
+        if (version !== historyLoadVersion) return;
         if (!res.ok) {
           throw new Error(data.detail || 'Bilinmeyen hata oluştu.');
         }
 
         renderResult(data);
       } catch (err) {
+        if (version !== historyLoadVersion) return;
         hide('loadingSection');
         console.error('Rapor oluşturma hatası:', err);
         const baseErrorMessage =
@@ -1963,6 +2254,8 @@
     function renderResult(data) {
       currentReportId = data.report_id;
       currentReportData = data;
+      ++forecastRequestVersion;
+      ++planRequestVersion;
       clearAirportSelection();
       document.getElementById('pointLocationContext').textContent =
         `Analiz noktası: ${data.location} (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)}) · Open-Meteo profili bu noktaya aittir.`;
@@ -1979,41 +2272,81 @@
 
       const cfg = DECISION_CONFIG[data.decision] || DECISION_CONFIG['RISKLI'];
       const banner = document.getElementById('decisionBanner');
-      const bannerGlow = document.getElementById('decisionGlow');
-      banner.className = `hud-card decision-banner p-6 text-center decision-animate ${cfg.banner}`;
-      banner.style.background = cfg.background;
-      bannerGlow.style.background = cfg.glow;
-      if (cfg.pulse) {
-        banner.classList.add('decision-danger-blink');
-      }
-
-      document.getElementById('decisionText').textContent = cfg.label;
-      document.getElementById('locationLabel').textContent = `KONUM: ${data.location}  (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
+      banner.dataset.tone = cfg.tone;
+      document.getElementById('decisionStatus').textContent = formatDecisionLabel(data.decision);
+      document.getElementById('decisionText').textContent = cfg.title;
+      document.getElementById('locationLabel').textContent = `Konum: ${data.location} (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
       document.getElementById('createdAt').textContent =
-        'RAPOR ZAMANI: ' + new Date(data.created_at).toLocaleString('tr-TR');
+        'Rapor zamanı: ' + reportTimestamp(data.created_at).toLocaleString('tr-TR');
+      const savedNotice = document.getElementById('savedReportNotice');
+      savedNotice.classList.toggle('hidden', !data.is_saved_report);
+      savedNotice.textContent = data.parameter_snapshot_available
+        ? 'Kayıtlı rapor: karar, parametreler ve limitler oluşturulduğu haliyle gösteriliyor. Güncel hava analizi değildir.'
+        : 'Eski rapor: nihai karar ve açıklama korundu. Parametre anlık kaydı yok; tablo kayıtlı kaynaklardan yeniden hesaplandı. Limit kaydı yoksa dönem limitleri bilinmiyor.';
       renderAqiBadge(data);
       updateFavoriteButton();
 
-      document.getElementById('decisionDetail').textContent = data.decision_detail;
+      document.getElementById('decisionDetail').textContent = plainAnalysisText(data.decision_detail);
+      const parameterValues = new Map(data.parameters.map(p => [p.name, p.value]));
+      for (const [id, name] of [
+        ['metricWind', 'Rüzgar hızı'], ['metricVisibility', 'Görüş mesafesi'],
+        ['metricTemperature', 'Sıcaklık'], ['metricCloudCover', 'Bulutluluk'],
+        ['snapshotPrecipitation', 'Yağış'], ['snapshotHumidity', 'Nem'],
+        ['snapshotCloudBase', 'Bulut tabanı'],
+      ]) {
+        document.getElementById(id).textContent = parameterValues.get(name) || 'N/A';
+      }
+      document.getElementById('snapshotSources').textContent = `${data.sources.length} kaynak`;
+      const severity = { UYGUN: 0, RISKLI: 1, UYGUN_DEGIL: 2 };
+      const ruleScore = Math.max(...data.parameters.map(p => severity[p.decision]));
+      const ruleDecision = Object.keys(severity).find(key => severity[key] === ruleScore);
+      document.getElementById('ruleDecisionNotice').textContent =
+        (data.is_saved_report && !data.parameter_snapshot_available)
+          ? 'Eski raporun özgün kural değerlendirmesi kaydedilmemiştir. Aşağıdaki hesaplanmış parametreler kayıtlı nihai kararın yerine geçmez.'
+          : `Kural sonucu: ${formatDecisionLabel(ruleDecision)}. ` +
+        (severity[data.decision] > ruleScore
+          ? 'AI, kural sonucunu daha ihtiyatlı hale getirdi.'
+          : 'Nihai karar kural sonucuyla aynı seviyede; AI bu sınırı hafifletemez.');
+      const reasons = document.getElementById('decisionReasons');
+      reasons.replaceChildren();
+      const decisive = data.parameters.filter(p => p.decision !== 'UYGUN');
+      if (!decisive.length) {
+        const item = document.createElement('li');
+        item.textContent = 'Değerlendirilen parametrelerde riskli veya uygun olmayan sınır aşımı yok.';
+        reasons.appendChild(item);
+      }
+      decisive.forEach(p => {
+        const item = document.createElement('li');
+        item.textContent = `${p.name}: ${p.value} → ${formatDecisionLabel(p.decision)}. ${p.explanation || ''}` +
+          (severity[p.decision] === ruleScore ? ' Kural sonucunu belirleyen en yüksek risk seviyesi.' : '');
+        reasons.appendChild(item);
+      });
 
       // Load nearby runways in background (non-blocking)
-      loadNearbyRunways(data.lat, data.lon);
-      loadPointAirgram();
-      // Load wind data in background (non-blocking)
-      loadWindData(data.lat, data.lon);
+      if (!data.is_saved_report) {
+        loadNearbyRunways(data.lat, data.lon);
+        loadPointAirgram();
+        loadWindData(data.lat, data.lon);
+      } else {
+        pointAirgramController?.abort();
+        document.getElementById('pointAirgramChart').replaceChildren();
+        document.getElementById('pointAirgramStatus').textContent = 'Bu eski raporun irtifa profili kaydedilmedi. Yenile düğmesi güncel profil getirir; rapor kararını değiştirmez.';
+        document.getElementById('windyAirgramLink').classList.add('hidden');
+      }
 
       // Use AI confidence when available, otherwise fall back to score
       const conf = (data.confidence != null)
         ? data.confidence
         : (Number.isFinite(data.confidence_score) ? data.confidence_score : computeConfidence(data.parameters));
       document.getElementById('confidenceLabel').textContent = `UÇUŞ GÜVEN ENDEKSİ: ${conf}%`;
+      document.getElementById('snapshotConfidence').textContent = `%${conf}`;
       animateConfidence(conf);
       renderParameterWeights(data.parameter_weights);
 
       // Wind trend badge
       const windTrendBadge = document.getElementById('windTrendBadge');
       if (data.wind_trend) {
-        windTrendBadge.textContent = '📈 ' + data.wind_trend;
+        windTrendBadge.textContent = data.wind_trend;
         windTrendBadge.classList.remove('hidden');
       } else {
         windTrendBadge.classList.add('hidden');
@@ -2021,10 +2354,10 @@
 
       // AI summary card
       if (data.summary) {
-        document.getElementById('aiSummaryText').textContent = data.summary;
+        document.getElementById('aiSummaryText').textContent = plainAnalysisText(data.summary);
         const detailWrap = document.getElementById('aiDetailWrap');
         if (data.detailed_analysis) {
-          document.getElementById('aiDetailText').textContent = data.detailed_analysis;
+          document.getElementById('aiDetailText').textContent = plainAnalysisText(data.detailed_analysis);
           detailWrap.classList.remove('hidden');
         } else {
           detailWrap.classList.add('hidden');
@@ -2072,7 +2405,9 @@
       const paramTbody = document.getElementById('parametersTable');
       paramTbody.innerHTML = data.parameters.map(p => `
         <tr class="table-row border-b border-cyan-400/15 ${getParameterRowClass(p.decision)}">
-          <td class="py-2.5 pl-3 text-cyan-100/85 font-semibold">${p.name}</td>
+          <td class="py-2.5 pl-3 text-cyan-100/85 font-semibold">${p.name}
+            <p class="text-[11px] font-normal text-cyan-100/60 mt-1">${p.explanation || ''}</p>
+          </td>
           <td class="py-2.5 text-cyan-100/70">
             <span class="value-badge ${getDecisionTone(p.decision)}" aria-label="Parametre durumu: ${formatDecisionLabel(p.decision)}">
               <span class="value-dot" aria-hidden="true"></span>
@@ -2084,6 +2419,23 @@
         </tr>`).join('');
 
       const srcContainer = document.getElementById('sourcesTable');
+      const sourceSummary = sourceSummaryText(data);
+      document.getElementById('sourceTimingOverview').textContent =
+        `${data.is_saved_report ? 'Rapor oluşturulurken: ' : ''}${sourceSummary}`;
+      document.getElementById('reportSourceSummary').textContent = sourceSummary;
+      const checks = document.getElementById('reportSourceChecks');
+      checks.replaceChildren();
+      if (!data.source_checks) {
+        checks.textContent = 'Bu eski raporda kaynak sorgu durumları kaydedilmemiş. Alınamayan kaynaklar ve nedenleri bilinmiyor.';
+      } else {
+        data.source_checks.forEach(check => {
+          const item = document.createElement('p');
+          item.className = check.status === 'no_data' ? 'text-amber-300' : 'text-cyan-100/70';
+          const labels = {received:'Veri alındı', no_data:'Veri alınamadı', not_configured:'Yapılandırılmamış', outside_coverage:'Kapsama dışında'};
+          item.textContent = `${check.provider} · ${check.name}: ${labels[check.status] || check.status}. ${check.message}`;
+          checks.appendChild(item);
+        });
+      }
       const applied = data.applied_limits;
       document.getElementById('appliedLimitsNotice').textContent = applied
         ? `Rapor oluşturulurken kaydedilen limitler: Rüzgâr <${applied.wind_ok_max_knots} / ≤${applied.wind_risky_max_knots} kt · Görüş >${applied.visibility_ok_min_km} / ≥${applied.visibility_risky_min_km} km · Nem <${applied.humidity_ok_max_pct} / ≤${applied.humidity_risky_max_pct}% · Bulutluluk ≤${applied.cloud_cover_ok_max_pct}% · Bulut tabanı >${applied.cloud_base_ok_min_ft} / ≥${applied.cloud_base_risky_min_ft} ft · Tavan >${applied.cloud_ceiling_ok_min_ft} / ≥${applied.cloud_ceiling_risky_min_ft} ft · Sıcaklık ${applied.temp_ok_min_c}–${applied.temp_ok_max_c} °C (uygun / riskli eşikler).`
@@ -2091,18 +2443,18 @@
       srcContainer.innerHTML = data.sources.map(s => `
         <div class="source-card mono">
           <p class="text-[11px] text-amber-300 mb-2">${s.data_time ? new Date(s.data_time).toISOString() : 'Veri zamanı bilinmiyor'} · ${s.freshness_message || 'Güncellik bilinmiyor.'}</p>
-          <div class="flex items-center justify-between gap-3 mb-3">
-            <p class="text-cyan-300 font-bold">${formatSourceIcon(s.source)} ${formatSourceName(s.source)}</p>
-            <span class="text-[10px] text-cyan-100/55">GÜVENİLİRLİK ${formatReliabilityPercent(s.reliability_weight)}%</span>
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <p class="text-cyan-300 font-bold">${uiIcon('globe')} ${formatSourceName(s.source)}</p>
+            <span class="text-[10px] text-cyan-100/55">Güvenilirlik ${formatReliabilityPercent(s.reliability_weight)}%</span>
           </div>
           <div class="source-grid text-cyan-100/75">
-            <p>RÜZGAR: <span class="text-cyan-100">${s.wind_speed_knots.toFixed(1)} kt</span></p>
-            <p>GÖRÜŞ: <span class="text-cyan-100">${s.visibility_km.toFixed(1)} km</span></p>
-            <p>YAĞIŞ: <span class="text-cyan-100">${PRECIP_LABELS[s.precipitation_level] ?? s.precipitation_level}</span></p>
-            <p>SICAKLIK: <span class="text-cyan-100">${s.temperature_c.toFixed(1)} °C</span></p>
-            <p>NEM: <span class="text-cyan-100">${s.humidity_pct.toFixed(0)}%</span></p>
-            <p>BULUTLULUK: <span class="text-cyan-100">${s.cloud_cover_pct != null ? s.cloud_cover_pct.toFixed(1) + '%' : 'N/A'}</span></p>
-            <p>BULUT TABANI: <span class="text-cyan-100">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'} ft</span></p>
+            <p>Rüzgâr: <span class="text-cyan-100">${s.wind_speed_knots.toFixed(1)} kt</span></p>
+            <p>Görüş: <span class="text-cyan-100">${s.visibility_km.toFixed(1)} km</span></p>
+            <p>Yağış: <span class="text-cyan-100">${PRECIP_LABELS[s.precipitation_level] ?? s.precipitation_level}</span></p>
+            <p>Sıcaklık: <span class="text-cyan-100">${s.temperature_c.toFixed(1)} °C</span></p>
+            <p>Nem: <span class="text-cyan-100">${s.humidity_pct.toFixed(0)}%</span></p>
+            <p>Bulutluluk: <span class="text-cyan-100">${s.cloud_cover_pct != null ? s.cloud_cover_pct.toFixed(1) + '%' : 'N/A'}</span></p>
+            <p>Bulut tabanı: <span class="text-cyan-100">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'} ft</span></p>
           </div>
           <div class="mt-4">
             <div class="reliability-track">
@@ -2112,10 +2464,20 @@
         </div>`).join('');
 
       resetChat();
-      fetchForecastChange();
-      fetchNotam();
-      fetchFlightPlan();
-      fetchSeasonal();
+      if (!data.is_saved_report) {
+        fetchForecastChange();
+        fetchNotam();
+        fetchFlightPlan();
+        fetchSeasonal();
+      } else {
+        document.getElementById('forecastTimeline').replaceChildren();
+        document.getElementById('forecastSection').classList.add('hidden');
+        document.getElementById('flightPlanTimeline').replaceChildren();
+        document.getElementById('flightPlanBest').textContent = '';
+        document.getElementById('flightPlanStatus').textContent = 'Kayıtlı raporun saatlik planı yok. PLANLA güncel tahmini kayıtlı limitlerle değerlendirir; rapor kararını değiştirmez.';
+        document.getElementById('seasonalSection').classList.add('hidden');
+        document.getElementById('notamSection').classList.add('hidden');
+      }
       fetchHistory();
       show('resultSection');
       document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2150,18 +2512,12 @@
       return names[normalized] || src;
     }
 
-    function formatSourceIcon(src) {
-      const normalized = String(src || '').toLowerCase();
-      const icons = {
-        'open-meteo': '🌐',
-        'openweathermap': '🌍',
-        'weatherapi': '⚡',
-        'metar': '📡',
-        'metar (avwx)': '📡',
-        'mgm (türkiye)': '🇹🇷',
-        'windy': '💨',
-      };
-      return icons[normalized] || '◈';
+    function uiIcon(name) {
+      return `<svg class="ui-icon" aria-hidden="true"><use href="#icon-${name}"/></svg>`;
+    }
+
+    function plainAnalysisText(text) {
+      return text.replace(/[\u26a0\u2705\u274c]\ufe0f?\s*/g, '');
     }
 
     function formatReliabilityPercent(weight) {
@@ -2684,7 +3040,7 @@
             const cell = row.insertCell();
             cell.className = 'border border-cyan-400/20 p-2 whitespace-nowrap';
             const rh = level.humidity_pct[i];
-            if (rh != null) cell.style.backgroundColor = `rgba(34, 211, 238, ${Math.max(0, Math.min(rh, 100)) / 250})`;
+            if (rh != null) cell.style.backgroundColor = `rgba(147, 169, 193, ${Math.max(0, Math.min(rh, 100)) / 250})`;
             cell.textContent = `${fmt(level.height_m[i])} m | ${fmt(level.temperature_c[i])} °C | ${fmt(rh)}% | ${fmt(level.wind_knots[i])} kt / ${fmt(level.wind_direction_deg[i])}°`;
           });
         });
@@ -2760,7 +3116,7 @@
       const overall = document.getElementById('windComponentOverall');
       const cfg = { UYGUN: 'text-green-300', RISKLI: 'text-amber-300', UYGUN_DEGIL: 'text-red-300' };
       overall.className = `mono text-center text-sm mt-3 ${cfg[data.overall_component_decision]}`;
-      overall.textContent = `Bileşen Kararı: ${data.overall_component_decision === 'UYGUN' ? '✦ UYGUN' : data.overall_component_decision === 'RISKLI' ? '⚠ RİSKLİ' : '✕ UYGUN DEĞİL'}`;
+      overall.textContent = `Bileşen kararı: ${formatDecisionLabel(data.overall_component_decision)}`;
 
       drawWindRose(data, windDirDeg, runwayHdgDeg);
     }
@@ -2769,27 +3125,28 @@
       const canvas = document.getElementById('windRoseCanvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
+      const colors = getHudColors();
       const cx = 80, cy = 80, r = 60;
       ctx.clearRect(0, 0, 160, 160);
 
       // Background circle
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,212,255,0.2)';
+      ctx.strokeStyle = colors.border;
       ctx.lineWidth = 1;
       ctx.stroke();
-      ctx.fillStyle = 'rgba(0,212,255,0.04)';
+      ctx.fillStyle = colors.surface;
       ctx.fill();
 
       // Inner circle
       ctx.beginPath();
       ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,212,255,0.1)';
+      ctx.strokeStyle = colors.border;
       ctx.stroke();
 
       // Cardinal labels
-      ctx.fillStyle = 'rgba(0,212,255,0.6)';
-      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = colors.muted;
+      ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('N', cx, cy - r + 12);
       ctx.fillText('S', cx, cy + r - 4);
@@ -2818,13 +3175,13 @@
         ctx.stroke();
       }
 
-      // Runway heading arrow (cyan, bidirectional line)
+      // Runway heading arrow (bidirectional line)
       if (runwayHdgDeg != null) {
         const rad = (runwayHdgDeg - 90) * Math.PI / 180;
         ctx.beginPath();
         ctx.moveTo(cx - (r - 6) * Math.cos(rad), cy - (r - 6) * Math.sin(rad));
         ctx.lineTo(cx + (r - 6) * Math.cos(rad), cy + (r - 6) * Math.sin(rad));
-        ctx.strokeStyle = 'rgba(0,212,255,0.35)';
+        ctx.strokeStyle = colors.accent;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([3, 3]);
         ctx.stroke();
@@ -2834,7 +3191,7 @@
       // Wind direction arrow — wind comes FROM windDirDeg, so arrow points INTO the rose
       if (windDirDeg != null) {
         // Wind arrives from windDirDeg, so the vector points toward (windDirDeg + 180)
-        drawArrow(windDirDeg + 180, r - 10, 'rgba(0,255,136,0.85)', 2);
+        drawArrow(windDirDeg + 180, r - 10, getHudColors().safe, 2);
       }
     }
 
@@ -2880,7 +3237,7 @@
         document.getElementById('windLoading').classList.add('hidden');
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: res.statusText }));
-          document.getElementById('windError').textContent = '⚠ ' + (err.detail || res.statusText);
+          document.getElementById('windError').textContent = err.detail || res.statusText;
           document.getElementById('windError').classList.remove('hidden');
           return;
         }
@@ -2888,7 +3245,7 @@
         _renderWindData(data);
       } catch(e) {
         document.getElementById('windLoading').classList.add('hidden');
-        document.getElementById('windError').textContent = '⚠ Rüzgar verisi alınamadı: ' + e.message;
+        document.getElementById('windError').textContent = 'Rüzgâr verisi alınamadı: ' + e.message;
         document.getElementById('windError').classList.remove('hidden');
       }
     }
@@ -2929,7 +3286,7 @@
         tr.className = 'border-b border-cyan-400/10 hover:bg-cyan-400/5 transition-colors'
           + (isBest ? ' outline outline-1 outline-cyan-400/60' : '');
         tr.innerHTML = `
-          <td class="py-2 pr-4 text-cyan-100 text-[12px]">${s.source}${isBest ? ' <span class="text-cyan-400/70 text-[10px]">★</span>' : ''}</td>
+          <td class="py-2 pr-4 text-cyan-100 text-[12px]">${s.source}${isBest ? ' <span class="text-cyan-400/70 text-[10px]">Öncelikli kaynak</span>' : ''}</td>
           <td class="py-2 pr-4 text-cyan-200 text-[12px]">${dirCell}</td>
           <td class="py-2 pr-4 text-cyan-200 text-[12px]">${s.wind_speed_knots.toFixed(1)}</td>
           <td class="py-2">${_reliabilityBadge(s.reliability)}</td>
@@ -2965,29 +3322,30 @@
 
     function getMarkerColor(pt, mode) {
       if (mode === 'decision') {
-        return { UYGUN: '#00ff88', RISKLI: '#ffb800', UYGUN_DEGIL: '#ff3d57' }[pt.decision] || '#00d4ff';
+        const colors = getHudColors();
+        return { UYGUN: colors.safe, RISKLI: colors.caution, UYGUN_DEGIL: colors.danger }[pt.decision] || colors.accent;
       }
       if (mode === 'wind') {
-        // 0 kt = blue (#3080ff), 30+ kt = red (#ff3d57)
+        // Steel to muted rose, from calm to strong wind.
         const t = Math.min(pt.wind_speed_knots / 30, 1);
-        return _rgb(_lerp(0x30, 0xff, t), _lerp(0x80, 0x3d, t), _lerp(0xff, 0x57, t));
+        return _rgb(_lerp(0x93, 0xe5, t), _lerp(0xa9, 0xa5, t), _lerp(0xc1, 0xa5, t));
       }
       if (mode === 'cloud') {
-        // 0% = light blue (#9ff0ff), 100% = dark gray (#3a4050)
+        // Light slate to dark slate, from clear to overcast.
         const t = (pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0) / 100;
-        return _rgb(_lerp(0x9f, 0x3a, t), _lerp(0xf0, 0x40, t), _lerp(0xff, 0x50, t));
+        return _rgb(_lerp(0xd4, 0x45, t), _lerp(0xdc, 0x52, t), _lerp(0xe5, 0x60, t));
       }
       if (mode === 'humidity') {
-        // 0% = cyan (#00f4ff), 100% = deep blue (#0030c0)
+        // Pale steel to deep steel, from dry to humid.
         const t = pt.humidity_pct / 100;
-        return _rgb(_lerp(0x00, 0x00, t), _lerp(0xf4, 0x30, t), _lerp(0xff, 0xc0, t));
+        return _rgb(_lerp(0xb6, 0x55, t), _lerp(0xc6, 0x70, t), _lerp(0xd8, 0x8c, t));
       }
       if (mode === 'temperature') {
-        // -20°C = blue (#3080ff), 45°C = orange-red (#ff5020)
+        // Cool steel to warm sand, from -20°C to 45°C.
         const t = Math.min(Math.max((pt.temperature_c + 20) / 65, 0), 1);
-        return _rgb(_lerp(0x30, 0xff, t), _lerp(0x80, 0x50, t), _lerp(0xff, 0x20, t));
+        return _rgb(_lerp(0x93, 0xe8, t), _lerp(0xa9, 0xc5, t), _lerp(0xc1, 0x87, t));
       }
-      return '#00d4ff';
+      return getHudColors().accent;
     }
 
     // ── Popup builder ──────────────────────────────────────────────────
@@ -3032,22 +3390,21 @@
       const pLvl = Math.min(pt.precipitation_level, 2);
 
       const row = (label, value, lvl) =>
-        `<tr><td style="color:#9feaff;padding:2px 4px">${label}</td><td style="padding:2px 4px;color:#d8f5ff">${value}</td><td style="padding:2px 4px">${_badge(lvl)}</td></tr>`;
+        `<tr><td>${label}</td><td>${value}</td><td>${_badge(lvl)}</td></tr>`;
 
       return (
-        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff;min-width:220px;' +
-        'background:rgba(7,13,29,0.97);padding:10px;border-radius:6px">' +
+        '<div class="map-report-popup">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">' +
-        '<span style="font-weight:bold;color:#00d4ff">📍 ' + pt.lat.toFixed(4) + ', ' + pt.lon.toFixed(4) + '</span>' +
+        '<span style="font-weight:600">' + pt.lat.toFixed(4) + ', ' + pt.lon.toFixed(4) + '</span>' +
         decBadge + '</div>' +
         '<table style="width:100%;border-collapse:collapse">' +
-        row('💨 Rüzgar (kt)', pt.wind_speed_knots.toFixed(1), wLvl) +
-        row('👁 Görüş (km)', pt.visibility_km.toFixed(1), vLvl) +
-        row('💧 Nem (%)', Math.round(pt.humidity_pct) + '%', hLvl) +
-        row('🌡 Sıcaklık', pt.temperature_c.toFixed(1) + '°C', tLvl) +
-        row('☁ Bulutluluk', Math.round(pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0) + '%', cLvl) +
-        (pt.cloud_base_ft != null ? row('🏔 Bulut Tabanı', Math.round(pt.cloud_base_ft) + ' ft', bLvl) : '') +
-        row('🌧 Yağış', PRECIP_LABELS_LOCAL[pt.precipitation_level] || '—', pLvl) +
+        row('Rüzgâr (kt)', pt.wind_speed_knots.toFixed(1), wLvl) +
+        row('Görüş (km)', pt.visibility_km.toFixed(1), vLvl) +
+        row('Nem (%)', Math.round(pt.humidity_pct) + '%', hLvl) +
+        row('Sıcaklık', pt.temperature_c.toFixed(1) + '°C', tLvl) +
+        row('Bulutluluk', Math.round(pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0) + '%', cLvl) +
+        (pt.cloud_base_ft != null ? row('Bulut tabanı', Math.round(pt.cloud_base_ft) + ' ft', bLvl) : '') +
+        row('Yağış', PRECIP_LABELS_LOCAL[pt.precipitation_level] || '—', pLvl) +
         '</table></div>'
       );
     }
@@ -3140,7 +3497,7 @@
           polyline: false, polygon: false, circle: false,
           circlemarker: false, marker: false,
           rectangle: {
-            shapeOptions: { color: '#00d4ff', weight: 2, fillOpacity: 0.08 },
+            shapeOptions: { color: getHudColors().accent, weight: 2, fillOpacity: 0.08 },
           },
         },
       });
@@ -3168,7 +3525,7 @@
         const popup = L.popup()
           .setLatLng([lat, lng])
           .setContent(
-            '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff">Yükleniyor...</span>'
+            '<span class="map-report-popup">Yükleniyor...</span>'
           )
           .openOn(map);
 
@@ -3187,20 +3544,22 @@
           const temp = src.temperature_c  != null ? src.temperature_c.toFixed(1)  : '—';
           const hum  = src.humidity_pct   != null ? Math.round(src.humidity_pct)  : '—';
           popup.setContent(
-            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#d8f5ff;min-width:170px">' +
+            '<div class="map-report-popup">' +
             '<p style="font-weight:bold;margin-bottom:5px">' + cfg.label + '</p>' +
-            '<p>📍 ' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</p>' +
-            '<p>💨 Rüzgar: ' + wind + ' kt</p>' +
-            '<p>👁 Görüş: ' + vis + ' km</p>' +
-            '<p>🌡 ' + temp + '°C &nbsp; 💧 ' + hum + '%</p>' +
+            '<p>Konum: ' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</p>' +
+            '<p>Rüzgâr: ' + wind + ' kt</p>' +
+            '<p>Görüş: ' + vis + ' km</p>' +
+            '<p>Sıcaklık: ' + temp + '°C · Nem: ' + hum + '%</p>' +
             '</div>'
           );
         } catch (err) {
           popup.setContent(
-            '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#ff3d57">⚠ ' + err.message + '</span>'
+            '<span class="text-red-300">' + err.message + '</span>'
           );
         }
       });
+
+      if (window.AirspaceLayer) AirspaceLayer.attach(map);
 
       mapInitialized = true;
       map.invalidateSize();
@@ -3291,7 +3650,7 @@
           const marker = L.circleMarker([pt.lat, pt.lon], {
             radius: radius,
             fillColor: color,
-            color: '#0a0e1a',
+            color: getHudColors().surface,
             fillOpacity: 0.82,
             weight: 1,
           }).addTo(map);
@@ -3325,9 +3684,9 @@
         document.getElementById('summaryRiskli').textContent = s.RISKLI;
         document.getElementById('summaryUygunDegil').textContent = s.UYGUN_DEGIL;
         document.getElementById('summaryBar').innerHTML =
-          '<div style="width:' + (s.UYGUN / total * 100).toFixed(1) + '%;background:#00ff88;height:100%"></div>' +
-          '<div style="width:' + (s.RISKLI / total * 100).toFixed(1) + '%;background:#ffb800;height:100%"></div>' +
-          '<div style="width:' + (s.UYGUN_DEGIL / total * 100).toFixed(1) + '%;background:#ff3d57;height:100%"></div>';
+          '<div style="width:' + (s.UYGUN / total * 100).toFixed(1) + '%;background:' + getHudColors().safe + ';height:100%"></div>' +
+          '<div style="width:' + (s.RISKLI / total * 100).toFixed(1) + '%;background:' + getHudColors().caution + ';height:100%"></div>' +
+          '<div style="width:' + (s.UYGUN_DEGIL / total * 100).toFixed(1) + '%;background:' + getHudColors().danger + ';height:100%"></div>';
         document.getElementById('summaryPercent').textContent =
           s.total + ' nokta — Uygun: ' + (s.UYGUN / total * 100).toFixed(0) + '%';
 
