@@ -493,15 +493,16 @@
     </section>
 
     <section class="hud-card p-6 mb-4">
-      <h3 class="mono text-sm text-cyan-300 mb-4">MEYDAN METAR / TAF — MGM HEZARFEN</h3>
-      <div class="flex gap-3">
+      <h3 class="mono text-sm text-cyan-300 mb-2">MEYDAN RASATLARI</h3>
+      <p class="mono text-[11px] text-cyan-100/60 mb-4">MGM Hezarfen · Son METAR ve TAF</p>
+      <div class="flex flex-wrap gap-3">
         <label for="airportIcao" class="sr-only">Meydan ICAO kodu</label>
         <input id="airportIcao" type="text" maxlength="4" placeholder="ICAO: LTAJ"
-          class="mono bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs uppercase" />
+          class="mono w-36 bg-slate-950/65 border border-cyan-400/40 text-cyan-100 rounded-md px-3 py-2 text-xs uppercase" />
         <button type="button" onclick="loadAirportObservations()" class="mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">GÖSTER / YENİLE</button>
       </div>
       <p id="airportObservationStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">ICAO kodu girin veya yakın havalimanı/pist listesinden meydan seçin.</p>
-      <div id="airportObservationData" class="hidden mt-4 space-y-3">
+      <div id="airportObservationData" class="hidden mt-4 space-y-3 border-t border-cyan-400/20 pt-4">
         <p class="mono text-xs text-cyan-300">METAR</p>
         <pre id="airportMetar" class="mono text-xs text-cyan-100 whitespace-pre-wrap break-words"></pre>
         <p class="mono text-xs text-cyan-300">TAF</p>
@@ -512,18 +513,27 @@
     </section>
 
     <section class="hud-card p-6 mb-4">
-      <h3 class="mono text-sm text-cyan-300 mb-4">AIRGRAM</h3>
-      <p class="mono text-xs text-cyan-100/70">Open-Meteo profili analiz edilen nokta içindir. MGM görseli yukarıda seçilen ICAO meydanı içindir.</p>
-      <div class="flex gap-4 mt-3">
+      <h3 class="mono text-sm text-cyan-300 mb-2">AIRGRAM &amp; İRTİFA PROFİLİ</h3>
+      <p class="mono text-[11px] text-cyan-100/60">Görmek istediğiniz kaynağı açın. Nokta profili ve meydan görseli ayrı kaynaklardır.</p>
+      <details class="mt-4 border border-cyan-400/20 rounded-lg p-3">
+        <summary class="mono text-xs text-cyan-200 cursor-pointer">NOKTA PROFİLİ · OPEN-METEO</summary>
+      <div class="flex flex-wrap items-center gap-4 mt-3">
         <button type="button" onclick="loadPointAirgram()" class="mono border border-cyan-400/40 rounded px-3 py-2 text-xs text-cyan-200">NOKTA PROFİLİNİ YENİLE</button>
         <a id="windyAirgramLink" target="_blank" rel="noopener noreferrer" class="hidden mono text-xs text-cyan-300 underline">Windy Airgram aç</a>
-        <a href="https://hezarfen.mgm.gov.tr/HzUsr/Sayisal/Default.aspx" target="_blank" rel="noopener noreferrer" class="mono text-xs text-cyan-300 underline">Hezarfen Airgram sayfası</a>
       </div>
       <p id="pointAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">Nokta analizi oluşturunca profil yüklenir.</p>
-      <div id="pointAirgramChart" class="overflow-x-auto mt-3"></div>
-      <p class="mono text-[11px] text-cyan-100/60 mt-2">UTC saat · basınç (hPa) · yükseklik (m, deniz seviyesine göre) · sıcaklık (°C) · nem (%) · rüzgâr (kt ve yön °). Mavi hücreler nemi gösterir. N/A: veri yok. Bu profil bir uçuş onayı değildir.</p>
+      <div id="pointAirgramChart" class="overflow-auto max-h-96 mt-3"></div>
+      <details class="mt-3">
+        <summary class="mono text-[11px] text-cyan-100/60 cursor-pointer">Birimler ve okuma rehberi</summary>
+        <p class="mono text-[11px] text-cyan-100/60 mt-2">UTC saat · basınç (hPa) · yükseklik (m, deniz seviyesine göre) · sıcaklık (°C) · nem (%) · rüzgâr (kt ve yön °). Mavi hücreler nemi gösterir. N/A: veri yok. Bu profil bir uçuş onayı değildir.</p>
+      </details>
+      </details>
+      <details class="mt-3 border border-cyan-400/20 rounded-lg p-3">
+        <summary class="mono text-xs text-cyan-200 cursor-pointer">MEYDAN AIRGRAM · MGM HEZARFEN</summary>
       <p id="mgmAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-4">MGM Airgram için meydan seçin ve GÖSTER / YENİLE düğmesine basın.</p>
       <img id="mgmAirgramImage" class="hidden mt-3 w-full" alt="Seçilen meydanın MGM Hezarfen Airgram görseli" />
+        <a href="https://hezarfen.mgm.gov.tr/HzUsr/Sayisal/Default.aspx" target="_blank" rel="noopener noreferrer" class="inline-block mt-3 mono text-xs text-cyan-300 underline">Hezarfen kaynağını aç</a>
+      </details>
     </section>
 
     <div id="runwayCard" class="hidden hud-card p-6">
