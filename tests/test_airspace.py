@@ -115,6 +115,7 @@ def test_ui_wires_airspace_layer() -> None:
     assert "'/static/airspace.js'" in (STATIC / "sw.js").read_text()
     assert "/static/radar.js" in index
     assert "/static/wind.js" in index
+    assert "/static/airports.js" in index
     assert "'/static/radar.js'" in (STATIC / "sw.js").read_text()
 
 
@@ -147,3 +148,12 @@ def test_map_layer_endpoint(monkeypatch) -> None:
     ok = client.get("/api/v1/map-layers/wind-cloud?level=700").json()
     assert ok["level"] == "700" and "Open-Meteo" in ok["source"]
     assert client.get("/api/v1/map-layers/wind-cloud?level=999").status_code == 422
+
+
+def test_airports_endpoint_lists_turkish_icao_airports() -> None:
+    data = TestClient(app).get("/api/v1/map-layers/airports").json()["airports"]
+    icaos = {a["icao"] for a in data}
+
+    assert {"LTAC", "LTFM", "LTAI"} <= icaos
+    assert all(i.startswith("LT") and len(i) == 4 for i in icaos)
+    assert all(-90 <= a["lat"] <= 90 for a in data)

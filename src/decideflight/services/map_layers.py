@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import csv
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
+
+AIRPORT_TYPES = {"large_airport", "medium_airport", "small_airport"}
+_airport_cache: dict[str, Any] = {"airports": None}
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 CACHE_TTL_SECONDS = 15 * 60
@@ -25,6 +30,33 @@ _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 class MapLayerUnavailableError(RuntimeError):
     """Raised when the weather provider cannot supply grid data."""
+
+
+def _read_turkish_airports() -> list[dict[str, Any]]:
+    path = Path(__file__).resolve().parents[1] / "static" / "data" / "airports.csv"
+    airports: list[dict[str, Any]] = []
+    with path.open(newline="", encoding="utf-8") as csv_file:
+        for row in csv.DictReader(csv_file):
+            ident = (row.get("ident") or "").strip().upper()
+            if (
+                row.get("iso_country") != "TR"
+                or row.get("type") not in AIRPORT_TYPES
+                or not ident.startswith("LT")
+                or len(ident) != 4
+            ):
+                continue
+            try:
+                lat, lon = float(row["latitude_deg"]), float(row["longitude_deg"])
+            except (KeyError, ValueError):
+                continue
+            airports.append({"icao": ident, "name": row.get("name") or ident, "lat": lat, "lon": lon})
+    return airports
+
+
+def turkish_airports() -> list[dict[str, Any]]:
+    if _airport_cache["airports"] is None:
+        _airport_cache["airports"] = _read_turkish_airports()
+    return _airport_cache["airports"]
 
 
 def grid_points() -> list[tuple[float, float]]:

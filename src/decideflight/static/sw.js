@@ -7,6 +7,7 @@ const STATIC_ASSETS = [
   '/static/airspace.js',
   '/static/radar.js',
   '/static/wind.js',
+  '/static/airports.js',
   '/static/manifest.json',
   '/static/decideflight-icon.svg',
   '/static/data/cities.json',

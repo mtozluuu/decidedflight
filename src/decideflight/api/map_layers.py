@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from decideflight.services.map_layers import LEVELS, MapLayerUnavailableError, load_layer
+from decideflight.services.map_layers import LEVELS, MapLayerUnavailableError, load_layer, turkish_airports
 
 router = APIRouter(prefix="/api/v1/map-layers", tags=["map-layers"])
 
@@ -12,6 +12,12 @@ DISCLAIMER = (
     "Rüzgâr ve bulut değerleri Open-Meteo model tahminidir, ölçüm değildir. "
     "Resmî havacılık meteoroloji brifingi, METAR, TAF ve SIGMET yerine geçmez."
 )
+
+
+@router.get("/airports")
+def airports() -> dict:
+    """Turkish airports with ICAO codes for the METAR/TAF map layer."""
+    return {"airports": turkish_airports()}
 
 
 @router.get("/wind-cloud")
