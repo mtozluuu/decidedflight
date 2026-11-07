@@ -264,6 +264,15 @@
         }
       });
       reset.addEventListener('click', clear);
+      map._routeApi = {
+        get: () => ({ from: fromInput.value, to: toInput.value, alt: altInput.value }),
+        set(v) {
+          fromInput.value = v.from || '';
+          toInput.value = v.to || '';
+          altInput.value = v.alt || '';
+          if (fromInput.value && toInput.value) go.click();
+        },
+      };
       L.DomEvent.disableClickPropagation(box);
       return box;
     };

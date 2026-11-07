@@ -16,8 +16,8 @@
     let slider = null;
     let playBtn = null;
 
-    function setStatus(text) {
-      if (statusEl) statusEl.textContent = text;
+    function setStatus(text, retry) {
+      MapUtil.setStatus(statusEl, text, retry);
     }
 
     function clearLayers() {
@@ -75,7 +75,7 @@
         slider.max = frames.length - 1;
         showFrame(wasLast ? past.length - 1 : Math.min(index, frames.length - 1));
       } catch (err) {
-        setStatus(err.message);
+        setStatus(err.message, refresh);
       }
     }
 

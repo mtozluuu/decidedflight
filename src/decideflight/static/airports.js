@@ -25,8 +25,8 @@
     let loaded = false;
     let statusEl = null;
 
-    function setStatus(text) {
-      if (statusEl) statusEl.textContent = text;
+    function setStatus(text, retry) {
+      MapUtil.setStatus(statusEl, text, retry);
     }
 
     async function colorByCategory() {
@@ -86,7 +86,7 @@
         colorByCategory();
         return true;
       } catch (err) {
-        setStatus(err.message);
+        setStatus(err.message, load);
         return false;
       }
     }

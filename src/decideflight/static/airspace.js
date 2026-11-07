@@ -33,8 +33,31 @@
 
   const PREF_KEY = 'decideflight.mapLayers';
 
+  function sharedState() {
+    const m = location.hash.match(/^#harita=(.+)$/);
+    if (!m) return null;
+    try { return JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (err) { return null; }
+  }
+
   function readPrefs() {
+    const shared = sharedState();
+    if (shared && shared.s) return shared.s;
     try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (err) { return {}; }
+  }
+
+  // Shows a status line; when a retry callback is given an inline retry button follows the text.
+  function setStatusLine(el, text, retry) {
+    if (!el) return;
+    el.textContent = text;
+    if (retry && text) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'airspace-retry';
+      btn.textContent = 'Yeniden dene';
+      btn.addEventListener('click', retry);
+      el.appendChild(document.createTextNode(' '));
+      el.appendChild(btn);
+    }
   }
 
   function attach(map) {
@@ -46,8 +69,8 @@
     let level = null;
     let statusEl = null;
 
-    function setStatus(text) {
-      if (statusEl) statusEl.textContent = text;
+    function setStatus(text, retry) {
+      setStatusLine(statusEl, text, retry);
     }
 
     function inRing(pt, ring) {
@@ -153,7 +176,7 @@
           loaded[code] = true;
           setStatus('openAIP · ' + String(data.fetched_at).slice(0, 10) + ' · doğrulama gerekir');
         } catch (err) {
-          setStatus(err.message);
+          setStatus(err.message, () => show(code));
           return false;
         }
       }
@@ -205,6 +228,14 @@
       };
       filterBox.addEventListener('change', apply);
       slider.addEventListener('input', apply);
+      map._airspaceApi = {
+        setFilter(fl) {
+          filterBox.checked = fl != null;
+          if (fl != null) slider.value = Math.min(460, Math.max(0, Math.round(fl / 10) * 10));
+          apply();
+        },
+        features: () => features,
+      };
       const search = L.DomUtil.create('input', 'airspace-select', box);
       search.type = 'search';
       search.placeholder = 'Ara: LTAC, İzmir TMA';
@@ -263,5 +294,6 @@
     });
   }
 
+  window.MapUtil = { setStatus: setStatusLine, sharedState, PREF_KEY };
   window.AirspaceLayer = { attach };
 })();

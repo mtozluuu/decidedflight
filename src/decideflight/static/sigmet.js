@@ -26,8 +26,8 @@
     let loaded = false;
     let statusEl = null;
 
-    function setStatus(text) {
-      if (statusEl) statusEl.textContent = text;
+    function setStatus(text, retry) {
+      MapUtil.setStatus(statusEl, text, retry);
     }
 
     async function load() {
@@ -48,7 +48,7 @@
         setStatus(data.sigmets.length ? data.sigmets.length + ' aktif SIGMET (NOAA AWC)' : 'Bölgede aktif SIGMET yok');
         return true;
       } catch (err) {
-        setStatus(err.message);
+        setStatus(err.message, load);
         return false;
       }
     }

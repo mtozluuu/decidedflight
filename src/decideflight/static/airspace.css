@@ -72,3 +72,17 @@
 .route-table { width: 100%; border-collapse: collapse; margin: 2px 0; }
 .route-table th, .route-table td { text-align: left; padding: 1px 4px 1px 0; font-weight: normal; }
 .route-table th { color: #a0aab6; }
+
+.airspace-retry { background: #14181d; color: #edf0f3; border: 1px solid #333b45; border-radius: 4px; padding: 0 6px; cursor: pointer; font-size: 11px; }
+.region-control { max-width: 220px; }
+.region-body { font-size: 11px; line-height: 1.4; }
+.region-body p { margin: 2px 0; }
+.region-body ul { margin: 2px 0 2px 14px; padding: 0; list-style: disc; }
+.region-limits { color: #a0aab6; }
+
+@media (max-width: 640px) {
+  html body #mapContainer { height: 520px; }
+  .airspace-control { min-width: 130px; max-width: 160px; font-size: 11px; }
+  .route-control, .region-control { max-width: 170px; }
+  .route-result { max-width: 160px; }
+}

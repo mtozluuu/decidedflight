@@ -20,6 +20,7 @@
   <script src="/static/airports.js"></script>
   <script src="/static/sigmet.js"></script>
   <script src="/static/route.js"></script>
+  <script src="/static/region.js"></script>
   <style>
     :root {
       --hud-bg: #14181d;
@@ -2684,6 +2685,10 @@
       }
     }
 
+    if (location.hash.indexOf('#harita=') === 0) {
+      document.addEventListener('DOMContentLoaded', () => switchTab('region'));
+    }
+
     async function checkDataSources() {
       const button = document.getElementById('sourceCheckBtn');
       const status = document.getElementById('sourceCheckStatus');
@@ -3466,10 +3471,18 @@
         document.getElementById('timeSlider').value = 0;
         document.getElementById('timeSliderLabel').textContent = 'Şu an + 0h';
       }
+      _emitTimeChange();
+    }
+
+    function _emitTimeChange() {
+      const forecast = document.getElementById('timeModeSelect').value === 'forecast';
+      const hour = forecast ? parseInt(document.getElementById('timeSlider').value, 10) : 0;
+      document.dispatchEvent(new CustomEvent('df:timechange', { detail: { hour } }));
     }
 
     function onTimeSliderChange(val) {
       document.getElementById('timeSliderLabel').textContent = 'Şu an + ' + val + 'h';
+      _emitTimeChange();
       if (drawnRectangle) analyzeGrid();
     }
 
