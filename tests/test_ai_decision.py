@@ -13,8 +13,11 @@ from decideflight.api import weather as weather_api
 from decideflight.main import app
 from decideflight.services.ai_decision_engine import (
     AIDecisionResult,
+    _parse_gpt_response,
+    _wrap_rule_result,
     make_ai_decision,
 )
+from decideflight.services.decision_engine import make_decision
 from decideflight.services.trend_analyzer import (
     WindTrend,
     _compute_trend,
@@ -46,6 +49,19 @@ def _good_source() -> WeatherSourceData:
         cloud_base_ft=2000.0,
         cloud_ceiling_ft=3000.0,
     )
+
+
+def test_ai_preserves_cloud_cover_measurement_and_rule_floor():
+    rule = make_decision([replace(_good_source(), cloud_cover_pct=100)])
+    results = (
+        _wrap_rule_result(rule),
+        _parse_gpt_response({"karar": "UYGUN"}, rule),
+    )
+    for result in results:
+        assert result.avg_cloud_cover_pct == 100
+        assert result.decision == "RISKLI"
+        parameter = next(p for p in result.parameters if p.name == "Bulutluluk")
+        assert parameter.value == "100.0%"
 
 
 def _mock_weather():

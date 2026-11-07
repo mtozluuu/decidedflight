@@ -173,6 +173,7 @@ class DecisionResult:
     aqi_score: int | None = None
     pm25: float | None = None
     pm10: float | None = None
+    avg_cloud_cover_pct: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +199,9 @@ def make_decision(
     # For precipitation use worst (max) across sources
     max_precip = max(s.precipitation_level for s in sources)
     avg_cloud_base = _weighted_avg_optional(_weighted_pairs(lambda s: s.cloud_base_ft))
+    avg_cloud_cover = _weighted_avg_optional(
+        _weighted_pairs(lambda s: s.cloud_cover_pct)
+    )
     avg_cloud_ceiling = _weighted_avg_optional(
         _weighted_pairs(lambda s: s.cloud_ceiling_ft)
     )
@@ -243,6 +247,15 @@ def make_decision(
             decision=_eval_cloud_ceiling(avg_cloud_ceiling),
         ),
     ]
+    if avg_cloud_cover is not None:
+        params.insert(
+            5,
+            ParameterResult(
+                name="Bulutluluk",
+                value=f"{avg_cloud_cover:.1f}%",
+                decision=RISKLI if avg_cloud_cover > 50 else UYGUN,
+            ),
+        )
     if air_quality is not None:
         params.append(
             ParameterResult(
@@ -314,6 +327,7 @@ def make_decision(
         avg_precip_level=float(max_precip),
         avg_cloud_base_ft=avg_cloud_base,
         avg_cloud_ceiling_ft=avg_cloud_ceiling,
+        avg_cloud_cover_pct=avg_cloud_cover,
         confidence_score=confidence_score,
         aqi_score=air_quality.aqi_score if air_quality is not None else None,
         pm25=air_quality.pm25 if air_quality is not None else None,

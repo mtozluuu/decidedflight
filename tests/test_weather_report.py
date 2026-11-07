@@ -40,6 +40,7 @@ def _make_source(
     precip: int = PRECIP_NONE,
     cloud_base: float | None = 800.0,
     cloud_ceiling: float | None = 1200.0,
+    cloud_cover: float | None = None,
 ) -> WeatherSourceData:
     return WeatherSourceData(
         source=source,
@@ -50,6 +51,7 @@ def _make_source(
         precipitation_level=precip,
         cloud_base_ft=cloud_base,
         cloud_ceiling_ft=cloud_ceiling,
+        cloud_cover_pct=cloud_cover,
     )
 
 
@@ -59,6 +61,31 @@ def _make_source(
 
 
 class TestDecisionEngine:
+    @pytest.mark.parametrize(
+        "cover, expected", [(0, UYGUN), (50, UYGUN), (50.1, RISKLI), (100, RISKLI)]
+    )
+    def test_cloud_cover_thresholds(self, cover, expected):
+        result = make_decision([_make_source(cloud_cover=cover)])
+        parameter = next(p for p in result.parameters if p.name == "Bulutluluk")
+        assert result.decision == expected
+        assert parameter.decision == expected
+        assert parameter.value == f"{cover:.1f}%"
+        assert result.avg_cloud_cover_pct == cover
+
+    def test_cloud_cover_weighted_average_excludes_missing(self):
+        first = _make_source(cloud_cover=40)
+        second = _make_source(cloud_cover=80)
+        second.reliability_weight = 3
+        missing = _make_source()
+        missing.reliability_weight = 10
+        result = make_decision([first, second, missing])
+        assert result.avg_cloud_cover_pct == 70
+        assert result.decision == RISKLI
+
+    def test_cloud_cover_does_not_override_other_unsuitable_parameters(self):
+        result = make_decision([_make_source(cloud_cover=100, wind_knots=30)])
+        assert result.decision == UYGUN_DEGIL
+
     def test_all_ok(self):
         result = make_decision([_make_source()])
         assert result.decision == UYGUN
@@ -198,6 +225,28 @@ class TestReportGenerator:
 
 
 class TestWeatherReportAPI:
+    def test_report_cloud_cover_survives_storage(self, client):
+        from decideflight.api.weather import _load_report_sources
+        from decideflight.database import SessionLocal
+        from decideflight.models.weather_report import WeatherReport
+
+        with patch(
+            "decideflight.api.weather.fetch_all_sources",
+            new=AsyncMock(return_value=[_make_source(cloud_cover=75)]),
+        ):
+            response = client.post(
+                "/api/v1/weather/report", json={"lat": 41.0, "lon": 28.9}
+            )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["sources"][0]["cloud_cover_pct"] == 75
+        assert next(p for p in body["parameters"] if p["name"] == "Bulutluluk") == {
+            "name": "Bulutluluk", "value": "75.0%", "decision": RISKLI,
+        }
+        with SessionLocal() as db:
+            report = db.get(WeatherReport, body["report_id"])
+            assert _load_report_sources(report)[0].cloud_cover_pct == 75
+
     def _sources_payload(self) -> list[WeatherSourceData]:
         return [_make_source(source="Open-Meteo")]
 
@@ -280,9 +329,15 @@ class TestWeatherReportAPI:
 
     def test_report_response_has_parameters(self, client: TestClient):
         sources = self._sources_payload()
-        with patch(
-            "decideflight.api.weather.fetch_all_sources",
-            new=AsyncMock(return_value=sources),
+        with (
+            patch(
+                "decideflight.api.weather.fetch_all_sources",
+                new=AsyncMock(return_value=sources),
+            ),
+            patch(
+                "decideflight.api.weather.fetch_air_quality",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             response = client.post(
                 "/api/v1/weather/report",

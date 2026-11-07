@@ -256,6 +256,7 @@ def _wrap_rule_result(rule_result: DecisionResult) -> AIDecisionResult:
         avg_precip_level=rule_result.avg_precip_level,
         avg_cloud_base_ft=rule_result.avg_cloud_base_ft,
         avg_cloud_ceiling_ft=rule_result.avg_cloud_ceiling_ft,
+        avg_cloud_cover_pct=rule_result.avg_cloud_cover_pct,
         confidence_score=rule_result.confidence_score,
         aqi_score=rule_result.aqi_score,
         pm25=rule_result.pm25,
@@ -294,6 +295,7 @@ def _parse_gpt_response(
         avg_precip_level=rule_result.avg_precip_level,
         avg_cloud_base_ft=rule_result.avg_cloud_base_ft,
         avg_cloud_ceiling_ft=rule_result.avg_cloud_ceiling_ft,
+        avg_cloud_cover_pct=rule_result.avg_cloud_cover_pct,
         confidence_score=confidence,
         aqi_score=rule_result.aqi_score,
         pm25=rule_result.pm25,
@@ -353,6 +355,8 @@ def _build_system_prompt(
             f"  Rüzgar: {s.wind_speed_knots:.1f} knot\n"
             f"  Sıcaklık: {s.temperature_c:.1f} °C\n"
             f"  Nem: {s.humidity_pct:.0f}%\n"
+            f"  Bulutluluk: "
+            f"{f'{s.cloud_cover_pct:.1f}%' if s.cloud_cover_pct is not None else 'N/A'}\n"
             f"  Görüş: {s.visibility_km:.1f} km\n"
             f"  Yağış seviyesi: {s.precipitation_level} (0=yok, 1=hafif, 2=ağır)\n"
             f"  Bulut tabanı: "
@@ -380,6 +384,8 @@ def _build_system_prompt(
         f"  Rüzgar: {rule_result.avg_wind_knots:.1f} knot\n"
         f"  Sıcaklık: {rule_result.avg_temp_c:.1f} °C\n"
         f"  Nem: {rule_result.avg_humidity_pct:.0f}%\n"
+        f"  Bulutluluk: "
+        f"{f'{rule_result.avg_cloud_cover_pct:.1f}%' if rule_result.avg_cloud_cover_pct is not None else 'N/A'}\n"  # noqa: E501
         f"  Görüş: {rule_result.avg_visibility_km:.1f} km\n"
         f"  Bulut tabanı: "
         f"{f'{rule_result.avg_cloud_base_ft:.0f} ft' if rule_result.avg_cloud_base_ft is not None else 'N/A'}\n"  # noqa: E501
@@ -389,7 +395,9 @@ def _build_system_prompt(
 
     rule_decision_section = (
         f"Kural tabanlı karar: {rule_result.decision} "
-        f"(güven: {rule_result.confidence_score}%)"
+        f"(güven: {rule_result.confidence_score}%). "
+        "Bulutluluk %0–50 UYGUN, %50 üstü RISKLI; "
+        "bulutluluk yüzdesi tek başına UYGUN_DEGIL nedeni değildir."
     )
 
     trend_section = f"\nRüzgar trendi: {wind_trend}" if wind_trend else ""

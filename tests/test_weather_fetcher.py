@@ -14,6 +14,9 @@ from decideflight.services.weather_fetcher import (
     _fetch_metar_aviationweather,
     _fetch_metar_checkwx,
     _fetch_windy,
+    _fetch_open_meteo,
+    _fetch_owm,
+    _fetch_weatherapi,
     fetch_all_sources,
     fetch_nearby_runways,
 )
@@ -48,6 +51,38 @@ def _airport() -> _AirportRecord:
         latitude_deg=2.01444,
         longitude_deg=45.304699,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fetcher, payload",
+    [
+        (_fetch_open_meteo, {"current": {"temperature_2m": 20, "cloud_cover": 75}}),
+        (_fetch_owm, {"clouds": {"all": 75}}),
+        (_fetch_weatherapi, {"current": {"cloud": 75}}),
+    ],
+)
+async def test_cloud_cover_parsed_from_providers(fetcher, payload):
+    client = SimpleNamespace(get=AsyncMock(return_value=_MockResponse(payload)))
+    with patch(
+        "decideflight.services.weather_fetcher.settings",
+        new=SimpleNamespace(openweathermap_api_key="test", weatherapi_api_key="test"),
+    ):
+        source = await fetcher(39, 35, client)
+    assert source.cloud_cover_pct == 75
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fetcher", [_fetch_open_meteo, _fetch_owm, _fetch_weatherapi])
+async def test_missing_cloud_cover_is_not_clear_sky(fetcher):
+    payload = {"current": {"temperature_2m": 20}}
+    client = SimpleNamespace(get=AsyncMock(return_value=_MockResponse(payload)))
+    with patch(
+        "decideflight.services.weather_fetcher.settings",
+        new=SimpleNamespace(openweathermap_api_key="test", weatherapi_api_key="test"),
+    ):
+        source = await fetcher(39, 35, client)
+    assert source.cloud_cover_pct is None
 
 
 @pytest.mark.asyncio

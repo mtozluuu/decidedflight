@@ -115,6 +115,7 @@ class ParameterResultSchema(BaseModel):
 
 class WeatherSourceSchema(BaseModel):
     source: str
+    cloud_cover_pct: float | None = None
     wind_speed_knots: float
     temperature_c: float
     humidity_pct: float
@@ -459,6 +460,7 @@ async def create_weather_report(
                 precipitation_level=s.precipitation_level,
                 cloud_base_ft=s.cloud_base_ft,
                 cloud_ceiling_ft=s.cloud_ceiling_ft,
+                cloud_cover_pct=s.cloud_cover_pct,
                 wind_direction_deg=s.wind_direction_deg,
             )
             for s in sources
@@ -522,6 +524,8 @@ async def download_report_pdf(
             precipitation_level=s["precipitation_level"],
             cloud_base_ft=s.get("cloud_base_ft"),
             cloud_ceiling_ft=s.get("cloud_ceiling_ft"),
+            cloud_cover_pct=s.get("cloud_cover_pct"),
+            reliability_weight=s.get("reliability_weight", 1.0),
             wind_direction_deg=s.get("wind_direction_deg"),
         )
         for s in raw_sources
@@ -620,6 +624,7 @@ def _load_report_sources(report: WeatherReport) -> list[WeatherSourceData]:
             precipitation_level=source["precipitation_level"],
             cloud_base_ft=source.get("cloud_base_ft"),
             cloud_ceiling_ft=source.get("cloud_ceiling_ft"),
+            cloud_cover_pct=source.get("cloud_cover_pct"),
             wind_direction_deg=source.get("wind_direction_deg"),
             reliability_weight=source.get("reliability_weight", 1.0),
             raw=source.get("raw", {}),
@@ -673,6 +678,7 @@ def _build_point_source(hour_data: dict[str, Any]) -> WeatherSourceData:
         precipitation_level=int(hour_data["precipitation_level"]),
         cloud_base_ft=hour_data.get("cloud_base_ft"),
         cloud_ceiling_ft=hour_data.get("cloud_ceiling_ft"),
+        cloud_cover_pct=hour_data.get("cloud_cover_pct"),
     )
 
 
@@ -849,6 +855,7 @@ def _hourly_row_from_payload(
         "humidity_pct": _value("relative_humidity_2m", 0.0) or 0.0,
         "visibility_km": ((_value("visibility", 10000.0) or 10000.0) / 1000.0),
         "cloud_base_ft": base_ft,
+        "cloud_cover_pct": _value("cloud_cover"),
         "cloud_ceiling_ft": (
             base_ft + 200.0 if base_ft is not None and cloud_cover > 50 else None
         ),

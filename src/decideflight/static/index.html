@@ -2033,6 +2033,7 @@
             <p>YAĞIŞ: <span class="text-cyan-100">${PRECIP_LABELS[s.precipitation_level] ?? s.precipitation_level}</span></p>
             <p>SICAKLIK: <span class="text-cyan-100">${s.temperature_c.toFixed(1)} °C</span></p>
             <p>NEM: <span class="text-cyan-100">${s.humidity_pct.toFixed(0)}%</span></p>
+            <p>BULUTLULUK: <span class="text-cyan-100">${s.cloud_cover_pct != null ? s.cloud_cover_pct.toFixed(1) + '%' : 'N/A'}</span></p>
             <p>BULUT TABANI: <span class="text-cyan-100">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'} ft</span></p>
           </div>
           <div class="mt-4">

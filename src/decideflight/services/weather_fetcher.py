@@ -61,6 +61,7 @@ class WeatherSourceData:
     wind_direction_deg: float | None = None
     reliability_weight: float = 1.0
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    cloud_cover_pct: float | None = None
 
 
 @dataclass
@@ -475,6 +476,7 @@ async def _fetch_open_meteo(
 
     return WeatherSourceData(
         source="Open-Meteo",
+        cloud_cover_pct=_parse_number(cur.get("cloud_cover")),
         wind_speed_knots=_kmh_to_knots(wind_kmh),
         temperature_c=temp,
         humidity_pct=rh,
@@ -534,6 +536,7 @@ async def _fetch_owm(
 
     return WeatherSourceData(
         source="OpenWeatherMap",
+        cloud_cover_pct=_parse_number(data.get("clouds", {}).get("all")),
         wind_speed_knots=_ms_to_knots(wind_ms),
         temperature_c=temp_c,
         humidity_pct=rh,
@@ -588,6 +591,7 @@ async def _fetch_weatherapi(
 
     return WeatherSourceData(
         source="WeatherAPI",
+        cloud_cover_pct=_parse_number(cur.get("cloud")),
         wind_speed_knots=_kmh_to_knots(wind_kmh),
         temperature_c=temp_c,
         humidity_pct=rh,
