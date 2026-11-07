@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
@@ -109,6 +110,35 @@ def test_custom_limits_and_parameters_survive_changed_defaults(client, monkeypat
     assert saved["applied_limits"] == original["applied_limits"]
     assert saved["parameters"] == original["parameters"]
     assert saved["decision"] == "RISKLI"
+
+
+def test_history_filters_apply_before_limit_and_include_whole_utc_day(client, database, monkeypatch):
+    reports = [create(client, monkeypatch) for _ in range(4)]
+    with database() as db:
+        for report, location, created_at in zip(reports, (
+            "Gaziantep", "Ankara", "Gaziantep", "Gaziantep",
+        ), (
+            datetime(2026, 11, 1, 0, 0), datetime(2026, 11, 2, 10),
+            datetime(2026, 11, 3, 23, 59, 59), datetime(2026, 11, 4, 0, 0),
+        )):
+            saved = db.get(WeatherReport, report["report_id"])
+            saved.location = location
+            saved.created_at = created_at
+        db.commit()
+    response = client.get("/api/v1/weather/history", params={
+        "location": "gaziantep", "start_date": "2026-11-01", "end_date": "2026-11-03",
+    })
+    assert response.status_code == 200
+    assert [item["report_id"] for item in response.json()["reports"]] == [
+        reports[2]["report_id"], reports[0]["report_id"],
+    ]
+    limited = client.get("/api/v1/weather/history", params={"location": "Ankara", "limit": 1})
+    assert limited.json()["reports"][0]["report_id"] == reports[1]["report_id"]
+    assert client.get("/api/v1/weather/history", params={"location": "%"}).json()["reports"] == []
+    assert client.get("/api/v1/weather/history", params={
+        "start_date": "2026-11-04", "end_date": "2026-11-01",
+    }).status_code == 422
+    assert client.get("/api/v1/weather/history", params={"start_date": "invalid"}).status_code == 422
 
 
 def test_server_temperature_risk_range_is_saved_exactly(client, monkeypatch):

@@ -19,7 +19,7 @@ import logging
 import math
 import os
 from dataclasses import asdict, dataclass, fields
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -1342,15 +1342,22 @@ async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
 )
 async def weather_history(
     limit: int = 30,
+    location: str | None = Query(default=None, max_length=200),
+    start_date: date | None = None,
+    end_date: date | None = None,
     db: Session = Depends(get_db),
 ) -> HistoryResponse:
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(status_code=422, detail="Son tarih ilk tarihten önce olamaz.")
     limit = max(1, min(limit, 100))
-    reports = (
-        db.query(WeatherReport)
-        .order_by(WeatherReport.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+    query = db.query(WeatherReport)
+    if location and location.strip():
+        query = query.filter(WeatherReport.location.icontains(location.strip(), autoescape=True))
+    if start_date:
+        query = query.filter(WeatherReport.created_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        query = query.filter(WeatherReport.created_at <= datetime.combine(end_date, datetime.max.time()))
+    reports = query.order_by(WeatherReport.created_at.desc(), WeatherReport.id.desc()).limit(limit).all()
 
     items: list[HistoryItemSchema] = []
     for report in reports:

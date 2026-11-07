@@ -204,6 +204,35 @@ html body #panel-settings > .hud-card > .grid > div { border-top: 1px solid var(
 .weather-summary dt { color: var(--muted); font-size: 12px; }
 .weather-summary dd { font-weight: 500; font-size: 13px; }
 html body #resultSection:not(.hidden) { display: grid; gap: 20px; }
+html body #panel-point:not(.hidden) { display: flex; flex-direction: column; gap: 20px; }
+html body #panel-point > * { margin: 0; }
+#locationSearch { order: 0; }
+#loadingSection, #errorSection { order: 1; }
+#resultSection { order: 2; }
+#airportTools { order: 3; }
+#historySection { order: 4; }
+.plan-hour-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; }
+html body .plan-hour { flex: 0 0 112px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); background: #171c22; color: var(--ink); text-align: left; }
+.plan-hour span, .plan-hour small { font-size: 11px; }
+.plan-hour small { color: var(--muted); }
+html body .plan-hour[data-tone="safe"] span { color: var(--hud-green); }
+html body .plan-hour[data-tone="danger"] span { color: var(--hud-red); }
+html body .plan-hour[aria-pressed="true"] { border-color: var(--hud-cyan); background: #263342; }
+.plan-hour-detail { margin-top: 10px; }
+html body .plan-hour-detail > div { background: var(--hud-panel); border-color: var(--line); }
+.history-filters, .report-compare-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.history-filters label, .report-compare-controls label { display: flex; flex: 1 1 160px; min-width: 0; flex-direction: column; gap: 5px; }
+.history-filters input { width: 100%; min-width: 0; padding: 8px 10px; }
+.report-compare-controls { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.report-compare-controls select { width: 100%; min-width: 0; padding-left: 10px; }
+.report-comparison-table { table-layout: fixed; min-width: 620px; }
+.report-comparison-table th, .report-comparison-table td { text-align: left; vertical-align: top; white-space: pre-line; overflow-wrap: anywhere; border-bottom: 1px solid var(--line); }
+.report-comparison-table th:first-child { width: 24%; }
+.source-summary-block { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 10px; }
+.source-summary-block p { line-height: 1.7; margin-bottom: 8px; }
+html body #locationSearch { padding: 18px 20px; }
+html body #locationSearch h1 { font-size: 18px; }
+html body #locationOptions > summary { margin-bottom: 0; }
 html body #resultSection > * { margin: 0; min-width: 0; }
 html body #resultSection > .grid { align-items: start; }
 html body #resultSection > details.hud-card {
