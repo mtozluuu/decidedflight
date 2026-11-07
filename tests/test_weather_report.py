@@ -225,6 +225,38 @@ class TestReportGenerator:
 
 
 class TestWeatherReportAPI:
+    def test_pdf_keeps_saved_decision_and_custom_limit_reference(self, client):
+        from decideflight.database import SessionLocal
+        from decideflight.models.weather_report import WeatherReport
+        from decideflight.services.report_generator import _limits_rows
+
+        with (
+            patch(
+                "decideflight.api.weather.fetch_all_sources",
+                new=AsyncMock(return_value=[_make_source(cloud_cover=75)]),
+            ),
+            patch("decideflight.api.weather.fetch_air_quality", new=AsyncMock(return_value=None)),
+            patch("decideflight.api.weather.fetch_wind_trend", new=AsyncMock(return_value=None)),
+        ):
+            body = client.post(
+                "/api/v1/weather/report",
+                json={"lat": 41, "lon": 29, "limits": {"cloud_cover_ok_max_pct": 80}},
+            ).json()
+        with SessionLocal() as db:
+            report = db.get(WeatherReport, body["report_id"])
+            report.decision = UYGUN_DEGIL
+            report.decision_detail = "Kaydedilmiş ihtiyatlı karar"
+            db.commit()
+        with patch("decideflight.api.weather.generate_pdf", return_value=b"%PDF") as generate:
+            response = client.get(f'/api/v1/weather/report/{body["report_id"]}/pdf')
+        assert response.status_code == 200
+        args = generate.call_args.kwargs
+        assert args["decision_result"].decision == UYGUN_DEGIL
+        assert args["decision_result"].detail == "Kaydedilmiş ihtiyatlı karar"
+        assert args["limits"].cloud_cover_ok_max_pct == 80
+        row = next(row for row in _limits_rows(args["limits"]) if row[0] == "Bulutluluk")
+        assert row[1] == "≤ %80"
+
     def test_custom_limits_are_applied_and_preserved(self, client):
         from decideflight.api.weather import _build_report_decision
         from decideflight.database import SessionLocal

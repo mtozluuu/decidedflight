@@ -28,7 +28,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from decideflight.config import settings
+from decideflight.config import settings as default_settings
+from decideflight.services.flight_limits import DroneLimit
 from decideflight.services.decision_engine import (
     DecisionResult,
     UYGUN,
@@ -160,7 +161,8 @@ def _avg_row(dr: DecisionResult) -> list[str]:
     ]
 
 
-def _limits_rows() -> list[list[str]]:
+def _limits_rows(limits: DroneLimit | None = None) -> list[list[str]]:
+    settings = limits if limits is not None else default_settings
     return [
         ["Parametre", "✅ Uygun", "⚠️ Riskli", "❌ Uygun Değil"],
         [
@@ -178,6 +180,12 @@ def _limits_rows() -> list[list[str]]:
             f"< {settings.visibility_risky_min_km:.0f} km",
         ],
         ["Yağış", "Yok", "Hafif", "Orta/Şiddetli"],
+        [
+            "Bulutluluk",
+            f"≤ %{limits.cloud_cover_ok_max_pct if limits else 50:g}",
+            f"> %{limits.cloud_cover_ok_max_pct if limits else 50:g}",
+            "Tek başına uygulanmaz",
+        ],
         [
             "Sıcaklık",
             f"{settings.temp_ok_min_c:.0f}–{settings.temp_ok_max_c:.0f} °C",
@@ -222,6 +230,7 @@ def generate_pdf(
     sources: list[WeatherSourceData],
     decision_result: DecisionResult,
     created_at: datetime | None = None,
+    limits: DroneLimit | None = None,
 ) -> bytes:
     """Return PDF bytes for the given weather report data."""
     if created_at is None:
@@ -381,7 +390,7 @@ def generate_pdf(
     # ------------------------------------------------------------------
     story.append(Paragraph("Drone Uçuş Limitleri", _SECTION_STYLE))
 
-    limits_data = _limits_rows()
+    limits_data = _limits_rows(limits)
     limits_table = Table(limits_data, colWidths=[4 * cm, 4 * cm, 4 * cm, 4 * cm])
     lts = [
         ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),

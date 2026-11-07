@@ -637,9 +637,12 @@ async def download_report_pdf(
     ]
 
     stored_limits = _load_ai_payload(report).get("applied_limits")
+    limits = DroneLimit.model_validate(stored_limits) if stored_limits else None
     decision_result = make_decision(
-        sources, limits=DroneLimit.model_validate(stored_limits) if stored_limits else None
+        sources, air_quality=_load_air_quality(report), limits=limits
     )
+    decision_result.decision = report.decision
+    decision_result.detail = report.decision_detail
 
     pdf_bytes = generate_pdf(
         location=report.location,
@@ -648,6 +651,7 @@ async def download_report_pdf(
         sources=sources,
         decision_result=decision_result,
         created_at=report.created_at,
+        limits=limits,
     )
 
     filename = f"decidedflight_report_{report_id}.pdf"
