@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import time
 from pathlib import Path
@@ -106,7 +107,7 @@ def parse_response(level: str, points: list[tuple[float, float]], payload: Any) 
     return {"level": level, "label": LEVELS[level]["label"], "valid_time_utc": valid_time, "points": samples}
 
 
-async def load_layer(level: str) -> dict[str, Any]:
+async def _load_layer_once(level: str) -> dict[str, Any]:
     now = time.time()
     cached = _cache.get(level)
     if cached and now - cached[0] < CACHE_TTL_SECONDS:
@@ -135,6 +136,19 @@ async def load_layer(level: str) -> dict[str, Any]:
         raise
     _cache[level] = (now, data)
     return data
+
+
+_layer_lock = asyncio.Lock()
+
+
+async def load_layer(level: str) -> dict[str, Any]:
+    # Open-Meteo rejects concurrent requests, so layers are fetched one at a time with one retry.
+    async with _layer_lock:
+        try:
+            return await _load_layer_once(level)
+        except MapLayerUnavailableError:
+            await asyncio.sleep(1.5)
+            return await _load_layer_once(level)
 
 
 AWC_METAR_URL = "https://aviationweather.gov/api/data/metar"
