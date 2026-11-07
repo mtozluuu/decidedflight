@@ -3570,7 +3570,7 @@
 
       // Click on map = single-point popup
       map.on('click', async function (e) {
-        if (isRectDrawing) return;
+        if (isRectDrawing || map._routePicking) return;
         const { lat, lng } = e.latlng;
         const popup = L.popup()
           .setLatLng([lat, lng])

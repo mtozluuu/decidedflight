@@ -86,3 +86,15 @@
   .route-control, .region-control { max-width: 170px; }
   .route-result { max-width: 160px; }
 }
+
+.route-control { max-width: 290px; }
+.route-result { max-width: 280px; }
+.route-compare { width: 100%; margin-top: 4px; }
+.route-best td { color: #4ade9a; font-weight: 600; }
+.route-table td:last-child { max-width: 90px; word-break: break-word; }
+
+.region-alerts p { margin: 2px 0; color: #ffd166; }
+@media (max-width: 640px) {
+  .route-control, .region-control { max-width: 170px; }
+  .route-result { max-width: 160px; }
+}
