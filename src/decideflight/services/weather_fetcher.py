@@ -303,6 +303,18 @@ def _load_ourairports_runways() -> dict[str, list[dict[str, Any]]]:
 
 
 _OURAIRPORTS_AIRPORTS = _load_ourairports_airports()
+
+
+def airport_location(icao: str) -> dict[str, Any] | None:
+    airport = next((a for a in _OURAIRPORTS_AIRPORTS if a.icao == icao), None)
+    if airport is None:
+        return None
+    return {
+        "icao": airport.icao, "name": airport.name,
+        "lat": airport.latitude_deg, "lon": airport.longitude_deg,
+    }
+
+
 _OURAIRPORTS_RUNWAYS = _load_ourairports_runways()
 _RUNWAY_BEARING_OVERRIDES: dict[str, dict[str, float]] = {
     "HCMM": {"05": 50.0, "23": 230.0},

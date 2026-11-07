@@ -30,6 +30,7 @@ from decideflight.services.mgm_observations import fetch_mgm_observations
 from decideflight.services.airgram import fetch_airgram
 from decideflight.services.data_freshness import observation_timing, source_timing
 from decideflight.services.flight_limits import DroneLimit
+from decideflight.services.weather_fetcher import airport_location
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -157,6 +158,17 @@ async def point_airgram(
         raise HTTPException(
             status_code=503, detail="Open-Meteo Airgram verisi alınamadı."
         ) from exc
+
+
+@router.get("/airport-location/{icao}")
+async def selected_airport_location(icao: str) -> dict:
+    icao = icao.strip().upper()
+    if len(icao) != 4 or not icao.isascii() or not icao.isalpha():
+        raise HTTPException(status_code=422, detail="Dört harfli ICAO kodu girin.")
+    location = airport_location(icao)
+    if location is None:
+        raise HTTPException(status_code=404, detail="Meydan konumu yerel katalogda bulunamadı.")
+    return location
 
 
 @router.get("/airport-airgram/{icao}")

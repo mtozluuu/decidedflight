@@ -502,6 +502,8 @@
         <button type="button" onclick="loadAirportObservations()" class="mono border border-cyan-400/40 text-cyan-200 rounded-md px-4 py-2 text-xs">GÖSTER / YENİLE</button>
       </div>
       <p id="airportObservationStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">ICAO kodu girin veya yakın havalimanı/pist listesinden meydan seçin.</p>
+      <p id="pointLocationContext" class="mono text-xs text-cyan-100/70 mt-3">Analiz noktası: henüz seçilmedi.</p>
+      <p id="airportLocationContext" role="status" class="mono text-xs text-amber-300 mt-2">Meydan: henüz seçilmedi. Meydan rasatları noktanın hava koşullarıyla aynı olmayabilir.</p>
       <div id="airportObservationData" class="hidden mt-4 space-y-3 border-t border-cyan-400/20 pt-4">
         <p class="mono text-xs text-cyan-300">METAR</p>
         <pre id="airportMetar" class="mono text-xs text-cyan-100 whitespace-pre-wrap break-words"></pre>
@@ -1961,6 +1963,9 @@
     function renderResult(data) {
       currentReportId = data.report_id;
       currentReportData = data;
+      clearAirportSelection();
+      document.getElementById('pointLocationContext').textContent =
+        `Analiz noktası: ${data.location} (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)}) · Open-Meteo profili bu noktaya aittir.`;
       pendingFeedbackCorrect = null;
 
       show('feedbackButtons');
@@ -2473,10 +2478,12 @@
     // ═══════════════════════════════════════════════════════════════════
 
     async function loadNearbyRunways(lat, lon) {
+      const report = currentReportData;
       try {
         const res = await fetch(`/api/v1/weather/runways?lat=${lat}&lon=${lon}`);
         if (!res.ok) return;
         const runways = await res.json();
+        if (currentReportData !== report) return;
         const sel = document.getElementById('runwaySelect');
         sel.innerHTML = '<option value="">Pist seçin (opsiyonel)...</option>';
         runways.forEach(r => {
@@ -2500,6 +2507,48 @@
     }
 
     let airportObservationController = null;
+    let airportLocationController = null;
+
+    function clearAirportSelection() {
+      airportObservationController?.abort();
+      airportLocationController?.abort();
+      document.getElementById('airportIcao').value = '';
+      document.getElementById('airportObservationData').classList.add('hidden');
+      document.getElementById('airportObservationStatus').textContent = 'Yeni analiz noktası için meydan seçin.';
+      document.getElementById('airportLocationContext').textContent = 'Meydan: henüz seçilmedi. Önceki meydan verileri temizlendi.';
+      const image = document.getElementById('mgmAirgramImage');
+      image.onload = null;
+      image.onerror = null;
+      image.removeAttribute('src');
+      image.classList.add('hidden');
+      document.getElementById('mgmAirgramStatus').textContent = 'Yeni nokta için meydan seçin.';
+    }
+
+    async function updateAirportLocation(icao) {
+      airportLocationController?.abort();
+      const controller = new AbortController();
+      airportLocationController = controller;
+      const label = document.getElementById('airportLocationContext');
+      label.textContent = `${icao} — meydan konumu sorgulanıyor...`;
+      try {
+        const response = await fetch(`/api/v1/weather/airport-location/${icao}`, {signal: controller.signal});
+        const airport = await response.json();
+        if (!response.ok) throw new Error(airport.detail || 'Meydan konumu alınamadı.');
+        let distanceText = 'Nokta seçilmedi; mesafe hesaplanmadı.';
+        if (currentReportData) {
+          const radians = degrees => degrees * Math.PI / 180;
+          const point = currentReportData;
+          const a = Math.sin(radians(airport.lat - point.lat) / 2) ** 2 +
+            Math.cos(radians(point.lat)) * Math.cos(radians(airport.lat)) *
+            Math.sin(radians(airport.lon - point.lon) / 2) ** 2;
+          const distance = 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, a)));
+          distanceText = `Analiz noktasına kuş uçuşu mesafe: ${distance.toFixed(1)} km.`;
+        }
+        label.textContent = `Meydan: ${airport.name} (${icao}) · ${airport.lat.toFixed(4)}, ${airport.lon.toFixed(4)} · ${distanceText} METAR/TAF ve MGM Airgram bu meydana aittir; nokta koşulları farklı olabilir.`;
+      } catch (error) {
+        if (error.name !== 'AbortError') label.textContent = `${icao} — ${error.message} Noktaya mesafe doğrulanamadı.`;
+      }
+    }
 
     async function loadAirportObservations() {
       airportObservationController?.abort();
@@ -2519,6 +2568,7 @@
         return;
       }
       status.textContent = `${icao} için MGM Rasat sorgulanıyor...`;
+      updateAirportLocation(icao);
       loadMgmAirgram(icao);
       try {
         const response = await fetch(`/api/v1/weather/airport-observations/${icao}`, { signal: controller.signal });
@@ -2547,6 +2597,8 @@
 
     document.getElementById('airportIcao').addEventListener('input', () => {
       airportObservationController?.abort();
+      airportLocationController?.abort();
+      document.getElementById('airportLocationContext').textContent = 'Meydan değişti; konumu doğrulamak için GÖSTER / YENİLE düğmesine basın.';
       document.getElementById('airportObservationData').classList.add('hidden');
       const image = document.getElementById('mgmAirgramImage');
       image.onload = null;
@@ -2570,6 +2622,7 @@
         return;
       }
       loadMgmAirgram(icao);
+      updateAirportLocation(icao);
     }
 
     function loadMgmAirgram(icao) {
