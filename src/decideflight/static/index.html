@@ -412,7 +412,7 @@
 
   <!-- Tab navigation -->
   <div class="max-w-6xl mx-auto px-4 pt-4">
-    <nav class="flex gap-0 border-b border-cyan-400/15 bg-gradient-to-b from-cyan-400/[0.03] to-transparent rounded-t-lg px-2" role="tablist" aria-label="Uygulama sekmeleri">
+    <nav class="flex gap-0 overflow-x-auto border-b border-cyan-400/15 bg-gradient-to-b from-cyan-400/[0.03] to-transparent rounded-t-lg px-2" role="tablist" aria-label="Uygulama sekmeleri">
       <button id="tab-btn-point" role="tab" aria-selected="true" aria-controls="panel-point"
         onclick="switchTab('point')" class="tab-btn active">◈ NOKTA ANALİZİ</button>
       <button id="tab-btn-region" role="tab" aria-selected="false" aria-controls="panel-region"
@@ -1156,7 +1156,7 @@
           </div>
         </div><!-- /space-y-5 -->
 
-        <div class="flex gap-3 mt-6">
+        <div class="flex flex-wrap gap-3 mt-6">
           <button onclick="saveSettings()"
             class="mono btn-primary-glow text-slate-950 font-bold rounded-md px-5 py-2 text-xs tracking-wider">
             [ LİMİTLERİ KAYDET ]
@@ -2481,7 +2481,7 @@
       const report = currentReportData;
       try {
         const res = await fetch(`/api/v1/weather/runways?lat=${lat}&lon=${lon}`);
-        if (!res.ok) return;
+        if (!res.ok) throw new Error('Yakın meydan/pist listesi alınamadı; ICAO kodunu elle girebilirsiniz.');
         const runways = await res.json();
         if (currentReportData !== report) return;
         const sel = document.getElementById('runwaySelect');
@@ -2494,6 +2494,9 @@
           opt.textContent = `${r.airport_name} (${r.airport_icao}) — RWY ${r.runway_ident} (${r.heading_true.toFixed(0)}°) — ${r.distance_km.toFixed(1)} km`;
           sel.appendChild(opt);
         });
+        if (runways.length === 0) {
+          sel.options[0].textContent = 'Yakın pist bulunamadı; ICAO kodunu elle girin.';
+        }
         document.getElementById('runwayCard').classList.remove('hidden');
         sel.onchange = () => {
           computeWindComponents();
@@ -2503,6 +2506,12 @@
         };
       } catch(e) {
         console.warn('Runway fetch failed', e);
+        if (currentReportData === report) {
+          const option = document.createElement('option');
+          option.textContent = e.message;
+          document.getElementById('runwaySelect').replaceChildren(option);
+          document.getElementById('runwayCard').classList.remove('hidden');
+        }
       }
     }
 
@@ -2516,6 +2525,8 @@
       document.getElementById('airportObservationData').classList.add('hidden');
       document.getElementById('airportObservationStatus').textContent = 'Yeni analiz noktası için meydan seçin.';
       document.getElementById('airportLocationContext').textContent = 'Meydan: henüz seçilmedi. Önceki meydan verileri temizlendi.';
+      document.getElementById('runwayCard').classList.add('hidden');
+      document.getElementById('windComponentResult').classList.add('hidden');
       const image = document.getElementById('mgmAirgramImage');
       image.onload = null;
       image.onerror = null;
@@ -2697,14 +2708,18 @@
 
       const sel = document.getElementById('runwaySelect');
       const manualInput = document.getElementById('manualRunwayHeading');
-      const heading = parseFloat(sel.value) || parseFloat(manualInput.value);
-      if (!heading) return;
+      const selectedHeading = sel.value !== '' ? Number(sel.value) : Number(manualInput.value);
+      if ((sel.value === '' && manualInput.value === '') ||
+          !Number.isFinite(selectedHeading) || selectedHeading < 0 || selectedHeading > 360) {
+        document.getElementById('windComponentResult').classList.add('hidden');
+        return;
+      }
 
       const s = loadSettings();
       const body = {
         wind_direction_deg: windDir,
         wind_speed_knots: avgWind,
-        runway_heading_deg: heading,
+        runway_heading_deg: selectedHeading,
         crosswind_ok_max: s.crosswind_ok_max_knots ?? 15,
         crosswind_risky_max: s.crosswind_risky_max_knots ?? 20,
         tailwind_ok_max: s.tailwind_ok_max_knots ?? 5,
@@ -2721,7 +2736,7 @@
         });
         if (!res.ok) return;
         const data = await res.json();
-        renderWindComponents(data, windDir, heading);
+        renderWindComponents(data, windDir, selectedHeading);
       } catch(e) {
         console.warn('Wind components fetch failed', e);
       }
