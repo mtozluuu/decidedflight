@@ -126,13 +126,7 @@ async def load_layer(level: str) -> dict[str, Any]:
             response.raise_for_status()
             data = parse_response(level, points, response.json())
     except (httpx.HTTPError, ValueError) as exc:
-        if cached:
-            return cached[1]
         raise MapLayerUnavailableError("Open-Meteo harita verisi alınamadı.") from exc
-    except MapLayerUnavailableError:
-        if cached:
-            return cached[1]
-        raise
     _cache[level] = (now, data)
     return data
 
@@ -155,8 +149,6 @@ async def _cached_get(key: str, url: str, params: dict[str, str]) -> Any:
             response.raise_for_status()
             data = response.json() if response.content else []
     except (httpx.HTTPError, ValueError) as exc:
-        if cached:
-            return cached[1]
         raise MapLayerUnavailableError("Havacılık meteoroloji verisi alınamadı.") from exc
     _live_cache[key] = (now, data)
     return data

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
@@ -110,6 +110,33 @@ def test_custom_limits_and_parameters_survive_changed_defaults(client, monkeypat
     assert saved["applied_limits"] == original["applied_limits"]
     assert saved["parameters"] == original["parameters"]
     assert saved["decision"] == "RISKLI"
+
+
+def test_insufficient_report_preserves_quality_and_missing_fields(client, monkeypatch, database):
+    source = WeatherSourceData(
+        source="Open-Meteo", wind_speed_knots=20, temperature_c=20,
+        humidity_pct=50, visibility_km=None, precipitation_level=None,
+        cloud_base_ft=1800, cloud_ceiling_ft=2000, data_kind="forecast",
+        raw={"time": datetime.now(timezone.utc).replace(microsecond=0).isoformat()},
+    )
+    monkeypatch.setattr(weather, "fetch_all_sources", AsyncMock(return_value=[source]))
+    monkeypatch.setattr(weather, "fetch_air_quality", AsyncMock(return_value=None))
+    monkeypatch.setattr(weather, "fetch_wind_trend", AsyncMock(return_value=None))
+    monkeypatch.setattr("decideflight.services.ai_decision_engine._AsyncOpenAI", None)
+    response = client.post("/api/v1/weather/report", json={"lat": 37, "lon": 37})
+    assert response.status_code == 201
+    original = response.json()
+    assert original["decision"] == "VERI_YETERSIZ"
+    assert original["known_decision"] == "RISKLI"
+    assert original["missing_parameters"] == ["Görüş mesafesi", "Yağış"]
+    assert original["data_quality"]["available_parameters"] == 5
+    saved = client.get(f'/api/v1/weather/report/{original["report_id"]}').json()
+    for key in ("decision", "missing_parameters", "known_decision", "data_quality", "sources"):
+        assert saved[key] == original[key]
+    with database() as db:
+        report = db.get(WeatherReport, original["report_id"])
+        assert json.loads(report.sources_data)[0]["raw"] == source.raw
+    assert client.get(f'/api/v1/weather/report/{original["report_id"]}/pdf').content.startswith(b"%PDF")
 
 
 def test_history_filters_apply_before_limit_and_include_whole_utc_day(client, database, monkeypatch):

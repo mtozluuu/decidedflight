@@ -205,7 +205,7 @@ async def make_ai_decision(
         feedback_context += "\nBu raporun etkin eşikleri: " + limits.model_dump_json()
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key or _AsyncOpenAI is None:
+    if not api_key or _AsyncOpenAI is None or rule_result.missing_parameters:
         return _wrap_rule_result(rule_result)
 
     try:
@@ -272,6 +272,9 @@ def _wrap_rule_result(rule_result: DecisionResult) -> AIDecisionResult:
         recommendations=[],
         parameter_assessments={},
         parameter_weights={},
+        missing_parameters=rule_result.missing_parameters,
+        known_decision=rule_result.known_decision,
+        excluded_sources=rule_result.excluded_sources,
     )
 
 
@@ -311,6 +314,9 @@ def _parse_gpt_response(
         recommendations=list(parsed.get("tavsiyeler", [])),
         parameter_assessments=dict(parsed.get("parametre_degerlendirmeleri", {})),
         parameter_weights=_parse_parameter_weights(parsed.get("parameter_weights")),
+        missing_parameters=rule_result.missing_parameters,
+        known_decision=rule_result.known_decision,
+        excluded_sources=rule_result.excluded_sources,
     )
 
 
@@ -356,12 +362,12 @@ def _build_system_prompt(
     for s in sources:
         weather_lines.append(
             f"Kaynak: {s.source}\n"
-            f"  Rüzgar: {s.wind_speed_knots:.1f} knot\n"
-            f"  Sıcaklık: {s.temperature_c:.1f} °C\n"
-            f"  Nem: {s.humidity_pct:.0f}%\n"
+            f"  Rüzgar: {s.wind_speed_knots if s.wind_speed_knots is not None else 'Bilinmiyor'} knot\n"
+            f"  Sıcaklık: {s.temperature_c if s.temperature_c is not None else 'Bilinmiyor'} °C\n"
+            f"  Nem: {s.humidity_pct if s.humidity_pct is not None else 'Bilinmiyor'}%\n"
             f"  Bulutluluk: "
             f"{f'{s.cloud_cover_pct:.1f}%' if s.cloud_cover_pct is not None else 'N/A'}\n"
-            f"  Görüş: {s.visibility_km:.1f} km\n"
+            f"  Görüş: {s.visibility_km if s.visibility_km is not None else 'Bilinmiyor'} km\n"
             f"  Yağış seviyesi: {s.precipitation_level} (0=yok, 1=hafif, 2=ağır)\n"
             f"  Bulut tabanı: "
             f"{f'{s.cloud_base_ft:.0f} ft' if s.cloud_base_ft is not None else 'N/A'}\n"
@@ -472,10 +478,10 @@ def _build_chat_context(
     source_lines = []
     for source in sources:
         source_lines.append(
-            f"- {source.source}: rüzgar {source.wind_speed_knots:.1f} kt, "
-            f"görüş {source.visibility_km:.1f} km, "
-            f"sıcaklık {source.temperature_c:.1f} °C, "
-            f"nem %{source.humidity_pct:.0f}, "
+            f"- {source.source}: rüzgar {source.wind_speed_knots} kt, "
+            f"görüş {source.visibility_km} km, "
+            f"sıcaklık {source.temperature_c} °C, "
+            f"nem %{source.humidity_pct}, "
             f"yağış seviyesi {source.precipitation_level}"
         )
     params_text = "\n".join(
@@ -504,7 +510,7 @@ def _fallback_chat_reply(
     if "rüzgar" in lowered:
         return (
             "Rüzgar tarafında mevcut değerlendirme "
-            f"{decision_result.avg_wind_knots:.1f} kt. "
+            f"{decision_result.avg_wind_knots if decision_result.avg_wind_knots is not None else 'bilinmiyor'} kt. "
             f"Genel karar şu an {decision_result.decision}."
         )
     if "güven" in lowered or "güvenli" in lowered:

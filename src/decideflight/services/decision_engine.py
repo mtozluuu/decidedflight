@@ -11,7 +11,8 @@ The overall decision is the worst score across all averaged parameters.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Callable
 
 from decideflight.config import Settings, settings
@@ -30,8 +31,9 @@ from decideflight.services.weather_fetcher import (
 UYGUN = "UYGUN"
 RISKLI = "RISKLI"
 UYGUN_DEGIL = "UYGUN_DEGIL"
+VERI_YETERSIZ = "VERI_YETERSIZ"
 
-_SCORE = {UYGUN: 0, RISKLI: 1, UYGUN_DEGIL: 2}
+_SCORE = {UYGUN: 0, RISKLI: 1, UYGUN_DEGIL: 2, VERI_YETERSIZ: 3}
 _LABEL = {0: UYGUN, 1: RISKLI, 2: UYGUN_DEGIL}
 
 _PRECIP_LABELS = {
@@ -46,7 +48,9 @@ _PRECIP_LABELS = {
 # ---------------------------------------------------------------------------
 
 
-def _eval_wind(knots: float, limits: DroneLimit | Settings = settings) -> str:
+def _eval_wind(knots: float | None, limits: DroneLimit | Settings = settings) -> str:
+    if knots is None:
+        return VERI_YETERSIZ
     if knots < limits.wind_ok_max_knots:
         return UYGUN
     if knots <= limits.wind_risky_max_knots:
@@ -54,7 +58,9 @@ def _eval_wind(knots: float, limits: DroneLimit | Settings = settings) -> str:
     return UYGUN_DEGIL
 
 
-def _eval_visibility(km: float, limits: DroneLimit | Settings = settings) -> str:
+def _eval_visibility(km: float | None, limits: DroneLimit | Settings = settings) -> str:
+    if km is None:
+        return VERI_YETERSIZ
     if km > limits.visibility_ok_min_km:
         return UYGUN
     if km >= limits.visibility_risky_min_km:
@@ -62,7 +68,9 @@ def _eval_visibility(km: float, limits: DroneLimit | Settings = settings) -> str
     return UYGUN_DEGIL
 
 
-def _eval_precipitation(level: int) -> str:
+def _eval_precipitation(level: int | None) -> str:
+    if level is None:
+        return VERI_YETERSIZ
     if level == PRECIP_NONE:
         return UYGUN
     if level == PRECIP_LIGHT:
@@ -70,7 +78,9 @@ def _eval_precipitation(level: int) -> str:
     return UYGUN_DEGIL
 
 
-def _eval_temperature(temp_c: float, limits: DroneLimit | Settings = settings) -> str:
+def _eval_temperature(temp_c: float | None, limits: DroneLimit | Settings = settings) -> str:
+    if temp_c is None:
+        return VERI_YETERSIZ
     if limits.temp_ok_min_c <= temp_c <= limits.temp_ok_max_c:
         return UYGUN
     if limits.temp_risky_min_c <= temp_c <= limits.temp_risky_max_c:
@@ -78,7 +88,9 @@ def _eval_temperature(temp_c: float, limits: DroneLimit | Settings = settings) -
     return UYGUN_DEGIL
 
 
-def _eval_humidity(pct: float, limits: DroneLimit | Settings = settings) -> str:
+def _eval_humidity(pct: float | None, limits: DroneLimit | Settings = settings) -> str:
+    if pct is None:
+        return VERI_YETERSIZ
     if pct < limits.humidity_ok_max_pct:
         return UYGUN
     if pct <= limits.humidity_risky_max_pct:
@@ -88,7 +100,7 @@ def _eval_humidity(pct: float, limits: DroneLimit | Settings = settings) -> str:
 
 def _eval_cloud_base(ft: float | None, limits: DroneLimit | Settings = settings) -> str:
     if ft is None:
-        return UYGUN  # unknown → assume OK
+        return VERI_YETERSIZ
     if ft > limits.cloud_base_ok_min_ft:
         return UYGUN
     if ft >= limits.cloud_base_risky_min_ft:
@@ -98,7 +110,7 @@ def _eval_cloud_base(ft: float | None, limits: DroneLimit | Settings = settings)
 
 def _eval_cloud_ceiling(ft: float | None, limits: DroneLimit | Settings = settings) -> str:
     if ft is None:
-        return UYGUN
+        return VERI_YETERSIZ
     if ft > limits.cloud_ceiling_ok_min_ft:
         return UYGUN
     if ft >= limits.cloud_ceiling_risky_min_ft:
@@ -164,11 +176,11 @@ class DecisionResult:
     decision: str  # UYGUN / RISKLI / UYGUN_DEGIL
     detail: str  # human-readable summary
     parameters: list[ParameterResult]
-    avg_wind_knots: float
-    avg_temp_c: float
-    avg_humidity_pct: float
-    avg_visibility_km: float
-    avg_precip_level: float
+    avg_wind_knots: float | None
+    avg_temp_c: float | None
+    avg_humidity_pct: float | None
+    avg_visibility_km: float | None
+    avg_precip_level: float | None
     avg_cloud_base_ft: float | None
     avg_cloud_ceiling_ft: float | None
     confidence_score: int
@@ -176,6 +188,47 @@ class DecisionResult:
     pm25: float | None = None
     pm10: float | None = None
     avg_cloud_cover_pct: float | None = None
+    missing_parameters: list[str] = field(default_factory=list)
+    known_decision: str = UYGUN
+    excluded_sources: list[str] = field(default_factory=list)
+
+
+def usable_sources(sources: list[WeatherSourceData]) -> tuple[list[WeatherSourceData], list[str]]:
+    from decideflight.services.data_freshness import source_timing
+
+    selected = []
+    excluded = []
+    observations = set()
+    now = datetime.now(timezone.utc)
+    for source in sources:
+        if source_timing(source, now)["freshness"] == "stale":
+            excluded.append(f"{source.source}: eski veri")
+            continue
+        if source.station_distance_km is not None and source.station_distance_km > 100:
+            excluded.append(f"{source.source}: istasyon 100 km sınırının dışında")
+            continue
+        identity = " ".join((source.observation_id or "").split())
+        identity = identity.removeprefix("METAR ").removeprefix("SPECI ")
+        if identity and identity in observations:
+            excluded.append(f"{source.source}: aynı gözlemin tekrarı")
+            continue
+        if identity:
+            observations.add(identity)
+        selected.append(source)
+    return selected, excluded
+
+
+def wind_consensus(sources: list[WeatherSourceData]) -> tuple[float, float, int] | None:
+    sources, _ = usable_sources(sources)
+    valid = [s for s in sources if s.wind_speed_knots is not None and s.wind_direction_deg is not None]
+    if not valid:
+        return None
+    sin_sum = sum(math.sin(math.radians(s.wind_direction_deg)) * s.reliability_weight for s in valid)
+    cos_sum = sum(math.cos(math.radians(s.wind_direction_deg)) * s.reliability_weight for s in valid)
+    if math.hypot(sin_sum, cos_sum) < 0.1 * sum(s.reliability_weight for s in valid):
+        return None
+    speed = _weighted_avg([(s.wind_speed_knots, s.reliability_weight) for s in valid])
+    return speed, math.degrees(math.atan2(sin_sum, cos_sum)) % 360, len(valid)
 
 
 # ---------------------------------------------------------------------------
@@ -191,18 +244,20 @@ def make_decision(
     """Aggregate *sources* and return a ``DecisionResult``."""
 
     active_limits = limits if limits is not None else settings
+    sources, excluded = usable_sources(sources)
 
     def _weighted_pairs(
         getter: Callable[[WeatherSourceData], float | None],
     ) -> list[tuple[float | None, float]]:
         return [(getter(source), source.reliability_weight) for source in sources]
 
-    avg_wind = _weighted_avg(_weighted_pairs(lambda s: s.wind_speed_knots))
-    avg_temp = _weighted_avg(_weighted_pairs(lambda s: s.temperature_c))
-    avg_humidity = _weighted_avg(_weighted_pairs(lambda s: s.humidity_pct))
-    avg_visibility = _weighted_avg(_weighted_pairs(lambda s: s.visibility_km))
+    avg_wind = _weighted_avg_optional(_weighted_pairs(lambda s: s.wind_speed_knots))
+    avg_temp = _weighted_avg_optional(_weighted_pairs(lambda s: s.temperature_c))
+    avg_humidity = _weighted_avg_optional(_weighted_pairs(lambda s: s.humidity_pct))
+    avg_visibility = _weighted_avg_optional(_weighted_pairs(lambda s: s.visibility_km))
     # For precipitation use worst (max) across sources
-    max_precip = max(s.precipitation_level for s in sources)
+    precipitation = [s.precipitation_level for s in sources if s.precipitation_level is not None]
+    max_precip = max(precipitation) if precipitation else None
     avg_cloud_base = _weighted_avg_optional(_weighted_pairs(lambda s: s.cloud_base_ft))
     avg_cloud_cover = _weighted_avg_optional(
         _weighted_pairs(lambda s: s.cloud_cover_pct)
@@ -214,27 +269,27 @@ def make_decision(
     params: list[ParameterResult] = [
         ParameterResult(
             name="Rüzgar hızı",
-            value=f"{avg_wind:.1f} knot",
+            value=f"{avg_wind:.1f} knot" if avg_wind is not None else "N/A",
             decision=_eval_wind(avg_wind, active_limits),
         ),
         ParameterResult(
             name="Görüş mesafesi",
-            value=f"{avg_visibility:.1f} km",
+            value=f"{avg_visibility:.1f} km" if avg_visibility is not None else "N/A",
             decision=_eval_visibility(avg_visibility, active_limits),
         ),
         ParameterResult(
             name="Yağış",
-            value=_PRECIP_LABELS.get(max_precip, "Bilinmiyor"),
+            value=_PRECIP_LABELS.get(max_precip, "N/A"),
             decision=_eval_precipitation(max_precip),
         ),
         ParameterResult(
             name="Sıcaklık",
-            value=f"{avg_temp:.1f} °C",
+            value=f"{avg_temp:.1f} °C" if avg_temp is not None else "N/A",
             decision=_eval_temperature(avg_temp, active_limits),
         ),
         ParameterResult(
             name="Nem",
-            value=f"{avg_humidity:.0f}%",
+            value=f"{avg_humidity:.0f}%" if avg_humidity is not None else "N/A",
             decision=_eval_humidity(avg_humidity, active_limits),
         ),
         ParameterResult(
@@ -252,6 +307,34 @@ def make_decision(
             decision=_eval_cloud_ceiling(avg_cloud_ceiling, active_limits),
         ),
     ]
+    if sources and any(s.ceiling_unlimited for s in sources):
+        for parameter in params:
+            if parameter.value == "N/A" and (
+                parameter.name == "Bulut tavanı"
+                or (parameter.name == "Bulut tabanı" and any(s.clouds_clear for s in sources))
+            ):
+                parameter.value = "Tavan sınırlaması bildirilmedi"
+                parameter.decision = UYGUN
+
+    evaluators = {
+        "Rüzgar hızı": (lambda s: s.wind_speed_knots, lambda v: _eval_wind(v, active_limits)),
+        "Görüş mesafesi": (lambda s: s.visibility_km, lambda v: _eval_visibility(v, active_limits)),
+        "Sıcaklık": (lambda s: s.temperature_c, lambda v: _eval_temperature(v, active_limits)),
+        "Nem": (lambda s: s.humidity_pct, lambda v: _eval_humidity(v, active_limits)),
+        "Bulut tabanı": (lambda s: s.cloud_base_ft, lambda v: _eval_cloud_base(v, active_limits)),
+        "Bulut tavanı": (lambda s: s.cloud_ceiling_ft, lambda v: _eval_cloud_ceiling(v, active_limits)),
+    }
+    evidence = {}
+    for parameter in params:
+        if parameter.name not in evaluators:
+            continue
+        getter, evaluate = evaluators[parameter.name]
+        candidates = [(evaluate(getter(s)), s) for s in sources if getter(s) is not None]
+        if candidates:
+            worst, source = max(candidates, key=lambda item: _SCORE[item[0]])
+            if _SCORE[worst] > _SCORE[parameter.decision]:
+                parameter.decision = worst
+                evidence[parameter.name] = f"{source.source} ({getter(source):g})"
     if avg_cloud_cover is not None:
         params.insert(
             5,
@@ -313,15 +396,21 @@ def make_decision(
         )
     for parameter in params:
         if parameter.value == "N/A":
-            parameter.explanation = "Veri yok; mevcut kurallarda kararı ağırlaştırmıyor."
+            parameter.explanation = "Kullanılabilir veri yok; uçuş uygunluğu doğrulanamaz."
+        elif parameter.value == "Tavan sınırlaması bildirilmedi":
+            parameter.explanation = "Kaynak tavan sınırlaması bildirmiyor; model kaynaklarında bu ölçüm değil, tahmindir."
         else:
             parameter.explanation = ranges[parameter.name][_SCORE[parameter.decision]]
+        if parameter.name in evidence:
+            parameter.explanation += f" Ortalama riski azaltmadı; {evidence[parameter.name]} daha ağır koşul bildiriyor."
 
-    worst_score = max(_SCORE[p.decision] for p in params)
-    overall = _LABEL[worst_score]
+    missing = [p.name for p in params if p.decision == VERI_YETERSIZ]
+    known_score = max((_SCORE[p.decision] for p in params if p.decision != VERI_YETERSIZ), default=0)
+    known_decision = _LABEL[known_score]
+    overall = VERI_YETERSIZ if missing and known_decision != UYGUN_DEGIL else known_decision
 
     # Build detail message
-    bad = [p for p in params if p.decision != UYGUN]
+    bad = [p for p in params if p.decision not in {UYGUN, VERI_YETERSIZ}]
     if not bad:
         detail = "Tüm parametreler uygun sınırlar içinde."
     else:
@@ -330,6 +419,12 @@ def make_decision(
             label = "⚠️ Riskli" if p.decision == RISKLI else "❌ Uygun Değil"
             lines.append(f"{p.name}: {p.value} – {label} ({p.explanation})")
         detail = "\n".join(lines)
+    if missing:
+        detail = f"Veri yetersiz: {', '.join(missing)}. Uçuş uygunluğu doğrulanamaz.\n" + (
+            detail if bad else "Mevcut parametrelerde sınır aşımı görülmedi; bu bir uçuş onayı değildir."
+        )
+    if excluded:
+        detail += "\nDeğerlendirmeye katılmayan kaynaklar: " + "; ".join(excluded)
 
     metar_sources = [s for s in sources if s.source == "METAR (AVWX)"]
     metar_conf_bonus = 0
@@ -364,7 +459,7 @@ def make_decision(
         )
         metar_conf_bonus = 12
 
-    score_map = {UYGUN: 100, RISKLI: 50, UYGUN_DEGIL: 0}
+    score_map = {UYGUN: 100, RISKLI: 50, UYGUN_DEGIL: 0, VERI_YETERSIZ: 0}
     base_confidence = round(sum(score_map[p.decision] for p in params) / len(params))
     confidence_score = max(0, min(100, base_confidence + metar_conf_bonus))
 
@@ -376,7 +471,7 @@ def make_decision(
         avg_temp_c=avg_temp,
         avg_humidity_pct=avg_humidity,
         avg_visibility_km=avg_visibility,
-        avg_precip_level=float(max_precip),
+        avg_precip_level=float(max_precip) if max_precip is not None else None,
         avg_cloud_base_ft=avg_cloud_base,
         avg_cloud_ceiling_ft=avg_cloud_ceiling,
         avg_cloud_cover_pct=avg_cloud_cover,
@@ -384,6 +479,9 @@ def make_decision(
         aqi_score=air_quality.aqi_score if air_quality is not None else None,
         pm25=air_quality.pm25 if air_quality is not None else None,
         pm10=air_quality.pm10 if air_quality is not None else None,
+        missing_parameters=missing,
+        known_decision=known_decision,
+        excluded_sources=excluded,
     )
 
 

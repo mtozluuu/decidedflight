@@ -299,7 +299,7 @@ async def test_fetch_metar_aviationweather_parses_payload(monkeypatch):
     assert result.wind_direction_deg == pytest.approx(180.0)
     assert result.visibility_km == pytest.approx(9.656064)
     assert result.temperature_c == pytest.approx(29.0)
-    assert result.precipitation_level == PRECIP_NONE
+    assert result.precipitation_level is None
 
 
 @pytest.mark.asyncio
@@ -333,7 +333,7 @@ async def test_fetch_metar_checkwx_parses_payload(monkeypatch):
     assert result.wind_direction_deg == pytest.approx(220.0)
     assert result.visibility_km == pytest.approx(8.0)
     assert result.temperature_c == pytest.approx(28.0)
-    assert result.precipitation_level == PRECIP_NONE
+    assert result.precipitation_level is None
 
 
 @pytest.mark.asyncio
