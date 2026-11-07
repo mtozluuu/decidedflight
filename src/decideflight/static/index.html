@@ -182,6 +182,8 @@
     .table-row:hover { background: rgba(0, 212, 255, 0.08); }
 
     .source-card {
+      min-width: 0;
+      overflow-wrap: anywhere;
       border: 1px solid rgba(0, 212, 255, 0.28);
       background: rgba(7, 18, 37, 0.7);
       border-radius: 10px;
@@ -615,6 +617,7 @@
             <span id="aqiBadge" class="hidden mono text-[10px] rounded-full px-2 py-1 border"></span>
           </div>
           <p id="createdAt" class="mono text-[11px] text-cyan-100/55 mt-1"></p>
+          <p id="savedReportNotice" role="status" class="hidden text-xs text-amber-300 mt-3"></p>
         </div>
       </div>
 
@@ -700,6 +703,7 @@
         <summary class="mono text-sm text-cyan-300 cursor-pointer">VERİ KAYNAKLARI VE GÜNCELLİK
           <span id="sourceTimingOverview" class="block text-xs text-amber-300 mt-2"></span>
         </summary>
+        <div id="reportSourceChecks" class="mt-3 space-y-2 text-xs"></div>
         <div id="sourcesTable" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-4"></div>
       </details>
 
@@ -795,6 +799,7 @@
 
     <details id="historySection" class="hidden hud-card p-5">
       <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">GEÇMİŞ ANALİZLER</summary>
+      <p id="historyStatus" role="status" class="text-xs text-amber-300 mb-3"></p>
       <div id="historyChart" class="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2 items-end"></div>
       <div class="flex items-center gap-4 mt-3 mono text-[10px] text-cyan-100/40">
         <span><span class="inline-block w-2 h-2 rounded-sm bg-green-400/70 mr-1"></span>UYGUN</span>
@@ -1607,13 +1612,16 @@
 
     async function fetchNotam() {
       if (!currentReportData) return;
+      const report = currentReportData;
       try {
-        const response = await fetch(`/api/v1/weather/notam?lat=${currentReportData.lat}&lon=${currentReportData.lon}`);
+        const response = await fetch(`/api/v1/weather/notam?lat=${report.lat}&lon=${report.lon}`);
         const data = await response.json();
+        if (report !== currentReportData) return;
         if (!response.ok) throw new Error();
         document.getElementById('notamDisclaimer').textContent = data.disclaimer || '';
         document.getElementById('notamSection').classList.remove('hidden');
       } catch (_) {
+        if (report !== currentReportData) return;
         document.getElementById('notamSection').classList.add('hidden');
       }
     }
@@ -1666,13 +1674,15 @@
 
     async function fetchSeasonal() {
       if (!currentReportData) return;
+      const report = currentReportData;
       try {
         const response = await fetch('/api/v1/weather/seasonal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat: currentReportData.lat, lon: currentReportData.lon }),
+          body: JSON.stringify({ lat: report.lat, lon: report.lon }),
         });
         const data = await response.json();
+        if (report !== currentReportData) return;
         if (!response.ok) throw new Error();
         document.getElementById('seasonalHeatmap').innerHTML = data.months.map(month => `
           <div class="month-tile rounded-md border border-cyan-400/15 p-3 ${getDecisionTone(month.decision)}">
@@ -1682,6 +1692,7 @@
           </div>`).join('');
         document.getElementById('seasonalSection').classList.remove('hidden');
       } catch (_) {
+        if (report !== currentReportData) return;
         document.getElementById('seasonalSection').classList.add('hidden');
       }
     }
@@ -1695,11 +1706,32 @@
       return `${Math.round(hours / 24)} gün önce`;
     }
 
+    let historyLoadVersion = 0;
+
+    async function openSavedReport(reportId) {
+      const version = ++historyLoadVersion;
+      const status = document.getElementById('historyStatus');
+      status.textContent = 'Kayıtlı rapor açılıyor…';
+      try {
+        const response = await fetch(`/api/v1/weather/report/${reportId}`);
+        const data = await response.json();
+        if (version !== historyLoadVersion) return;
+        if (!response.ok) throw new Error(data.detail || 'Kayıtlı rapor alınamadı.');
+        renderResult(data);
+        status.textContent = 'Kayıtlı rapor açıldı; yeniden analiz yapılmadı.';
+      } catch (error) {
+        if (version !== historyLoadVersion) return;
+        status.textContent = error.message || 'Kayıtlı rapor alınamadı.';
+      }
+    }
+
     async function fetchHistory() {
+      const section = document.getElementById('historySection');
+      const status = document.getElementById('historyStatus');
       try {
         const response = await fetch('/api/v1/weather/history?limit=30');
         const data = await response.json();
-        if (!response.ok) throw new Error();
+        if (!response.ok) throw new Error(data.detail || 'Rapor geçmişi alınamadı.');
         const chart = document.getElementById('historyChart');
         const list = document.getElementById('historyList');
         chart.innerHTML = data.reports.map(report => {
@@ -1707,17 +1739,20 @@
           const bg = report.decision === 'UYGUN' ? '#00ff88' : report.decision === 'RISKLI' ? '#ffb800' : '#ff3d57';
           return `<div class="history-bar" style="height:${height}px; background:${bg};" title="${report.location} — ${report.decision}"></div>`;
         }).join('');
-        list.innerHTML = data.reports.map(report => `
-          <div class="rounded-md border border-cyan-400/15 bg-slate-950/40 px-3 py-3 flex items-center justify-between gap-3">
-            <div>
-              <p class="mono text-xs text-cyan-100">${report.location}</p>
-              <p class="text-[11px] text-cyan-100/55 mt-1">${timeAgo(report.created_at)}</p>
-            </div>
-            <span class="mono text-[10px] rounded-full border px-2 py-1 ${getDecisionTone(report.decision)}">${report.decision.replaceAll('_', ' ')}</span>
-          </div>`).join('');
-        document.getElementById('historySection').classList.remove('hidden');
-      } catch (_) {
-        document.getElementById('historySection').classList.add('hidden');
+        list.replaceChildren();
+        data.reports.forEach(report => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `w-full text-left rounded-md border ${getDecisionTone(report.decision)} bg-slate-950/40 px-3 py-3`;
+          button.textContent = `${report.location} · ${formatDecisionLabel(report.decision)} · ${timeAgo(report.created_at)} · Kayıtlı raporu aç`;
+          button.addEventListener('click', () => openSavedReport(report.report_id));
+          list.appendChild(button);
+        });
+        section.classList.remove('hidden');
+        status.textContent = data.reports.length ? '' : 'Henüz kayıtlı rapor yok.';
+      } catch (error) {
+        section.classList.remove('hidden');
+        status.textContent = error.message || 'Rapor geçmişi alınamadı.';
       }
     }
 
@@ -1981,6 +2016,7 @@
       }
 
       hide('errorSection');
+      const version = ++historyLoadVersion;
       hide('resultSection');
       hide('loadingSection');
       show('loadingSection');
@@ -2003,12 +2039,14 @@
         });
 
         const data = await res.json();
+        if (version !== historyLoadVersion) return;
         if (!res.ok) {
           throw new Error(data.detail || 'Bilinmeyen hata oluştu.');
         }
 
         renderResult(data);
       } catch (err) {
+        if (version !== historyLoadVersion) return;
         hide('loadingSection');
         console.error('Rapor oluşturma hatası:', err);
         const baseErrorMessage =
@@ -2030,6 +2068,8 @@
     function renderResult(data) {
       currentReportId = data.report_id;
       currentReportData = data;
+      ++forecastRequestVersion;
+      ++planRequestVersion;
       clearAirportSelection();
       document.getElementById('pointLocationContext').textContent =
         `Analiz noktası: ${data.location} (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)}) · Open-Meteo profili bu noktaya aittir.`;
@@ -2058,6 +2098,11 @@
       document.getElementById('locationLabel').textContent = `KONUM: ${data.location}  (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`;
       document.getElementById('createdAt').textContent =
         'RAPOR ZAMANI: ' + new Date(data.created_at).toLocaleString('tr-TR');
+      const savedNotice = document.getElementById('savedReportNotice');
+      savedNotice.classList.toggle('hidden', !data.is_saved_report);
+      savedNotice.textContent = data.parameter_snapshot_available
+        ? 'Kayıtlı rapor: karar, parametreler ve limitler oluşturulduğu haliyle gösteriliyor. Güncel hava analizi değildir.'
+        : 'Eski rapor: nihai karar ve açıklama korundu. Parametre anlık kaydı yok; tablo kayıtlı kaynaklardan yeniden hesaplandı. Limit kaydı yoksa dönem limitleri bilinmiyor.';
       renderAqiBadge(data);
       updateFavoriteButton();
 
@@ -2066,7 +2111,9 @@
       const ruleScore = Math.max(...data.parameters.map(p => severity[p.decision]));
       const ruleDecision = Object.keys(severity).find(key => severity[key] === ruleScore);
       document.getElementById('ruleDecisionNotice').textContent =
-        `Kural sonucu: ${formatDecisionLabel(ruleDecision)}. ` +
+        (data.is_saved_report && !data.parameter_snapshot_available)
+          ? 'Eski raporun özgün kural değerlendirmesi kaydedilmemiştir. Aşağıdaki hesaplanmış parametreler kayıtlı nihai kararın yerine geçmez.'
+          : `Kural sonucu: ${formatDecisionLabel(ruleDecision)}. ` +
         (severity[data.decision] > ruleScore
           ? 'AI, kural sonucunu daha ihtiyatlı hale getirdi.'
           : 'Nihai karar kural sonucuyla aynı seviyede; AI bu sınırı hafifletemez.');
@@ -2086,10 +2133,16 @@
       });
 
       // Load nearby runways in background (non-blocking)
-      loadNearbyRunways(data.lat, data.lon);
-      loadPointAirgram();
-      // Load wind data in background (non-blocking)
-      loadWindData(data.lat, data.lon);
+      if (!data.is_saved_report) {
+        loadNearbyRunways(data.lat, data.lon);
+        loadPointAirgram();
+        loadWindData(data.lat, data.lon);
+      } else {
+        pointAirgramController?.abort();
+        document.getElementById('pointAirgramChart').replaceChildren();
+        document.getElementById('pointAirgramStatus').textContent = 'Bu eski raporun irtifa profili kaydedilmedi. Yenile düğmesi güncel profil getirir; rapor kararını değiştirmez.';
+        document.getElementById('windyAirgramLink').classList.add('hidden');
+      }
 
       // Use AI confidence when available, otherwise fall back to score
       const conf = (data.confidence != null)
@@ -2178,8 +2231,22 @@
       const staleSources = data.sources.filter(source => source.freshness === 'stale').length;
       const unverifiedSources = data.sources.filter(source => source.freshness !== 'stale' && source.freshness !== 'current').length;
       document.getElementById('sourceTimingOverview').textContent = data.sources.length
-        ? `${data.sources.length} kaynak · ${staleSources} eski gözlem · ${unverifiedSources} kaynağın güncelliği doğrulanmadı. Zaman ayrıntıları için açın.`
+        ? `${data.is_saved_report ? 'Rapor oluşturulurken: ' : ''}${data.sources.length} kaynak · ${staleSources} eski gözlem · ${unverifiedSources} kaynağın güncelliği doğrulanmadı. ` +
+          (data.source_checks ? `${data.source_checks.filter(check => check.status === 'no_data').length} veri isteği sonuçsuz.` : 'Kaynak sorgu durumları kaydedilmemiş.') + ' Ayrıntılar için açın.'
         : 'Kaynak verisi bulunmuyor.';
+      const checks = document.getElementById('reportSourceChecks');
+      checks.replaceChildren();
+      if (!data.source_checks) {
+        checks.textContent = 'Bu eski raporda kaynak sorgu durumları kaydedilmemiş. Alınamayan kaynaklar ve nedenleri bilinmiyor.';
+      } else {
+        data.source_checks.forEach(check => {
+          const item = document.createElement('p');
+          item.className = check.status === 'no_data' ? 'text-amber-300' : 'text-cyan-100/70';
+          const labels = {received:'Veri alındı', no_data:'Veri alınamadı', not_configured:'Yapılandırılmamış', outside_coverage:'Kapsama dışında'};
+          item.textContent = `${check.provider} · ${check.name}: ${labels[check.status] || check.status}. ${check.message}`;
+          checks.appendChild(item);
+        });
+      }
       const applied = data.applied_limits;
       document.getElementById('appliedLimitsNotice').textContent = applied
         ? `Rapor oluşturulurken kaydedilen limitler: Rüzgâr <${applied.wind_ok_max_knots} / ≤${applied.wind_risky_max_knots} kt · Görüş >${applied.visibility_ok_min_km} / ≥${applied.visibility_risky_min_km} km · Nem <${applied.humidity_ok_max_pct} / ≤${applied.humidity_risky_max_pct}% · Bulutluluk ≤${applied.cloud_cover_ok_max_pct}% · Bulut tabanı >${applied.cloud_base_ok_min_ft} / ≥${applied.cloud_base_risky_min_ft} ft · Tavan >${applied.cloud_ceiling_ok_min_ft} / ≥${applied.cloud_ceiling_risky_min_ft} ft · Sıcaklık ${applied.temp_ok_min_c}–${applied.temp_ok_max_c} °C (uygun / riskli eşikler).`
@@ -2187,7 +2254,7 @@
       srcContainer.innerHTML = data.sources.map(s => `
         <div class="source-card mono">
           <p class="text-[11px] text-amber-300 mb-2">${s.data_time ? new Date(s.data_time).toISOString() : 'Veri zamanı bilinmiyor'} · ${s.freshness_message || 'Güncellik bilinmiyor.'}</p>
-          <div class="flex items-center justify-between gap-3 mb-3">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
             <p class="text-cyan-300 font-bold">${formatSourceIcon(s.source)} ${formatSourceName(s.source)}</p>
             <span class="text-[10px] text-cyan-100/55">GÜVENİLİRLİK ${formatReliabilityPercent(s.reliability_weight)}%</span>
           </div>
@@ -2208,10 +2275,20 @@
         </div>`).join('');
 
       resetChat();
-      fetchForecastChange();
-      fetchNotam();
-      fetchFlightPlan();
-      fetchSeasonal();
+      if (!data.is_saved_report) {
+        fetchForecastChange();
+        fetchNotam();
+        fetchFlightPlan();
+        fetchSeasonal();
+      } else {
+        document.getElementById('forecastTimeline').replaceChildren();
+        document.getElementById('forecastSection').classList.add('hidden');
+        document.getElementById('flightPlanTimeline').replaceChildren();
+        document.getElementById('flightPlanBest').textContent = '';
+        document.getElementById('flightPlanStatus').textContent = 'Kayıtlı raporun saatlik planı yok. PLANLA güncel tahmini kayıtlı limitlerle değerlendirir; rapor kararını değiştirmez.';
+        document.getElementById('seasonalSection').classList.add('hidden');
+        document.getElementById('notamSection').classList.add('hidden');
+      }
       fetchHistory();
       show('resultSection');
       document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' });

@@ -18,7 +18,7 @@ import json
 import logging
 import math
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -45,7 +45,7 @@ from decideflight.services.ai_decision_engine import (
     chat_about_report,
     make_ai_decision,
 )
-from decideflight.services.decision_engine import DecisionResult, make_decision
+from decideflight.services.decision_engine import DecisionResult, ParameterResult, make_decision
 from decideflight.services.decision_engine import compute_wind_components
 from decideflight.services.geocoding import geocode_city
 from decideflight.services.report_generator import generate_pdf
@@ -219,6 +219,9 @@ async def airport_observations(icao: str) -> AirportObservationsResponse:
 
 class WeatherReportResponse(BaseModel):
     applied_limits: dict | None = None
+    is_saved_report: bool = False
+    parameter_snapshot_available: bool = True
+    source_checks: list[DataSourceCheckSchema] | None = None
     report_id: int
     location: str
     lat: float
@@ -293,6 +296,19 @@ async def data_source_status(
             detail="Data source status check failed.",
         ) from exc
 
+    return DataSourceStatusResponse(
+        lat=lat,
+        lon=lon,
+        checked_at=datetime.now(timezone.utc),
+        checks=_build_source_checks(sources, air_quality, wind_trend),
+    )
+
+
+def _build_source_checks(
+    sources: list[WeatherSourceData] | Exception,
+    air_quality: AirQualityData | Exception | None,
+    wind_trend: Any,
+) -> list[DataSourceCheckSchema]:
     if isinstance(sources, Exception):
         logger.warning("Weather source status check failed: %s", sources)
         received_sources: set[str] = set()
@@ -349,7 +365,11 @@ async def data_source_status(
             provider=provider,
             data=data,
             status="no_data",
-            message="Veri dönmedi; bağlantı veya kaynak kapsaması kontrol edilmeli.",
+            message=(
+                "Veri alınamadı; bu kaynak değerlendirmeye katılmadı. "
+                "Bağlantı, API anahtarı veya kaynak kapsaması kontrol edilmeli; "
+                "kesin hata nedeni bu sonuçtan belirlenemiyor."
+            ),
         )
 
     checks = [
@@ -407,12 +427,7 @@ async def data_source_status(
         ),
     ]
 
-    return DataSourceStatusResponse(
-        lat=lat,
-        lon=lon,
-        checked_at=datetime.now(timezone.utc),
-        checks=checks,
-    )
+    return checks
 
 
 # ---------------------------------------------------------------------------
@@ -491,9 +506,22 @@ async def create_weather_report(
     decision_result = await make_ai_decision(**ai_kwargs)
 
     # 6. Persist report
-    ai_payload: dict[str, Any] = {}
-    if body.limits is not None:
-        ai_payload["applied_limits"] = body.limits.model_dump()
+    applied_limits = body.limits if body.limits is not None else _default_report_limits()
+    source_checks = _build_source_checks(sources, air_quality, wind_trend_obj)
+    decision_snapshot = asdict(decision_result)
+    ai_payload: dict[str, Any] = {
+        "applied_limits": applied_limits.model_dump(),
+        "decision_snapshot": {
+            field.name: decision_snapshot[field.name]
+            for field in fields(DecisionResult)
+        },
+        "wind_trend": wind_trend_str,
+        "source_checks": [check.model_dump() for check in source_checks],
+        "source_timings": [
+            {"source": source.source, **source_timing(source, datetime.now(timezone.utc))}
+            for source in sources
+        ],
+    }
     if isinstance(decision_result, AIDecisionResult):
         ai_payload.update(
             {
@@ -550,7 +578,8 @@ async def create_weather_report(
             ai_recs = decision_result.recommendations
 
     return WeatherReportResponse(
-        applied_limits=body.limits.model_dump() if body.limits is not None else None,
+        applied_limits=applied_limits.model_dump(),
+        source_checks=source_checks,
         report_id=report.id,
         location=report.location,
         lat=lat,
@@ -619,32 +648,10 @@ async def download_report_pdf(
             detail=f"Report {report_id} not found.",
         )
 
-    # Reconstruct source data from JSON
-    raw_sources: list[dict[str, Any]] = json.loads(report.sources_data)
-    sources = [
-        WeatherSourceData(
-            source=s["source"],
-            wind_speed_knots=s["wind_speed_knots"],
-            temperature_c=s["temperature_c"],
-            humidity_pct=s["humidity_pct"],
-            visibility_km=s["visibility_km"],
-            precipitation_level=s["precipitation_level"],
-            cloud_base_ft=s.get("cloud_base_ft"),
-            cloud_ceiling_ft=s.get("cloud_ceiling_ft"),
-            cloud_cover_pct=s.get("cloud_cover_pct"),
-            reliability_weight=s.get("reliability_weight", 1.0),
-            wind_direction_deg=s.get("wind_direction_deg"),
-        )
-        for s in raw_sources
-    ]
-
-    stored_limits = _load_ai_payload(report).get("applied_limits")
+    sources = _load_report_sources(report)
+    decision_result, payload = _build_report_decision(report)
+    stored_limits = payload.get("applied_limits")
     limits = DroneLimit.model_validate(stored_limits) if stored_limits else None
-    decision_result = make_decision(
-        sources, air_quality=_load_air_quality(report), limits=limits
-    )
-    decision_result.decision = report.decision
-    decision_result.detail = report.decision_detail
 
     pdf_bytes = generate_pdf(
         location=report.location,
@@ -654,6 +661,8 @@ async def download_report_pdf(
         decision_result=decision_result,
         created_at=report.created_at,
         limits=limits,
+        source_checks=payload.get("source_checks"),
+        parameter_snapshot_available="decision_snapshot" in payload,
     )
 
     filename = f"decidedflight_report_{report_id}.pdf"
@@ -752,9 +761,26 @@ def _load_ai_payload(report: WeatherReport) -> dict[str, Any]:
         return {}
     try:
         payload = json.loads(report.ai_analysis_data)
-    except json.JSONDecodeError:
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    except json.JSONDecodeError as exc:
+        logger.error("Invalid saved report metadata for report %s", report.id)
+        raise HTTPException(status_code=500, detail="Kayıtlı rapor bilgisi okunamadı.") from exc
+    if not isinstance(payload, dict):
+        logger.error("Invalid saved report metadata type for report %s", report.id)
+        raise HTTPException(status_code=500, detail="Kayıtlı rapor bilgisi geçersiz.")
+    return payload
+
+
+def _default_report_limits() -> DroneLimit:
+    values = {
+        name: getattr(settings, name)
+        for name in DroneLimit.model_fields
+        if hasattr(settings, name)
+    }
+    return DroneLimit(
+        **values,
+        temp_risky_min_override_c=settings.temp_risky_min_c,
+        temp_risky_max_override_c=settings.temp_risky_max_c,
+    )
 
 
 def _load_air_quality(report: WeatherReport) -> AirQualityData | None:
@@ -780,10 +806,81 @@ def _build_report_decision(
     ai_payload = _load_ai_payload(report)
     air_quality = _load_air_quality(report)
     stored_limits = ai_payload.get("applied_limits")
-    return make_decision(
-        sources, air_quality=air_quality,
-        limits=DroneLimit.model_validate(stored_limits) if stored_limits else None,
-    ), ai_payload
+    snapshot = ai_payload.get("decision_snapshot")
+    if snapshot is not None:
+        try:
+            values = dict(snapshot)
+            values["parameters"] = [
+                ParameterResult(**parameter) for parameter in values["parameters"]
+            ]
+            decision = DecisionResult(**values)
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.error("Invalid decision snapshot for report %s", report.id)
+            raise HTTPException(
+                status_code=500, detail="Kayıtlı karar ayrıntıları okunamadı."
+            ) from exc
+    else:
+        decision = make_decision(
+            sources, air_quality=air_quality,
+            limits=DroneLimit.model_validate(stored_limits) if stored_limits else None,
+        )
+        if ai_payload.get("confidence") is not None:
+            decision.confidence_score = int(ai_payload["confidence"])
+    decision.decision = report.decision
+    decision.detail = report.decision_detail
+    return decision, ai_payload
+
+
+@router.get(
+    "/report/{report_id}",
+    response_model=WeatherReportResponse,
+    summary="Kayıtlı hava raporunu yeniden analiz etmeden aç",
+)
+async def get_weather_report(
+    report_id: int, db: Session = Depends(get_db),
+) -> WeatherReportResponse:
+    report = db.get(WeatherReport, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found.")
+    decision, payload = _build_report_decision(report)
+    timings = {
+        timing["source"]: {
+            key: value for key, value in timing.items() if key != "source"
+        }
+        for timing in payload.get("source_timings", [])
+    }
+    return WeatherReportResponse(
+        report_id=report.id,
+        location=report.location,
+        lat=report.lat,
+        lon=report.lon,
+        is_saved_report=True,
+        parameter_snapshot_available="decision_snapshot" in payload,
+        applied_limits=payload.get("applied_limits"),
+        source_checks=payload.get("source_checks"),
+        sources=[
+            WeatherSourceSchema(
+                **{key: value for key, value in asdict(source).items() if key != "raw"},
+                **timings.get(source.source, {}),
+            )
+            for source in _load_report_sources(report)
+        ],
+        decision=decision.decision,
+        decision_detail=decision.detail,
+        confidence_score=decision.confidence_score,
+        parameters=[ParameterResultSchema(**asdict(p)) for p in decision.parameters],
+        created_at=report.created_at,
+        confidence=payload.get("confidence") if payload.get("summary") else None,
+        summary=payload.get("summary") or None,
+        detailed_analysis=payload.get("detailed_analysis") or None,
+        risk_factors=payload.get("risk_factors") or None,
+        recommendations=payload.get("recommendations") or None,
+        parameter_weights=payload.get("parameter_weights") or None,
+        wind_trend=payload.get("wind_trend") or None,
+        aqi_score=decision.aqi_score,
+        pm25=decision.pm25,
+        pm10=decision.pm10,
+    )
 
 
 def _build_point_source(hour_data: dict[str, Any]) -> WeatherSourceData:
