@@ -699,6 +699,14 @@ async def _fetch_windy(
         resp = await client.post(url, json=body, timeout=_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text.replace(settings.windy_api_key, "[REDACTED]")[:500]
+        logger.warning(
+            "Windy fetch failed (HTTP %s): %s",
+            exc.response.status_code,
+            detail or str(exc),
+        )
+        return None
     except Exception as exc:
         logger.warning("Windy fetch failed: %s", exc)
         return None

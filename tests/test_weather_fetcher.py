@@ -4,6 +4,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from decideflight.services.weather_fetcher import (
@@ -12,6 +13,7 @@ from decideflight.services.weather_fetcher import (
     _AirportRecord,
     _fetch_metar_aviationweather,
     _fetch_metar_checkwx,
+    _fetch_windy,
     fetch_all_sources,
     fetch_nearby_runways,
 )
@@ -46,6 +48,30 @@ def _airport() -> _AirportRecord:
         latitude_deg=2.01444,
         longitude_deg=45.304699,
     )
+
+
+@pytest.mark.asyncio
+async def test_fetch_windy_logs_error_body_without_api_key(caplog):
+    api_key = "windy-test-secret"
+    response = httpx.Response(
+        400,
+        text=f'Invalid request for key "{api_key}"',
+        request=httpx.Request(
+            "POST", "https://api.windy.com/api/point-forecast/v2"
+        ),
+    )
+    client = SimpleNamespace(post=AsyncMock(return_value=response))
+
+    with patch(
+        "decideflight.services.weather_fetcher.settings",
+        new=SimpleNamespace(windy_api_key=api_key),
+    ):
+        result = await _fetch_windy(39.0, 35.0, client)
+
+    assert result is None
+    assert "HTTP 400" in caplog.text
+    assert "[REDACTED]" in caplog.text
+    assert api_key not in caplog.text
 
 
 @pytest.mark.asyncio
