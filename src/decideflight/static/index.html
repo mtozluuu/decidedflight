@@ -511,6 +511,21 @@
       </div>
     </section>
 
+    <section class="hud-card p-6 mb-4">
+      <h3 class="mono text-sm text-cyan-300 mb-4">AIRGRAM</h3>
+      <p class="mono text-xs text-cyan-100/70">Open-Meteo profili analiz edilen nokta içindir. MGM görseli yukarıda seçilen ICAO meydanı içindir.</p>
+      <div class="flex gap-4 mt-3">
+        <button type="button" onclick="loadPointAirgram()" class="mono border border-cyan-400/40 rounded px-3 py-2 text-xs text-cyan-200">NOKTA PROFİLİNİ YENİLE</button>
+        <a id="windyAirgramLink" target="_blank" rel="noopener noreferrer" class="hidden mono text-xs text-cyan-300 underline">Windy Airgram aç</a>
+        <a href="https://hezarfen.mgm.gov.tr/HzUsr/Sayisal/Default.aspx" target="_blank" rel="noopener noreferrer" class="mono text-xs text-cyan-300 underline">Hezarfen Airgram sayfası</a>
+      </div>
+      <p id="pointAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">Nokta analizi oluşturunca profil yüklenir.</p>
+      <div id="pointAirgramChart" class="overflow-x-auto mt-3"></div>
+      <p class="mono text-[11px] text-cyan-100/60 mt-2">UTC saat · basınç (hPa) · yükseklik (m, deniz seviyesine göre) · sıcaklık (°C) · nem (%) · rüzgâr (kt ve yön °). Mavi hücreler nemi gösterir. N/A: veri yok. Bu profil bir uçuş onayı değildir.</p>
+      <p id="mgmAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-4">MGM Airgram için meydan seçin ve GÖSTER / YENİLE düğmesine basın.</p>
+      <img id="mgmAirgramImage" class="hidden mt-3 w-full" alt="Seçilen meydanın MGM Hezarfen Airgram görseli" />
+    </section>
+
     <div id="runwayCard" class="hidden hud-card p-6">
       <h3 class="mono text-sm text-cyan-300 mb-4">◈ PİST &amp; RÜZGAR BİLEŞENLERİ</h3>
 
@@ -1963,6 +1978,7 @@
 
       // Load nearby runways in background (non-blocking)
       loadNearbyRunways(data.lat, data.lon);
+      loadPointAirgram();
       // Load wind data in background (non-blocking)
       loadWindData(data.lat, data.lon);
 
@@ -2460,10 +2476,17 @@
       const status = document.getElementById('airportObservationStatus');
       document.getElementById('airportObservationData').classList.add('hidden');
       if (!/^[A-Z]{4}$/.test(icao)) {
+        const image = document.getElementById('mgmAirgramImage');
+        image.onload = null;
+        image.onerror = null;
+        image.classList.add('hidden');
+        image.removeAttribute('src');
+        document.getElementById('mgmAirgramStatus').textContent = 'MGM Airgram için geçerli bir meydan seçin.';
         status.textContent = 'Dört harfli ICAO kodu girin (örnek: LTAJ).';
         return;
       }
       status.textContent = `${icao} için MGM Rasat sorgulanıyor...`;
+      loadMgmAirgram(icao);
       try {
         const response = await fetch(`/api/v1/weather/airport-observations/${icao}`, { signal: controller.signal });
         const data = await response.json();
@@ -2481,8 +2504,73 @@
     document.getElementById('airportIcao').addEventListener('input', () => {
       airportObservationController?.abort();
       document.getElementById('airportObservationData').classList.add('hidden');
+      const image = document.getElementById('mgmAirgramImage');
+      image.onload = null;
+      image.onerror = null;
+      image.classList.add('hidden');
+      image.removeAttribute('src');
+      document.getElementById('mgmAirgramStatus').textContent = 'Yeni meydan için GÖSTER / YENİLE düğmesine basın.';
       document.getElementById('airportObservationStatus').textContent = 'Seçilen meydan için GÖSTER / YENİLE düğmesine basın.';
     });
+
+    function loadMgmAirgram(icao) {
+      const image = document.getElementById('mgmAirgramImage');
+      const status = document.getElementById('mgmAirgramStatus');
+      image.classList.add('hidden');
+      status.textContent = `${icao} — MGM Airgram yükleniyor...`;
+      image.onload = () => {
+        image.classList.remove('hidden');
+        status.textContent = `${icao} — MGM Hezarfen Airgram. Üretim/geçerlilik saatini görselden kontrol edin.`;
+      };
+      image.onerror = () => {
+        image.classList.add('hidden');
+        status.textContent = `${icao} için MGM Airgram alınamadı veya görsel mevcut değil.`;
+      };
+      image.src = `/api/v1/weather/airport-airgram/${icao}?refresh=${Date.now()}`;
+    }
+
+    let pointAirgramController = null;
+    async function loadPointAirgram() {
+      pointAirgramController?.abort();
+      if (!currentReportData) return;
+      const controller = new AbortController();
+      pointAirgramController = controller;
+      const {lat, lon} = currentReportData;
+      const status = document.getElementById('pointAirgramStatus');
+      const chart = document.getElementById('pointAirgramChart');
+      chart.replaceChildren();
+      const link = document.getElementById('windyAirgramLink');
+      link.href = `https://www.windy.com/${lat}/${lon}/airgram?${lat},${lon},8`;
+      link.classList.remove('hidden');
+      status.textContent = 'Open-Meteo saat–irtifa profili yükleniyor...';
+      try {
+        const response = await fetch(`/api/v1/weather/airgram?lat=${lat}&lon=${lon}`, {signal: controller.signal});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Airgram alınamadı.');
+        const table = document.createElement('table');
+        table.className = 'mono text-xs text-cyan-100 border-collapse';
+        const header = table.insertRow();
+        header.insertCell().textContent = 'hPa / UTC';
+        const indices = data.times.map((_, i) => i).filter(i => i % 3 === 0);
+        indices.forEach(i => { header.insertCell().textContent = data.times[i].replace('T', ' '); });
+        const fmt = v => v == null ? 'N/A' : Math.round(v);
+        [...data.levels].reverse().forEach(level => {
+          const row = table.insertRow();
+          row.insertCell().textContent = `${level.pressure_hpa} hPa`;
+          indices.forEach(i => {
+            const cell = row.insertCell();
+            cell.className = 'border border-cyan-400/20 p-2 whitespace-nowrap';
+            const rh = level.humidity_pct[i];
+            if (rh != null) cell.style.backgroundColor = `rgba(34, 211, 238, ${Math.max(0, Math.min(rh, 100)) / 250})`;
+            cell.textContent = `${fmt(level.height_m[i])} m | ${fmt(level.temperature_c[i])} °C | ${fmt(rh)}% | ${fmt(level.wind_knots[i])} kt / ${fmt(level.wind_direction_deg[i])}°`;
+          });
+        });
+        chart.appendChild(table);
+        status.textContent = `Open-Meteo — ${lat}, ${lon} — 48 saatlik profil, 3 saat aralıklarla (UTC). Basınç seviyeleri arazi altında kalabilir.`;
+      } catch(error) {
+        if (error.name !== 'AbortError') status.textContent = error.message;
+      }
+    }
 
     async function computeWindComponents() {
       const report = currentReportData;

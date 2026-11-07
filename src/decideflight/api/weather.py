@@ -23,10 +23,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 from decideflight.services.mgm_observations import fetch_mgm_observations
+from decideflight.services.airgram import fetch_airgram
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from decideflight.config import settings
@@ -132,6 +134,40 @@ class AirportObservationsResponse(BaseModel):
     metar: str | None
     taf: str | None
     checked_at: datetime
+
+
+@router.get("/airgram")
+async def point_airgram(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+) -> dict:
+    try:
+        return await fetch_airgram(lat, lon)
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Airgram fetch failed: %s", exc)
+        raise HTTPException(
+            status_code=503, detail="Open-Meteo Airgram verisi alınamadı."
+        ) from exc
+
+
+@router.get("/airport-airgram/{icao}")
+async def mgm_airgram(icao: str) -> Response:
+    icao = icao.upper()
+    if len(icao) != 4 or not icao.isascii() or not icao.isalpha():
+        raise HTTPException(status_code=422, detail="Dört harfli ICAO kodu girin.")
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(
+                "https://hezarfen.mgm.gov.tr/Genel/pngGetir.ashx",
+                params={"syol": f"{icao}.png"},
+            )
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("MGM Airgram failed for %s: %s", icao, exc)
+        raise HTTPException(status_code=503, detail="MGM Airgram alınamadı.") from exc
+    if not response.content.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=404, detail="Meydan için MGM Airgram bulunamadı.")
+    return Response(response.content, media_type="image/png")
 
 
 @router.get("/airport-observations/{icao}", response_model=AirportObservationsResponse)
