@@ -397,6 +397,21 @@ async def test_grid_selects_timestamp_not_array_offset(monkeypatch):
     assert result["wind_speed_knots"] == 5.4
     assert result["visibility_km"] == 10
     assert result["time"].hour == 12
+    pressure = await weather._fetch_grid_point_weather(39, 35, 3000, 2, None)
+    assert pressure["wind_speed_knots"] is None
+    payload["hourly"]["temperature_2m"][1] = None
+    payload["hourly"]["wind_speed_10m"][1] = 100
+    partial = await weather._fetch_grid_point_weather(39, 35, 10, 2, None)
+    assert partial["temperature_c"] is None
+    assert (
+        make_decision([weather._build_point_source(partial)]).decision
+        == "UYGUN_DEGIL"
+    )
+    payload["hourly"]["visibility"][1] = float("nan")
+    payload["hourly"]["wind_speed_10m"][1] = float("inf")
+    invalid = await weather._fetch_grid_point_weather(39, 35, 10, 2, None)
+    assert invalid["visibility_km"] is None
+    assert invalid["wind_speed_knots"] is None
     payload["hourly"]["time"] = ["2026-11-08T09:00", "2026-11-08T11:00"]
     assert await weather._fetch_grid_point_weather(39, 35, 10, 2, None) is None
 

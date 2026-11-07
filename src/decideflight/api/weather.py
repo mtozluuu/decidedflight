@@ -56,6 +56,7 @@ from decideflight.services.weather_fetcher import (
     WeatherSourceData,
     _fetch_with_retry,
     _precip_level,
+    _to_float,
     fetch_air_quality,
     fetch_all_sources,
     fetch_nearby_runways,
@@ -1701,15 +1702,15 @@ async def _fetch_grid_point_weather(
 
     if not use_hourly:
         cur = data.get("current", {})
-        temp_c: float | None = cur.get("temperature_2m")
+        temp_c: float | None = _to_float(cur.get("temperature_2m"))
         valid_time = _hourly_timestamp(cur["time"]) if cur.get("time") else None
 
-        dew_c: float | None = cur.get("dew_point_2m")
-        wind_kmh = cur.get("wind_speed_10m")
-        rh = cur.get("relative_humidity_2m")
-        precip_mm = cur.get("precipitation")
-        vis_m = cur.get("visibility")
-        cloud_pct = cur.get("cloud_cover")
+        dew_c: float | None = _to_float(cur.get("dew_point_2m"))
+        wind_kmh = _to_float(cur.get("wind_speed_10m"))
+        rh = _to_float(cur.get("relative_humidity_2m"))
+        precip_mm = _to_float(cur.get("precipitation"))
+        vis_m = _to_float(cur.get("visibility"))
+        cloud_pct = _to_float(cur.get("cloud_cover"))
 
         wind_knots = wind_kmh * 0.539957 if wind_kmh is not None else None
 
@@ -1718,7 +1719,8 @@ async def _fetch_grid_point_weather(
             pl_wind_list = hourly.get(f"wind_speed_{pressure_hpa}hPa", [])
             target = valid_time.replace(minute=0, second=0, microsecond=0) if valid_time else None
             idx = next((i for i, text in enumerate(hourly.get("time", [])) if _hourly_timestamp(text) == target), None)
-            wind_knots = float(pl_wind_list[idx]) * 0.539957 if idx is not None and len(pl_wind_list) > idx and pl_wind_list[idx] is not None else None
+            pl_wind = _to_float(pl_wind_list[idx]) if idx is not None and len(pl_wind_list) > idx else None
+            wind_knots = pl_wind * 0.539957 if pl_wind is not None else None
         else:
             # Power-law wind profile: V(z) = V_ref * (z/z_ref)^(1/7)
             # Exponent 1/7 (~0.143) is the standard value for open terrain
@@ -1737,16 +1739,16 @@ async def _fetch_grid_point_weather(
             return None
         valid_time = target
 
-        temp_c = temp_list[idx] if len(temp_list) > idx else None
+        temp_c = _to_float(temp_list[idx]) if len(temp_list) > idx else None
 
         def _h(key: str) -> float | None:
             lst = hourly.get(key, [])
             val = lst[idx] if len(lst) > idx else None
-            return float(val) if val is not None else None
+            return _to_float(val)
 
         dew_c_val = hourly.get("dew_point_2m", [])
         dew_c = (
-            float(dew_c_val[idx])
+            _to_float(dew_c_val[idx])
             if len(dew_c_val) > idx and dew_c_val[idx] is not None
             else None
         )
@@ -1761,7 +1763,8 @@ async def _fetch_grid_point_weather(
         if pressure_hpa is not None:
             pl_wind_list = hourly.get(f"wind_speed_{pressure_hpa}hPa", [])
             if len(pl_wind_list) > idx and pl_wind_list[idx] is not None:
-                wind_knots = float(pl_wind_list[idx]) * 0.539957
+                pl_wind = _to_float(pl_wind_list[idx])
+                wind_knots = pl_wind * 0.539957 if pl_wind is not None else None
             else:
                 wind_knots = None
         else:
@@ -1782,6 +1785,9 @@ async def _fetch_grid_point_weather(
         # estimated base (200 ft offset mirrors the existing weather_fetcher).
         ceiling_ft = base_ft + 200.0
 
+    if precip_mm is not None and precip_mm < 0:
+        logger.warning("Grid returned negative precipitation; marked unknown")
+        precip_mm = None
     if precip_mm is None:
         precip_level = None
     elif precip_mm <= 0:
@@ -1791,17 +1797,28 @@ async def _fetch_grid_point_weather(
     else:
         precip_level = 2
 
+    validated = WeatherSourceData(
+        source="Open-Meteo",
+        wind_speed_knots=wind_knots,
+        temperature_c=temp_c,
+        humidity_pct=rh,
+        visibility_km=vis_m / 1000.0 if vis_m is not None else None,
+        cloud_base_ft=base_ft,
+        cloud_ceiling_ft=ceiling_ft,
+        precipitation_level=precip_level,
+        cloud_cover_pct=cloud_pct,
+    )
     return {
-        "wind_speed_knots": _round_optional(wind_knots, 2),
-        "temperature_c": temp_c,
-        "humidity_pct": rh,
-        "visibility_km": vis_m / 1000.0 if vis_m is not None else None,
-        "cloud_base_ft": base_ft,
-        "cloud_ceiling_ft": ceiling_ft,
-        "precipitation_level": precip_level,
-        "cloud_cover_pct": cloud_pct,
-        "ceiling_unlimited": cloud_pct is not None and cloud_pct <= 50,
-        "clouds_clear": cloud_pct == 0,
+        "wind_speed_knots": _round_optional(validated.wind_speed_knots, 2),
+        "temperature_c": validated.temperature_c,
+        "humidity_pct": validated.humidity_pct,
+        "visibility_km": validated.visibility_km,
+        "cloud_base_ft": validated.cloud_base_ft if validated.temperature_c is not None else None,
+        "cloud_ceiling_ft": validated.cloud_ceiling_ft if validated.temperature_c is not None and validated.cloud_cover_pct is not None else None,
+        "precipitation_level": validated.precipitation_level,
+        "cloud_cover_pct": validated.cloud_cover_pct,
+        "ceiling_unlimited": validated.cloud_cover_pct is not None and validated.cloud_cover_pct <= 50,
+        "clouds_clear": validated.cloud_cover_pct == 0,
         "time": valid_time,
         "wind_method": (
             f"{pressure_hpa} hPa model seviyesi; yükseklik yaklaşık, sıcaklık/nem yüzey değeridir"
