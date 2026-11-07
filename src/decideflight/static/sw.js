@@ -1,4 +1,4 @@
-const CACHE_NAME = 'decideflight-static-v1';
+const CACHE_NAME = 'decideflight-static-v3';
 const STATIC_ASSETS = [
   '/',
   '/static/index.html',
@@ -24,7 +24,12 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  const requestUrl = new URL(event.request.url);
+  if (
+    event.request.method !== 'GET'
+    || requestUrl.origin !== self.location.origin
+    || requestUrl.pathname.startsWith('/api/')
+  ) return;
 
   event.respondWith(
     caches.match(event.request).then((cached) => {

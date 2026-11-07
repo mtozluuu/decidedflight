@@ -3,6 +3,7 @@ and grid summary endpoint."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -191,6 +192,44 @@ class TestAIDecisionFallback:
         assert result.risk_factors == ["Hafif nem artışı"]
         assert result.recommendations == ["Erken saatte uçun"]
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("wind_speed", "gpt_decision", "expected_decision"),
+        [
+            (20.0, "UYGUN", "RISKLI"),
+            (8.0, "RISKLI", "RISKLI"),
+        ],
+    )
+    async def test_gpt_decision_is_at_least_as_conservative_as_rules(
+        self, wind_speed: float, gpt_decision: str, expected_decision: str
+    ):
+        """GPT cannot downgrade the rule decision but may make it more cautious."""
+        import json
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = json.dumps(
+            {"karar": gpt_decision}
+        )
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "fake-key"}),
+            patch(
+                "decideflight.services.ai_decision_engine._AsyncOpenAI",
+                return_value=mock_client,
+            ),
+        ):
+            result = await make_ai_decision(
+                sources=[replace(_good_source(), wind_speed_knots=wind_speed)],
+                location="Istanbul",
+                lat=41.0,
+                lon=28.9,
+            )
+
+        assert result.decision == expected_decision
+
 
 # ---------------------------------------------------------------------------
 # Feature 4: Feedback context injection
@@ -238,6 +277,7 @@ class TestFeedbackContextInjection:
             lon: float,
             feedback_context: str = "",
             wind_trend: str = "",
+            air_quality: object = None,
         ) -> object:
             captured.append(feedback_context)
             from decideflight.services.decision_engine import make_decision

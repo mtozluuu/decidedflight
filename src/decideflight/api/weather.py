@@ -28,6 +28,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 
+from decideflight.config import settings
 from decideflight.database import SessionLocal
 from decideflight.models.feedback import Feedback
 from decideflight.models.weather_report import WeatherReport
@@ -146,6 +147,171 @@ class WeatherReportResponse(BaseModel):
     aqi_score: int | None = None
     pm25: float | None = None
     pm10: float | None = None
+
+
+class DataSourceCheckSchema(BaseModel):
+    name: str
+    provider: str
+    data: str
+    status: str
+    message: str
+
+
+class DataSourceStatusResponse(BaseModel):
+    lat: float
+    lon: float
+    checked_at: datetime
+    checks: list[DataSourceCheckSchema]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/weather/sources/status
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/sources/status",
+    response_model=DataSourceStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Check weather data source availability",
+)
+async def data_source_status(
+    lat: float = 39.0,
+    lon: float = 35.0,
+) -> DataSourceStatusResponse:
+    """Probe configured weather sources and report which returned data."""
+    if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Coordinates are outside the valid range.",
+        )
+
+    try:
+        sources, air_quality, wind_trend = await asyncio.gather(
+            fetch_all_sources(lat, lon),
+            fetch_air_quality(lat, lon),
+            fetch_wind_trend(lat, lon),
+            return_exceptions=True,
+        )
+    except Exception as exc:  # pragma: no cover - gather returns exceptions
+        logger.exception("Unexpected data source status check failure")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Data source status check failed.",
+        ) from exc
+
+    if isinstance(sources, Exception):
+        logger.warning("Weather source status check failed: %s", sources)
+        received_sources: set[str] = set()
+    else:
+        received_sources = {source.source for source in sources}
+
+    def _check(
+        name: str,
+        provider: str,
+        data: str,
+        *,
+        source_name: str | None = None,
+        configured: bool = True,
+        in_coverage: bool = True,
+        received: bool | None = None,
+    ) -> DataSourceCheckSchema:
+        if not configured:
+            return DataSourceCheckSchema(
+                name=name,
+                provider=provider,
+                data=data,
+                status="not_configured",
+                message="API anahtarı tanımlı değil.",
+            )
+        if not in_coverage:
+            return DataSourceCheckSchema(
+                name=name,
+                provider=provider,
+                data=data,
+                status="outside_coverage",
+                message="Bu kaynak yalnızca Türkiye koordinatlarında sorgulanır.",
+            )
+        did_receive = (
+            source_name in received_sources if received is None else received
+        )
+        if did_receive:
+            return DataSourceCheckSchema(
+                name=name,
+                provider=provider,
+                data=data,
+                status="received",
+                message="Bu kontrol sırasında veri alındı.",
+            )
+        return DataSourceCheckSchema(
+            name=name,
+            provider=provider,
+            data=data,
+            status="no_data",
+            message="Veri dönmedi; bağlantı veya kaynak kapsaması kontrol edilmeli.",
+        )
+
+    checks = [
+        _check(
+            "Anlık hava durumu",
+            "Open-Meteo",
+            "Sıcaklık, rüzgar, nem, görüş, yağış ve bulutluluk",
+            source_name="Open-Meteo",
+        ),
+        _check(
+            "Hava kalitesi",
+            "Open-Meteo",
+            "Avrupa AQI, PM2.5 ve PM10",
+            received=not isinstance(air_quality, Exception) and air_quality is not None,
+        ),
+        _check(
+            "Rüzgar ve tahmin",
+            "Open-Meteo",
+            "Saatlik rüzgar verisi ve son 6 saatlik trend",
+            received=not isinstance(wind_trend, Exception) and wind_trend is not None,
+        ),
+        _check(
+            "Anlık hava durumu",
+            "OpenWeatherMap",
+            "Sıcaklık, rüzgar, nem, görüş, yağış ve bulutluluk",
+            source_name="OpenWeatherMap",
+            configured=bool(settings.openweathermap_api_key),
+        ),
+        _check(
+            "Anlık hava durumu",
+            "WeatherAPI",
+            "Sıcaklık, rüzgar, nem, görüş, yağış ve bulutluluk",
+            source_name="WeatherAPI",
+            configured=bool(settings.weatherapi_api_key),
+        ),
+        _check(
+            "Model tahmini",
+            "Windy",
+            "GFS rüzgar, sıcaklık ve nem tahmini",
+            source_name="Windy",
+            configured=bool(settings.windy_api_key),
+        ),
+        _check(
+            "METAR",
+            "NOAA Aviation Weather",
+            "En yakın havalimanının güncel METAR gözlemi",
+            source_name="METAR (NOAA/aviationweather.gov)",
+        ),
+        _check(
+            "METAR",
+            "CheckWX",
+            "En yakın havalimanının güncel METAR gözlemi",
+            source_name="METAR (CheckWX)",
+            configured=bool(settings.checkwx_api_key),
+        ),
+    ]
+
+    return DataSourceStatusResponse(
+        lat=lat,
+        lon=lon,
+        checked_at=datetime.now(timezone.utc),
+        checks=checks,
+    )
 
 
 # ---------------------------------------------------------------------------

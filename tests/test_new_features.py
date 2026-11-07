@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from decideflight.main import app
 from decideflight.services.weather_fetcher import (
+    AirQualityData,
     PRECIP_NONE,
     WeatherSourceData,
     _fetch_air_quality,
@@ -59,6 +61,152 @@ def _create_report(client: TestClient, *, location: str = "Test Location") -> in
 
 
 class TestNewWeatherEndpoints:
+    def test_source_status_reports_received_and_unconfigured_sources(
+        self, client: TestClient
+    ):
+        with (
+            patch(
+                "decideflight.api.weather.fetch_all_sources",
+                new=AsyncMock(return_value=[_source()]),
+            ),
+            patch(
+                "decideflight.api.weather.fetch_air_quality",
+                new=AsyncMock(
+                    return_value=AirQualityData(aqi_score=42, pm25=4.0, pm10=8.0)
+                ),
+            ),
+            patch(
+                "decideflight.api.weather.fetch_wind_trend",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "decideflight.api.weather.settings",
+                new=SimpleNamespace(
+                    openweathermap_api_key="",
+                    weatherapi_api_key="",
+                    windy_api_key="",
+                    checkwx_api_key="",
+                ),
+            ),
+        ):
+            response = client.get(
+                "/api/v1/weather/sources/status?lat=41&lon=29"
+            )
+
+        assert response.status_code == 200
+        checks = {
+            (check["provider"], check["name"]): check
+            for check in response.json()["checks"]
+        }
+        assert checks[("Open-Meteo", "Anlık hava durumu")]["status"] == "received"
+        assert checks[("Open-Meteo", "Hava kalitesi")]["status"] == (
+            "received"
+        )
+        assert checks[("Open-Meteo", "Rüzgar ve tahmin")]["status"] == "no_data"
+        assert checks[("NOAA Aviation Weather", "METAR")]["status"] == "no_data"
+        assert len(checks) == 8
+        for provider in ("OpenWeatherMap", "WeatherAPI", "Windy", "CheckWX"):
+            assert checks[(provider, next(
+                check["name"]
+                for check in response.json()["checks"]
+                if check["provider"] == provider
+            ))]["status"] == "not_configured"
+        assert not any(
+            provider == "MGM"
+            for provider, _ in checks
+        )
+
+    def test_source_status_uses_configured_optional_providers(self, client: TestClient):
+        sources = [
+            _source(),
+            WeatherSourceData(
+                source="OpenWeatherMap",
+                wind_speed_knots=9.0,
+                temperature_c=22.0,
+                humidity_pct=55.0,
+                visibility_km=10.0,
+                precipitation_level=PRECIP_NONE,
+                cloud_base_ft=2500.0,
+                cloud_ceiling_ft=3200.0,
+            ),
+            WeatherSourceData(
+                source="WeatherAPI",
+                wind_speed_knots=9.0,
+                temperature_c=22.0,
+                humidity_pct=55.0,
+                visibility_km=10.0,
+                precipitation_level=PRECIP_NONE,
+                cloud_base_ft=2500.0,
+                cloud_ceiling_ft=3200.0,
+            ),
+            WeatherSourceData(
+                source="Windy",
+                wind_speed_knots=9.0,
+                temperature_c=22.0,
+                humidity_pct=55.0,
+                visibility_km=10.0,
+                precipitation_level=PRECIP_NONE,
+                cloud_base_ft=2500.0,
+                cloud_ceiling_ft=3200.0,
+            ),
+            WeatherSourceData(
+                source="METAR (CheckWX)",
+                wind_speed_knots=9.0,
+                temperature_c=22.0,
+                humidity_pct=55.0,
+                visibility_km=10.0,
+                precipitation_level=PRECIP_NONE,
+                cloud_base_ft=None,
+                cloud_ceiling_ft=None,
+            ),
+        ]
+        with (
+            patch(
+                "decideflight.api.weather.fetch_all_sources",
+                new=AsyncMock(return_value=sources),
+            ),
+            patch(
+                "decideflight.api.weather.fetch_air_quality",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "decideflight.api.weather.fetch_wind_trend",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "decideflight.api.weather.settings",
+                new=SimpleNamespace(
+                    openweathermap_api_key="configured",
+                    weatherapi_api_key="configured",
+                    windy_api_key="configured",
+                    checkwx_api_key="configured",
+                ),
+            ),
+        ):
+            response = client.get(
+                "/api/v1/weather/sources/status?lat=41&lon=29"
+            )
+
+        assert response.status_code == 200
+        checks = {
+            (check["provider"], check["name"]): check["status"]
+            for check in response.json()["checks"]
+        }
+        for provider, name in (
+            ("OpenWeatherMap", "Anlık hava durumu"),
+            ("WeatherAPI", "Anlık hava durumu"),
+            ("Windy", "Model tahmini"),
+            ("CheckWX", "METAR"),
+        ):
+            assert checks[(provider, name)] == "received"
+
+    def test_source_status_rejects_invalid_coordinates(self, client: TestClient):
+        response = client.get(
+            "/api/v1/weather/sources/status?lat=91&lon=29"
+        )
+
+        assert response.status_code == 422
+
     def test_chat_endpoint_returns_reply(self, client: TestClient):
         report_id = _create_report(client, location="Chat Noktası")
         with patch(

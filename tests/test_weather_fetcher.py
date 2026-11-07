@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -275,7 +276,17 @@ async def test_fetch_metar_checkwx_parses_payload(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_sources_includes_new_metar_sources():
+async def test_fetch_all_sources_uses_active_providers_but_not_mgm():
+    open_meteo = WeatherSourceData(
+        source="Open-Meteo",
+        wind_speed_knots=9.0,
+        temperature_c=22.0,
+        humidity_pct=55.0,
+        visibility_km=10.0,
+        precipitation_level=PRECIP_NONE,
+        cloud_base_ft=2500.0,
+        cloud_ceiling_ft=3200.0,
+    )
     noaa = WeatherSourceData(
         source="METAR (NOAA/aviationweather.gov)",
         wind_speed_knots=12.0,
@@ -286,41 +297,30 @@ async def test_fetch_all_sources_includes_new_metar_sources():
         cloud_base_ft=None,
         cloud_ceiling_ft=None,
     )
-    checkwx = WeatherSourceData(
-        source="METAR (CheckWX)",
-        wind_speed_knots=11.0,
-        temperature_c=23.0,
-        humidity_pct=72.0,
-        visibility_km=9.0,
-        precipitation_level=PRECIP_NONE,
-        cloud_base_ft=None,
-        cloud_ceiling_ft=None,
-    )
+
+    optional_sources = [
+        replace(open_meteo, source="OpenWeatherMap"),
+        replace(open_meteo, source="WeatherAPI"),
+        replace(open_meteo, source="Windy"),
+        replace(noaa, source="METAR (CheckWX)"),
+    ]
 
     with (
         patch(
             "decideflight.services.weather_fetcher._fetch_open_meteo",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=open_meteo),
         ),
         patch(
             "decideflight.services.weather_fetcher._fetch_owm",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=optional_sources[0]),
         ),
         patch(
             "decideflight.services.weather_fetcher._fetch_weatherapi",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            "decideflight.services.weather_fetcher._fetch_mgm",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=optional_sources[1]),
         ),
         patch(
             "decideflight.services.weather_fetcher._fetch_windy",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            "decideflight.services.weather_fetcher._fetch_metar_avwx",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=optional_sources[2]),
         ),
         patch(
             "decideflight.services.weather_fetcher._fetch_metar_aviationweather",
@@ -328,12 +328,23 @@ async def test_fetch_all_sources_includes_new_metar_sources():
         ),
         patch(
             "decideflight.services.weather_fetcher._fetch_metar_checkwx",
-            new=AsyncMock(return_value=checkwx),
+            new=AsyncMock(return_value=optional_sources[3]),
         ),
+        patch(
+            "decideflight.services.weather_fetcher._fetch_mgm",
+            new=AsyncMock(
+                return_value=replace(open_meteo, source="MGM (Türkiye)")
+            ),
+        ) as fetch_mgm,
     ):
         result = await fetch_all_sources(2.0, 45.3)
 
     assert [source.source for source in result] == [
+        "Open-Meteo",
+        "OpenWeatherMap",
+        "WeatherAPI",
+        "Windy",
         "METAR (NOAA/aviationweather.gov)",
         "METAR (CheckWX)",
     ]
+    fetch_mgm.assert_not_awaited()

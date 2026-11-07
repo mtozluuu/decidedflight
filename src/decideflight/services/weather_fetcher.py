@@ -960,10 +960,9 @@ async def _fetch_air_quality(
 async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
     """Fetch from all available sources and return non-None results.
 
-    Open-Meteo is always attempted. The other optional sources require API
-    keys in ``settings`` when applicable; they are skipped (not raising) if
-    the key is absent or
-    the request fails.
+    Open-Meteo, configured OpenWeatherMap, WeatherAPI, and Windy, plus
+    CheckWX and NOAA Aviation Weather METAR are the active weather providers.
+    Optional API-backed sources are skipped when their keys are absent.
 
     Raises ``RuntimeError`` if *no* source succeeds.
     """
@@ -972,9 +971,7 @@ async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
             _fetch_open_meteo(lat, lon, client),
             _fetch_owm(lat, lon, client),
             _fetch_weatherapi(lat, lon, client),
-            _fetch_mgm(lat, lon, client),
             _fetch_windy(lat, lon, client),
-            _fetch_metar_avwx(lat, lon, client),
             _fetch_metar_aviationweather(lat, lon, client),
             _fetch_metar_checkwx(lat, lon, client),
             return_exceptions=True,

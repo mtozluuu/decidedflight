@@ -8,6 +8,9 @@ DecideFlight is an AI-powered flight weather decision system. It combines data f
 - Config-driven environment management
 - SQLAlchemy database layer ready for PostgreSQL
 - Initial weather data model
+- Weather reports use Open-Meteo, with optional OpenWeatherMap, WeatherAPI, and Windy sources when configured. Nearby METAR observations from NOAA Aviation Weather are included when available; CheckWX is optional.
+- Air quality and wind trends use Open-Meteo. The web UI's **Veri Kaynakları** tab checks provider availability for selected coordinates.
+- OpenWeatherMap, WeatherAPI, Windy, and CheckWX require API keys configured in `.env`. AVWX remains optional for runway lookup, and OpenAI remains optional for AI analysis.
 - Extendable service and API module layout
 - Testing and code quality tooling setup
 

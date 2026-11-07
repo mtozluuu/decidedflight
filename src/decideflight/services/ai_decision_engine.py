@@ -27,6 +27,7 @@ from decideflight.models.feedback import Feedback
 from decideflight.models.weather_report import WeatherReport
 from decideflight.services.decision_engine import (
     DecisionResult,
+    _SCORE,
     make_decision,
 )
 from decideflight.services.weather_fetcher import AirQualityData, WeatherSourceData
@@ -275,6 +276,8 @@ def _parse_gpt_response(
     """Parse GPT JSON response into an AIDecisionResult."""
     decision_raw = str(parsed.get("karar", rule_result.decision)).upper()
     if decision_raw not in ("UYGUN", "RISKLI", "UYGUN_DEGIL"):
+        decision_raw = rule_result.decision
+    if _SCORE[decision_raw] < _SCORE[rule_result.decision]:
         decision_raw = rule_result.decision
 
     confidence = int(parsed.get("guven_skoru", rule_result.confidence_score))
