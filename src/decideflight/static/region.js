@@ -292,7 +292,7 @@
     const compareControl = L.control({ position: 'topright' });
     compareControl.onAdd = function () {
       const box = L.DomUtil.create('div', 'airspace-control leaflet-bar region-control');
-      box.innerHTML = '<strong>Karşılaştırma</strong>';
+      box.innerHTML = '<strong>Seviye/saat kıyası</strong>';
       const grid = L.DomUtil.create('div', 'route-form', box);
       const picks = ['A', 'B'].map((name, i) => {
         const level = L.DomUtil.create('select', 'airspace-select', grid);

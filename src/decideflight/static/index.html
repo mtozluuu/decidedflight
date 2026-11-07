@@ -788,8 +788,7 @@
       <div class="hud-card p-5">
         <h2 class="mono text-cyan-300 text-sm font-bold mb-2">Bölge analizi</h2>
         <p class="mono text-[11px] text-cyan-100/60 mb-4">
-          Haritada tıklayarak anlık nokta raporu, dikdörtgen çizerek ızgara analizi yapın.
-          Dikdörtgen çizmek için sol araç çubuğundaki <strong>□</strong> ikonuna tıklayın.
+          Tıklayınca nokta raporu; sol araç çubuğundaki <strong>□</strong> ile dikdörtgen çizince ızgara analizi.
         </p>
         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <div>
@@ -863,7 +862,7 @@
           </button>
           <button id="compareRegionBtn" type="button" onclick="toggleRegionCompare()"
             class="mono border border-violet-400/40 text-violet-200 hover:bg-violet-400/10 rounded-md px-4 py-2 text-xs tracking-wider">
-            Karşılaştır
+            İki bölgeyi kıyasla
           </button>
           <p id="regionStatus" class="mono text-[11px] text-cyan-100/60"></p>
         </div>
@@ -1004,7 +1003,7 @@
           Bu limitler tarayıcınızda saklanır; yeni nokta raporlarında ve bölge analizinde kullanılır. Eski raporların limitleri değişmez.
         </p>
 
-        <div class="space-y-5">
+        <div class="grid lg:grid-cols-2 gap-x-8 gap-y-5">
           <!-- Wind -->
           <div>
             <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Rüzgâr hızı (knot)</h3>
@@ -1116,9 +1115,9 @@
           </div>
 
           <!-- Wind component limits -->
-          <div>
+          <div class="lg:col-span-2">
             <h3 class="mono text-[11px] text-cyan-100/55 mb-2">Rüzgâr bileşen limitleri (knot)</h3>
-            <div class="grid sm:grid-cols-2 gap-3">
+            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div>
                 <label for="s_crosswind_ok" class="mono text-[11px] text-green-300/80 block mb-1">Maks. Yan Rüzgar Uygun (≤)</label>
                 <input id="s_crosswind_ok" type="number" step="1" min="0" max="50" value="15"
@@ -1183,7 +1182,7 @@
 
       <!-- Placeholder shown before coordinates are set -->
       <div id="windPlaceholder" class="hud-card p-8 text-center">
-        <p class="mono text-cyan-100/60 text-sm">Rüzgar verisini görmek için önce bir konum analizi yapın.</p>
+        <p class="mono text-cyan-100/60 text-sm">Rüzgâr verisini görmek için bir konum analizi yapın veya haritada bir noktaya tıklayın.</p>
       </div>
 
       <!-- Main wind content (hidden until data loaded) -->
@@ -2659,6 +2658,10 @@
     // TAB SWITCHING
     // ═══════════════════════════════════════════════════════════════════
 
+    let sourceCoordsEdited = false;
+    ['sourceCheckLat', 'sourceCheckLon'].forEach(id =>
+      document.getElementById(id).addEventListener('input', () => { sourceCoordsEdited = true; }));
+
     function switchTab(tabId) {
       ['point', 'region', 'wind', 'sources', 'settings'].forEach(id => {
         document.getElementById('panel-' + id).classList.add('hidden');
@@ -2680,8 +2683,19 @@
       if (tabId === 'wind' && _currentWindLat !== null) {
         loadWindData(_currentWindLat, _currentWindLon);
       }
-      if (tabId === 'sources' && !document.getElementById('sourceChecksList').childElementCount) {
-        checkDataSources();
+      if (tabId === 'sources') {
+        const latEl = document.getElementById('sourceCheckLat');
+        const lonEl = document.getElementById('sourceCheckLon');
+        let changed = false;
+        if (_currentWindLat !== null && !sourceCoordsEdited) {
+          const la = _currentWindLat.toFixed(4), lo = _currentWindLon.toFixed(4);
+          changed = latEl.value !== la || lonEl.value !== lo;
+          latEl.value = la;
+          lonEl.value = lo;
+        }
+        if (!document.getElementById('sourceChecksList').childElementCount || changed) {
+          checkDataSources();
+        }
       }
     }
 
@@ -3572,6 +3586,9 @@
       map.on('click', async function (e) {
         if (isRectDrawing || map._routePicking) return;
         const { lat, lng } = e.latlng;
+        _currentWindLat = lat;
+        _currentWindLon = lng;
+        sourceCoordsEdited = false;
         const popup = L.popup()
           .setLatLng([lat, lng])
           .setContent(
