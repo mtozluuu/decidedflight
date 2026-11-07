@@ -312,9 +312,11 @@ class TestNewWeatherEndpoints:
 
     def test_seasonal_endpoint_returns_twelve_months(self, client: TestClient):
         payload = {
-            "monthly": {
-                "wind_speed_10m": [12.0] * 12,
-                "visibility": [10.0] * 12,
+            "daily": {
+                "time": [f"2000-{month:02}-01" for month in range(1, 13)],
+                "wind_speed_10m_max": [12.0] * 12,
+                "temperature_2m_mean": [20.0] * 12,
+                "precipitation_sum": [1.0] * 12,
             }
         }
 
@@ -341,6 +343,8 @@ class TestNewWeatherEndpoints:
         months = response.json()["months"]
         assert len(months) == 12
         assert months[0]["month"] == "Ocak"
+        assert all(month["avg_visibility_km"] is None for month in months)
+        assert all(month["suitability_score"] is None for month in months)
 
 
 @pytest.mark.asyncio

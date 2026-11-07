@@ -11,7 +11,9 @@ import asyncio
 import csv
 import logging
 import math
+import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,7 @@ from typing import Any
 import httpx
 
 from decideflight.config import settings
+from decideflight.services.weather_cache import WeatherCache
 from decideflight.services.metar_fetcher import (
     estimate_relative_humidity,
     fetch_metar_taf_for_coords,
@@ -51,17 +54,40 @@ class WeatherSourceData:
     """Normalised weather observation from a single source."""
 
     source: str
-    wind_speed_knots: float
-    temperature_c: float
-    humidity_pct: float
-    visibility_km: float
-    precipitation_level: int  # 0 = none, 1 = light, 2 = moderate/heavy
+    wind_speed_knots: float | None
+    temperature_c: float | None
+    humidity_pct: float | None
+    visibility_km: float | None
+    precipitation_level: int | None  # None = unknown, 0 = none, 1 = light, 2 = moderate/heavy
     cloud_base_ft: float | None
     cloud_ceiling_ft: float | None
     wind_direction_deg: float | None = None
     reliability_weight: float = 1.0
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     cloud_cover_pct: float | None = None
+    ceiling_unlimited: bool = False
+    clouds_clear: bool = False
+    station_distance_km: float | None = None
+    observation_id: str | None = None
+    data_kind: str = "unknown"
+
+    def __post_init__(self) -> None:
+        bounds = {
+            "wind_speed_knots": (0, None), "temperature_c": (-100, 70),
+            "humidity_pct": (0, 100), "visibility_km": (0, None),
+            "precipitation_level": (0, 2), "cloud_cover_pct": (0, 100),
+            "cloud_base_ft": (0, None), "cloud_ceiling_ft": (0, None),
+            "wind_direction_deg": (0, 360),
+        }
+        for name, (minimum, maximum) in bounds.items():
+            value = getattr(self, name)
+            if value is not None and (
+                not isinstance(value, (int, float)) or not math.isfinite(value)
+                or value < minimum or (maximum is not None and value > maximum)
+                or (name == "precipitation_level" and value not in (0, 1, 2))
+            ):
+                logger.warning("%s returned invalid %s; marked unknown", self.source, name)
+                setattr(self, name, None)
 
 
 @dataclass
@@ -162,7 +188,8 @@ def _to_float(value: Any) -> float | None:
     if isinstance(value, str):
         value = value.strip().replace(",", ".")
     try:
-        return float(value)
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else None
     except (TypeError, ValueError):
         return None
 
@@ -345,7 +372,9 @@ def _find_nearest_airports(
 
 
 def _find_nearest_airport(lat: float, lon: float) -> _AirportRecord | None:
-    nearest = _find_nearest_airports(lat, lon, max_results=1)
+    nearest = _find_nearest_airports(
+        lat, lon, max_results=1, max_distance_km=_OURAIRPORTS_MAX_DISTANCE_KM
+    )
     return nearest[0][0] if nearest else None
 
 
@@ -463,21 +492,17 @@ async def _fetch_open_meteo(
         return None
 
     cur = data.get("current", {})
-    temp = cur.get("temperature_2m")
-    dew = cur.get("dew_point_2m")
-    wind_kmh = cur.get("wind_speed_10m", 0.0)
-    wind_dir = cur.get("wind_direction_10m")
-    rh = cur.get("relative_humidity_2m", 0.0)
-    precip_mm = cur.get("precipitation", 0.0)
-    vis_m = cur.get("visibility", 10000.0)
-    cloud_pct = cur.get("cloud_cover", 0.0)
-
-    if temp is None:
-        logger.warning("Open-Meteo returned no temperature")
-        return None
+    temp = _to_float(cur.get("temperature_2m"))
+    dew = _to_float(cur.get("dew_point_2m"))
+    wind_kmh = _to_float(cur.get("wind_speed_10m"))
+    wind_dir = _to_float(cur.get("wind_direction_10m"))
+    rh = _to_float(cur.get("relative_humidity_2m"))
+    precip_mm = _to_float(cur.get("precipitation"))
+    vis_m = _to_float(cur.get("visibility"))
+    cloud_pct = _to_float(cur.get("cloud_cover"))
 
     base_ft: float | None = None
-    if dew is not None:
+    if dew is not None and temp is not None:
         base_ft = _cloud_base_ft(temp, dew)
 
     # Estimate cloud ceiling: if cloud cover > 50 % use base; else unlimited
@@ -489,15 +514,18 @@ async def _fetch_open_meteo(
     return WeatherSourceData(
         source="Open-Meteo",
         cloud_cover_pct=_parse_number(cur.get("cloud_cover")),
-        wind_speed_knots=_kmh_to_knots(wind_kmh),
+        wind_speed_knots=_kmh_to_knots(wind_kmh) if wind_kmh is not None else None,
         temperature_c=temp,
         humidity_pct=rh,
-        visibility_km=_m_to_km(vis_m),
-        precipitation_level=_precip_level(precip_mm),
+        visibility_km=_m_to_km(vis_m) if vis_m is not None else None,
+        precipitation_level=_precip_level(precip_mm) if precip_mm is not None else None,
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=ceiling_ft,
         wind_direction_deg=float(wind_dir) if wind_dir is not None else None,
         raw=cur,
+        ceiling_unlimited=cloud_pct is not None and cloud_pct <= 50,
+        clouds_clear=cloud_pct == 0,
+        data_kind="forecast",
     )
 
 
@@ -530,34 +558,37 @@ async def _fetch_owm(
 
     main = data.get("main", {})
     wind = data.get("wind", {})
-    temp_k = main.get("temp", 273.15)
-    temp_c = _kelvin_to_celsius(temp_k)
-    wind_ms = wind.get("speed", 0.0)
+    temp_k = _to_float(main.get("temp"))
+    temp_c = _kelvin_to_celsius(temp_k) if temp_k is not None else None
+    wind_ms = _to_float(wind.get("speed"))
     wind_dir_owm = wind.get("deg")
-    rh = main.get("humidity", 0.0)
-    vis_m = data.get("visibility", 10000)
+    rh = _to_float(main.get("humidity"))
+    vis_m = _to_float(data.get("visibility"))
     rain_mm = data.get("rain", {}).get("1h", 0.0)
     snow_mm = data.get("snow", {}).get("1h", 0.0)
     precip_mm = rain_mm + snow_mm
-    cloud_pct = data.get("clouds", {}).get("all", 0.0)
+    cloud_pct = _to_float(data.get("clouds", {}).get("all"))
 
     # Estimate dew point from Magnus formula
-    dew_c = _dew_point_c(temp_c, rh)
+    dew_c = _dew_point_c(temp_c, rh) if temp_c is not None and rh is not None else None
     base_ft = _cloud_base_ft(temp_c, dew_c) if dew_c is not None else None
-    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct > 50) else None
+    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct is not None and cloud_pct > 50) else None
 
     return WeatherSourceData(
         source="OpenWeatherMap",
         cloud_cover_pct=_parse_number(data.get("clouds", {}).get("all")),
-        wind_speed_knots=_ms_to_knots(wind_ms),
+        wind_speed_knots=_ms_to_knots(wind_ms) if wind_ms is not None else None,
         temperature_c=temp_c,
         humidity_pct=rh,
-        visibility_km=_m_to_km(vis_m),
-        precipitation_level=_precip_level(precip_mm),
+        visibility_km=_m_to_km(vis_m) if vis_m is not None else None,
+        precipitation_level=_precip_level(precip_mm) if data.get("rain") or data.get("snow") or (main and data.get("weather")) else None,
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=ceiling_ft,
-        wind_direction_deg=float(wind_dir_owm) if wind_dir_owm is not None else None,
+        wind_direction_deg=_to_float(wind_dir_owm),
         raw=data,
+        ceiling_unlimited=cloud_pct is not None and cloud_pct <= 50,
+        clouds_clear=data.get("clouds", {}).get("all") == 0,
+        data_kind="provider_current",
     )
 
 
@@ -588,31 +619,34 @@ async def _fetch_weatherapi(
         return None
 
     cur = data.get("current", {})
-    temp_c = cur.get("temp_c", 20.0)
-    wind_kmh = cur.get("wind_kph", 0.0)
+    temp_c = _to_float(cur.get("temp_c"))
+    wind_kmh = _to_float(cur.get("wind_kph"))
     wind_dir_wa = cur.get("wind_degree")
-    rh = cur.get("humidity", 0.0)
-    vis_km = cur.get("vis_km", 10.0)
-    precip_mm = cur.get("precip_mm", 0.0)
-    cloud_pct = cur.get("cloud", 0.0)
+    rh = _to_float(cur.get("humidity"))
+    vis_km = _to_float(cur.get("vis_km"))
+    precip_mm = _to_float(cur.get("precip_mm"))
+    cloud_pct = _to_float(cur.get("cloud"))
 
     # Estimate dew point
-    dew_c = _dew_point_c(temp_c, rh)
+    dew_c = _dew_point_c(temp_c, rh) if temp_c is not None and rh is not None else None
     base_ft = _cloud_base_ft(temp_c, dew_c) if dew_c is not None else None
-    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct > 50) else None
+    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct is not None and cloud_pct > 50) else None
 
     return WeatherSourceData(
         source="WeatherAPI",
         cloud_cover_pct=_parse_number(cur.get("cloud")),
-        wind_speed_knots=_kmh_to_knots(wind_kmh),
+        wind_speed_knots=_kmh_to_knots(wind_kmh) if wind_kmh is not None else None,
         temperature_c=temp_c,
         humidity_pct=rh,
         visibility_km=vis_km,
-        precipitation_level=_precip_level(precip_mm),
+        precipitation_level=_precip_level(precip_mm) if precip_mm is not None else None,
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=ceiling_ft,
-        wind_direction_deg=float(wind_dir_wa) if wind_dir_wa is not None else None,
+        wind_direction_deg=_to_float(wind_dir_wa),
         raw=cur,
+        ceiling_unlimited=cloud_pct is not None and cloud_pct <= 50,
+        clouds_clear=cur.get("cloud") == 0,
+        data_kind="provider_current",
     )
 
 
@@ -727,42 +761,50 @@ async def _fetch_windy(
         logger.warning("Windy fetch failed: %s", exc)
         return None
 
-    # Take first forecast step (index 0)
-    def _first(key: str) -> float:
-        arr = data.get(key, [0.0])
-        return float(arr[0]) if arr else 0.0
+    times = data.get("ts") or []
+    numeric_times = [(i, timestamp) for i, timestamp in enumerate(times) if isinstance(timestamp, (int, float))]
+    index = min(numeric_times, key=lambda item: abs(item[1] / 1000 - datetime.now(timezone.utc).timestamp()))[0] if numeric_times else 0
+    data["selected_time"] = times[index] / 1000 if numeric_times else None
+
+    def _first(key: str) -> float | None:
+        arr = data.get(key) or []
+        return _to_float(arr[index]) if len(arr) > index else None
 
     wind_u = _first("wind_u-surface")
     wind_v = _first("wind_v-surface")
-    wind_ms = math.sqrt(wind_u**2 + wind_v**2)
+    wind_ms = math.hypot(wind_u, wind_v) if wind_u is not None and wind_v is not None else None
     # Derive meteorological wind direction from u/v components
     # (direction wind comes FROM, 0° = North, clockwise)
     wind_dir_windy: float | None = None
-    if wind_ms > 0:
+    if wind_ms is not None and wind_ms > 0:
         wind_dir_windy = (270.0 - math.degrees(math.atan2(wind_v, wind_u))) % 360.0
     temp_k = _first("temp-surface")
-    temp_c = _kelvin_to_celsius(temp_k)
+    temp_c = _kelvin_to_celsius(temp_k) if temp_k is not None else None
     rh = _first("rh-surface")
     lclouds = _first("lclouds-surface")
     mclouds = _first("mclouds-surface")
 
     # Estimate dew point
-    dew_c = _dew_point_c(temp_c, rh)
+    dew_c = _dew_point_c(temp_c, rh) if temp_c is not None and rh is not None else None
     base_ft = _cloud_base_ft(temp_c, dew_c) if dew_c is not None else None
-    cloud_pct = max(lclouds, mclouds)
-    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct > 50) else None
+    cloud_values = [v for v in (lclouds, mclouds, _first("hclouds-surface")) if v is not None]
+    cloud_pct = max(cloud_values) if cloud_values else None
+    ceiling_ft = (base_ft + 200.0) if (base_ft is not None and cloud_pct is not None and cloud_pct > 50) else None
 
     return WeatherSourceData(
         source="Windy",
-        wind_speed_knots=_ms_to_knots(wind_ms),
+        wind_speed_knots=_ms_to_knots(wind_ms) if wind_ms is not None else None,
         temperature_c=temp_c,
         humidity_pct=rh,
-        visibility_km=10.0,  # Windy doesn't provide visibility directly
-        precipitation_level=PRECIP_NONE,
+        visibility_km=None,
+        precipitation_level=None,
         cloud_base_ft=base_ft,
         cloud_ceiling_ft=ceiling_ft,
         wind_direction_deg=wind_dir_windy,
         raw=data,
+        ceiling_unlimited=cloud_pct is not None and cloud_pct <= 50,
+        clouds_clear=cloud_pct == 0,
+        data_kind="forecast",
     )
 
 
@@ -848,20 +890,25 @@ async def _fetch_avwx_gov_metar(
     temp_c = _pick_first_number(metar, "temp")
     dewpoint_c = _pick_first_number(metar, "dwpt")
     visibility_sm = _parse_number(metar.get("visib"))
-    visibility_km = _sm_to_km(visibility_sm) if visibility_sm is not None else 10.0
+    visibility_km = _sm_to_km(visibility_sm) if visibility_sm is not None else None
+    raw_text = str(metar.get("rawOb") or "")
+    hazards = _metar_hazards(raw_text)
+    speed = _pick_first_number(metar, "wspd")
+    gust = _pick_first_number(metar, "wgst")
+    wind_values = [v for v in (speed, gust) if v is not None]
 
     return WeatherSourceData(
         source="METAR (NOAA/aviationweather.gov)",
-        wind_speed_knots=_pick_first_number(metar, "wspd") or 0.0,
-        temperature_c=temp_c if temp_c is not None else 20.0,
-        humidity_pct=estimate_relative_humidity(temp_c, dewpoint_c),
+        wind_speed_knots=max(wind_values) if wind_values else None,
+        temperature_c=temp_c,
+        humidity_pct=estimate_relative_humidity(temp_c, dewpoint_c) if temp_c is not None and dewpoint_c is not None else None,
         visibility_km=visibility_km,
-        precipitation_level=PRECIP_NONE,
-        cloud_base_ft=None,
-        cloud_ceiling_ft=None,
+        **hazards,
         wind_direction_deg=_pick_first_number(metar, "wdir"),
         reliability_weight=1.8,
         raw={"icao": icao, **metar},
+        observation_id=raw_text or None,
+        data_kind="observation",
     )
 
 
@@ -873,7 +920,10 @@ async def _fetch_metar_aviationweather(
     airport = _find_nearest_airport(lat, lon)
     if airport is None:
         return None
-    return await _fetch_avwx_gov_metar(airport.icao, client)
+    source = await _fetch_avwx_gov_metar(airport.icao, client)
+    if source is not None:
+        source.station_distance_km = _haversine_km(lat, lon, airport.latitude_deg, airport.longitude_deg)
+    return source
 
 
 async def _fetch_metar_checkwx(
@@ -918,24 +968,54 @@ async def _fetch_metar_checkwx(
     elif miles_visibility is not None:
         visibility_km = _sm_to_km(miles_visibility)
     else:
-        visibility_km = 10.0
+        visibility_km = None
 
     temp_c = _parse_number(temperature.get("celsius"))
     dewpoint_c = _parse_number(dewpoint.get("celsius"))
 
+    speed = _parse_number(wind.get("speed_kts"))
+    gust = _parse_number(wind.get("gust_kts"))
+    wind_values = [v for v in (speed, gust) if v is not None]
+    raw_text = str(metar.get("raw_text") or "")
     return WeatherSourceData(
         source="METAR (CheckWX)",
-        wind_speed_knots=_parse_number(wind.get("speed_kts")) or 0.0,
-        temperature_c=temp_c if temp_c is not None else 20.0,
-        humidity_pct=estimate_relative_humidity(temp_c, dewpoint_c),
+        wind_speed_knots=max(wind_values) if wind_values else None,
+        temperature_c=temp_c,
+        humidity_pct=estimate_relative_humidity(temp_c, dewpoint_c) if temp_c is not None and dewpoint_c is not None else None,
         visibility_km=visibility_km,
-        precipitation_level=PRECIP_NONE,
-        cloud_base_ft=None,
-        cloud_ceiling_ft=None,
+        **_metar_hazards(raw_text),
         wind_direction_deg=_parse_number(wind.get("degrees")),
         reliability_weight=1.7,
         raw={"icao": airport.icao, **metar},
+        observation_id=raw_text or None,
+        station_distance_km=_haversine_km(lat, lon, airport.latitude_deg, airport.longitude_deg),
+        data_kind="observation",
     )
+
+
+def _metar_hazards(text: str) -> dict[str, Any]:
+    """Extract prevailing weather/sky only, not remarks or trend forecasts."""
+    body = re.split(r"\b(?:RMK|TEMPO|BECMG|NOSIG)\b", text)[0]
+    tokens = body.split()
+    layers = re.findall(r"\b(FEW|SCT|BKN|OVC|VV)(\d{3}|///)", body)
+    bases = [int(height) * 100 for _, height in layers if height != "///"]
+    ceilings = [int(height) * 100 for cover, height in layers if cover in {"BKN", "OVC", "VV"} and height != "///"]
+    obscured = any(cover in {"BKN", "OVC", "VV"} and height == "///" for cover, height in layers)
+    clear = any(token in {"CAVOK", "SKC", "CLR", "NSC", "NCD"} for token in tokens)
+    weather = [token for token in tokens if re.fullmatch(r"[-+]?(?:VC)?(?:MI|PR|BC|DR|BL|SH|TS|FZ)?(?:TS|DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PO|SQ|FC|SS|DS)+", token)]
+    precip = None
+    if re.search(r"\b(?:\d{3}|VRB)\d{2,3}(?:G\d{2,3})?KT\b", body):
+        precip = PRECIP_NONE
+    for token in weather:
+        if any(code in token for code in ("DZ", "RA", "SN", "SG", "IC", "PL", "GR", "GS", "UP", "TS", "FZ", "FC", "SQ")):
+            precip = max(precip or 0, PRECIP_LIGHT if token.startswith("-") and not any(code in token for code in ("TS", "FZ", "GR", "FC")) else PRECIP_HEAVY)
+    return {
+        "precipitation_level": precip,
+        "cloud_base_ft": min(bases) if bases else None,
+        "cloud_ceiling_ft": min(ceilings) if ceilings else None,
+        "ceiling_unlimited": not obscured and not ceilings and (clear or bool(layers)),
+        "clouds_clear": clear,
+    }
 
 
 async def _fetch_air_quality(
@@ -981,7 +1061,15 @@ async def _fetch_air_quality(
 # ---------------------------------------------------------------------------
 
 
+_weather_cache: WeatherCache[list[WeatherSourceData]] = WeatherCache(ttl=60)
+_air_quality_cache: WeatherCache[AirQualityData | None] = WeatherCache(ttl=300)
+
+
 async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
+    return await _weather_cache.get((lat, lon), lambda: _fetch_all_sources(lat, lon))
+
+
+async def _fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
     """Fetch from all available sources and return non-None results.
 
     Open-Meteo, configured OpenWeatherMap, WeatherAPI, and Windy, plus
@@ -1008,7 +1096,15 @@ async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
             continue
         results.append(item)
 
-    sources = [r for r in results if r is not None]
+    sources = [
+        r for r in results if r is not None and any(
+            value is not None for value in (
+                r.wind_speed_knots, r.temperature_c, r.humidity_pct,
+                r.visibility_km, r.precipitation_level,
+                r.cloud_base_ft, r.cloud_ceiling_ft, r.cloud_cover_pct,
+            )
+        )
+    ]
     if not sources:
         raise RuntimeError(
             "All weather sources failed.  Check connectivity and API keys."
@@ -1018,8 +1114,11 @@ async def fetch_all_sources(lat: float, lon: float) -> list[WeatherSourceData]:
 
 async def fetch_air_quality(lat: float, lon: float) -> AirQualityData | None:
     """Fetch the current AQI context for the given coordinates."""
-    async with httpx.AsyncClient() as client:
-        return await _fetch_air_quality(lat, lon, client)
+    async def load() -> AirQualityData | None:
+        async with httpx.AsyncClient() as client:
+            return await _fetch_air_quality(lat, lon, client)
+
+    return await _air_quality_cache.get((lat, lon), load)
 
 
 async def fetch_nearby_runways(lat: float, lon: float) -> list[dict]:

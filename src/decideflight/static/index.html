@@ -457,7 +457,7 @@
         <button type="button" onclick="loadPointAirgram()" class="mono border border-cyan-400/40 rounded px-3 py-2 text-xs text-cyan-200">Nokta profilini yenile</button>
         <a id="windyAirgramLink" target="_blank" rel="noopener noreferrer" class="hidden mono text-xs text-cyan-300 underline">Windy Airgram · dış sitede aç</a>
       </div>
-      <p id="pointAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">Nokta analizi oluşturunca profil yüklenir.</p>
+      <p id="pointAirgramStatus" role="status" class="mono text-xs text-cyan-100/70 mt-3">Bu panel açılınca güncel model profili yüklenir.</p>
       <div id="pointAirgramChart" class="overflow-auto max-h-96 mt-3"></div>
       <details class="mt-3">
         <summary class="mono text-[11px] text-cyan-100/60 cursor-pointer">Birimler ve okuma rehberi</summary>
@@ -489,6 +489,7 @@
         </div>
       </div>
 
+      <p id="windComponentStatus" class="text-xs mt-3"></p>
       <div id="windComponentResult" class="hidden">
         <div class="grid grid-cols-3 gap-3 mt-4">
           <div class="text-center p-3 rounded-lg border border-cyan-400/20 bg-slate-900/40">
@@ -600,7 +601,7 @@
           <div><dt>Yağış</dt><dd id="snapshotPrecipitation">—</dd></div>
           <div><dt>Nem</dt><dd id="snapshotHumidity">—</dd></div>
           <div><dt>Bulut tabanı</dt><dd id="snapshotCloudBase">—</dd></div>
-          <div><dt>Güven endeksi</dt><dd id="snapshotConfidence">—</dd></div>
+          <div><dt>Veri kapsamı</dt><dd id="snapshotConfidence">—</dd></div>
           <div><dt>Veri kaynağı</dt><dd id="snapshotSources">—</dd></div>
         </dl>
         <div class="source-summary-block">
@@ -692,7 +693,8 @@
       </details>
 
       <details id="seasonalSection" class="hidden hud-card p-5">
-        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Mevsimsel analiz · Uygun uçuş ayları</summary>
+        <summary class="mono text-sm text-cyan-300 mb-4 cursor-pointer">Tarihsel aylık istatistikler · 1991–2020</summary>
+        <p id="seasonalStatus" role="status" class="text-xs mb-3">Panel açılınca tarihsel veri yüklenir; uçuş uygunluğu hesaplanmaz.</p>
         <div id="seasonalHeatmap" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3"></div>
       </details>
 
@@ -846,6 +848,7 @@
           <button id="filterUygun" onclick="setFilter('UYGUN')"       class="filter-btn mono text-[11px] px-3 py-1 rounded border border-green-400/40 bg-slate-900/60 text-green-300 hover:border-green-300">UYGUN</button>
           <button id="filterRiskli" onclick="setFilter('RISKLI')"     class="filter-btn mono text-[11px] px-3 py-1 rounded border border-amber-400/40 bg-slate-900/60 text-amber-300 hover:border-amber-300">RİSKLİ</button>
           <button id="filterUD"     onclick="setFilter('UYGUN_DEGIL')" class="filter-btn mono text-[11px] px-3 py-1 rounded border border-red-400/40 bg-slate-900/60 text-red-300 hover:border-red-300">UYGUN DEĞİL</button>
+          <button id="filterUnknown" onclick="setFilter('VERI_YETERSIZ')" class="filter-btn mono text-[11px] px-3 py-1 rounded border border-slate-400/40">VERİ YETERSİZ</button>
         </div>
 
         <div class="flex flex-wrap gap-3 items-center">
@@ -1242,7 +1245,7 @@
                   <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4">Kaynak</th>
                   <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4">Yön</th>
                   <th class="mono text-[10px] text-cyan-100/50 pb-2 pr-4">Hız (kt)</th>
-                  <th class="mono text-[10px] text-cyan-100/50 pb-2">Güvenilirlik</th>
+                  <th class="mono text-[10px] text-cyan-100/50 pb-2">Hesap önceliği</th>
                 </tr>
               </thead>
               <tbody id="windSourceTableBody"></tbody>
@@ -1290,6 +1293,11 @@
 
     const PRECIP_LABELS = { 0: 'Yok', 1: 'Hafif', 2: 'Orta/Şiddetli' };
     const DECISION_CONFIG = {
+      'VERI_YETERSIZ': {
+        label: 'Veri yetersiz',
+        title: 'Uçuş uygunluğu doğrulanamıyor',
+        tone: 'unknown',
+      },
       'UYGUN': {
         label: 'Uçuşa uygun',
         title: 'Koşullar uçuş için uygun',
@@ -1307,6 +1315,7 @@
       },
     };
     const PARAM_DECISION_BADGE = {
+      'VERI_YETERSIZ': '<span class="status-pill">VERİ YETERSİZ</span>',
       'UYGUN': '<span class="status-pill bg-green-400/12 text-green-300 border-green-400/30">UYGUN</span>',
       'RISKLI': '<span class="status-pill bg-amber-400/12 text-amber-300 border-amber-400/30">RİSKLİ</span>',
       'UYGUN_DEGIL': '<span class="status-pill bg-red-400/12 text-red-300 border-red-400/30">UYGUN DEĞİL</span>',
@@ -1322,7 +1331,19 @@
       UYGUN: 2,
       RISKLI: 1,
       UYGUN_DEGIL: -2,
+      VERI_YETERSIZ: -2,
     };
+
+    function weatherNumber(value, digits = 1) {
+      return Number.isFinite(value) ? value.toFixed(digits) : 'Bilinmiyor';
+    }
+
+    function dataCoverage(report) {
+      const quality = report.data_quality;
+      return quality
+        ? `${quality.available_parameters}/${quality.required_parameters} alan · ${quality.usable_sources} kullanılabilir kaynak`
+        : 'Bu eski raporda veri kalitesi kaydı yok';
+    }
 
     function setLocation(name) {
       document.getElementById('locationInput').value = name;
@@ -1534,7 +1555,7 @@
         title.textContent = `${label(hour)} · ${formatDecisionLabel(hour.decision)}${hour.is_past ? ' (Geçmiş)' : ''}`;
         const values = document.createElement('p');
         values.className = 'text-xs mt-2 leading-relaxed';
-        values.textContent = `Rüzgâr ${hour.wind_kt.toFixed(1)} kt · ${hour.temperature_c.toFixed(1)} °C · Görüş ${hour.visibility_km.toFixed(1)} km · Nem %${hour.humidity_pct.toFixed(0)} · Yağış ${PRECIP_LABELS[hour.precipitation_level]} · Bulutluluk ${hour.cloud_cover_pct == null ? 'N/A' : '%' + hour.cloud_cover_pct.toFixed(1)}`;
+        values.textContent = `Rüzgâr ${weatherNumber(hour.wind_kt)} kt · ${weatherNumber(hour.temperature_c)} °C · Görüş ${weatherNumber(hour.visibility_km)} km · Nem %${weatherNumber(hour.humidity_pct, 0)} · Yağış ${PRECIP_LABELS[hour.precipitation_level] ?? 'Bilinmiyor'} · Bulutluluk ${weatherNumber(hour.cloud_cover_pct)}%`;
         const details = document.createElement('details');
         details.className = 'text-xs mt-2';
         const summary = document.createElement('summary');
@@ -1696,6 +1717,9 @@
     async function fetchSeasonal() {
       if (!currentReportData) return;
       const report = currentReportData;
+      const status = document.getElementById('seasonalStatus');
+      status.textContent = 'Tarihsel yeniden analiz yükleniyor…';
+      document.getElementById('seasonalHeatmap').replaceChildren();
       try {
         const response = await fetch('/api/v1/weather/seasonal', {
           method: 'POST',
@@ -1704,17 +1728,21 @@
         });
         const data = await response.json();
         if (report !== currentReportData) return;
-        if (!response.ok) throw new Error();
+        if (!response.ok) throw new Error(data.detail || 'Tarihsel veri alınamadı.');
+        status.textContent = `${data.source} · ${data.period}. ${data.disclaimer}`;
         document.getElementById('seasonalHeatmap').innerHTML = data.months.map(month => `
           <div class="month-tile rounded-md border border-cyan-400/15 p-3 ${getDecisionTone(month.decision)}">
             <p class="mono text-[11px]">${month.month}</p>
-            <p class="mono text-xl mt-2">${month.suitability_score}</p>
-            <p class="text-[11px] mt-1">${month.avg_wind_kt.toFixed(1)} kt</p>
+            <p class="text-[11px] mt-1">Günlük maks. rüzgâr ort.: ${weatherNumber(month.avg_wind_kt)} kt</p>
+            <p class="text-[11px] mt-1">Sıcaklık ort.: ${weatherNumber(month.avg_temperature_c)} °C</p>
+            <p class="text-[11px] mt-1">Günlük yağış ort.: ${weatherNumber(month.avg_precipitation_mm)} mm</p>
+            <p class="text-[11px] mt-1">${month.sample_count} tam gün · Uçuş kararı değil</p>
           </div>`).join('');
         document.getElementById('seasonalSection').classList.remove('hidden');
-      } catch (_) {
+      } catch (error) {
         if (report !== currentReportData) return;
-        document.getElementById('seasonalSection').classList.add('hidden');
+        status.textContent = error.message;
+        seasonalLoadedReportId = null;
       }
     }
 
@@ -1887,7 +1915,7 @@
         const parameter = report.parameters.find(item => item.name === name);
         return parameter ? `${parameter.value} · ${formatDecisionLabel(parameter.decision)}\n${parameter.explanation || ''}` : 'Kaydedilmemiş';
       })));
-      row('Güven endeksi', reports.map(report => `%${report.confidence ?? report.confidence_score}`));
+      row('Veri kapsamı', reports.map(dataCoverage));
       row('Kaynak durumu', reports.map(report => sourceSummaryText(report)));
       row('Uygulanan limitler', reports.map(report => formatSavedLimits(report.applied_limits)));
       container.replaceChildren(table);
@@ -2300,11 +2328,13 @@
       }
       document.getElementById('snapshotSources').textContent = `${data.sources.length} kaynak`;
       const severity = { UYGUN: 0, RISKLI: 1, UYGUN_DEGIL: 2 };
-      const ruleScore = Math.max(...data.parameters.map(p => severity[p.decision]));
+      const ruleScore = Math.max(0, ...data.parameters.filter(p => p.decision !== 'VERI_YETERSIZ').map(p => severity[p.decision]));
       const ruleDecision = Object.keys(severity).find(key => severity[key] === ruleScore);
       document.getElementById('ruleDecisionNotice').textContent =
         (data.is_saved_report && !data.parameter_snapshot_available)
           ? 'Eski raporun özgün kural değerlendirmesi kaydedilmemiştir. Aşağıdaki hesaplanmış parametreler kayıtlı nihai kararın yerine geçmez.'
+          : data.missing_parameters?.length
+            ? `Eksik kritik veriler: ${data.missing_parameters.join(', ')}. Mevcut verideki risk seviyesi: ${formatDecisionLabel(data.known_decision)}. AI eksik veriyi tamamlamaz.`
           : `Kural sonucu: ${formatDecisionLabel(ruleDecision)}. ` +
         (severity[data.decision] > ruleScore
           ? 'AI, kural sonucunu daha ihtiyatlı hale getirdi.'
@@ -2326,9 +2356,15 @@
 
       // Load nearby runways in background (non-blocking)
       if (!data.is_saved_report) {
-        loadNearbyRunways(data.lat, data.lon);
-        loadPointAirgram();
-        loadWindData(data.lat, data.lon);
+        if (document.getElementById('airportTools').open) {
+          loadNearbyRunways(data.lat, data.lon);
+          loadPointAirgram();
+        }
+        _currentWindLat = data.lat;
+        _currentWindLon = data.lon;
+        ++windRequestVersion;
+        document.getElementById('windContent').classList.add('hidden');
+        document.getElementById('windPlaceholder').classList.remove('hidden');
       } else {
         pointAirgramController?.abort();
         document.getElementById('pointAirgramChart').replaceChildren();
@@ -2340,8 +2376,8 @@
       const conf = (data.confidence != null)
         ? data.confidence
         : (Number.isFinite(data.confidence_score) ? data.confidence_score : computeConfidence(data.parameters));
-      document.getElementById('confidenceLabel').textContent = `UÇUŞ GÜVEN ENDEKSİ: ${conf}%`;
-      document.getElementById('snapshotConfidence').textContent = `%${conf}`;
+      document.getElementById('confidenceLabel').textContent = 'Eski uygunluk/AI skoru; veri güvenilirliği veya uçuş güvenliği olasılığı değildir.';
+      document.getElementById('snapshotConfidence').textContent = dataCoverage(data);
       animateConfidence(conf);
       renderParameterWeights(data.parameter_weights);
 
@@ -2425,6 +2461,9 @@
       document.getElementById('sourceTimingOverview').textContent =
         `${data.is_saved_report ? 'Rapor oluşturulurken: ' : ''}${sourceSummary}`;
       document.getElementById('reportSourceSummary').textContent = sourceSummary;
+      if (data.data_quality?.warnings.length) {
+        document.getElementById('reportSourceSummary').textContent += ' · ' + data.data_quality.warnings.join(' · ');
+      }
       const checks = document.getElementById('reportSourceChecks');
       checks.replaceChildren();
       if (!data.source_checks) {
@@ -2447,30 +2486,30 @@
           <p class="text-[11px] text-amber-300 mb-2">${s.data_time ? new Date(s.data_time).toISOString() : 'Veri zamanı bilinmiyor'} · ${s.freshness_message || 'Güncellik bilinmiyor.'}</p>
           <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
             <p class="text-cyan-300 font-bold">${uiIcon('globe')} ${formatSourceName(s.source)}</p>
-            <span class="text-[10px] text-cyan-100/55">Güvenilirlik ${formatReliabilityPercent(s.reliability_weight)}%</span>
+            <span class="text-[10px] text-cyan-100/55">${s.data_kind === 'observation' ? 'Meydan gözlemi' : s.data_kind === 'forecast' ? 'Model tahmini' : 'Sağlayıcı ürünü'}${s.station_distance_km != null ? ' · ' + weatherNumber(s.station_distance_km) + ' km uzaklık' : ''}</span>
           </div>
           <div class="source-grid text-cyan-100/75">
-            <p>Rüzgâr: <span class="text-cyan-100">${s.wind_speed_knots.toFixed(1)} kt</span></p>
-            <p>Görüş: <span class="text-cyan-100">${s.visibility_km.toFixed(1)} km</span></p>
-            <p>Yağış: <span class="text-cyan-100">${PRECIP_LABELS[s.precipitation_level] ?? s.precipitation_level}</span></p>
-            <p>Sıcaklık: <span class="text-cyan-100">${s.temperature_c.toFixed(1)} °C</span></p>
-            <p>Nem: <span class="text-cyan-100">${s.humidity_pct.toFixed(0)}%</span></p>
+            <p>Rüzgâr: <span class="text-cyan-100">${weatherNumber(s.wind_speed_knots)} kt</span></p>
+            <p>Görüş: <span class="text-cyan-100">${weatherNumber(s.visibility_km)} km</span></p>
+            <p>Yağış: <span class="text-cyan-100">${PRECIP_LABELS[s.precipitation_level] ?? 'Bilinmiyor'}</span></p>
+            <p>Sıcaklık: <span class="text-cyan-100">${weatherNumber(s.temperature_c)} °C</span></p>
+            <p>Nem: <span class="text-cyan-100">${weatherNumber(s.humidity_pct, 0)}%</span></p>
             <p>Bulutluluk: <span class="text-cyan-100">${s.cloud_cover_pct != null ? s.cloud_cover_pct.toFixed(1) + '%' : 'N/A'}</span></p>
-            <p>Bulut tabanı: <span class="text-cyan-100">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'} ft</span></p>
-          </div>
-          <div class="mt-4">
-            <div class="reliability-track">
-              <div class="reliability-fill" style="width:${formatReliabilityPercent(s.reliability_weight)}%"></div>
-            </div>
+            <p>Bulut tabanı${s.data_kind !== 'observation' ? ' (yaklaşık hesap)' : ''}: <span class="text-cyan-100">${s.cloud_base_ft != null ? s.cloud_base_ft.toFixed(0) : '—'} ft</span></p>
           </div>
         </div>`).join('');
 
       resetChat();
       if (!data.is_saved_report) {
-        fetchForecastChange();
+        planningLoadedReportId = null;
+        seasonalLoadedReportId = null;
+        document.getElementById('forecastTimeline').replaceChildren();
+        document.getElementById('flightPlanTimeline').replaceChildren();
+        document.getElementById('seasonalHeatmap').replaceChildren();
+        document.getElementById('seasonalSection').classList.remove('hidden');
+        if (document.getElementById('planningTools').open) loadPlanningTools();
+        if (document.getElementById('seasonalSection').open) loadSeasonalTools();
         fetchNotam();
-        fetchFlightPlan();
-        fetchSeasonal();
       } else {
         document.getElementById('forecastTimeline').replaceChildren();
         document.getElementById('forecastSection').classList.add('hidden');
@@ -2498,6 +2537,7 @@
         UYGUN: 'Uygun',
         RISKLI: 'Riskli',
         UYGUN_DEGIL: 'Uygun değil',
+        VERI_YETERSIZ: 'Veri yetersiz',
       }[decision] || decision;
     }
 
@@ -2635,6 +2675,9 @@
       }
       if (tabId === 'settings') {
         populateSettingsForm();
+      }
+      if (tabId === 'wind' && _currentWindLat !== null) {
+        loadWindData(_currentWindLat, _currentWindLon);
       }
       if (tabId === 'sources' && !document.getElementById('sourceChecksList').childElementCount) {
         checkDataSources();
@@ -3057,12 +3100,15 @@
       const report = currentReportData;
       if (!report || !report.sources || report.sources.length === 0) return;
 
-      const avgWind = report.sources.reduce((s, src) => s + src.wind_speed_knots, 0) / report.sources.length;
-      const metarSource = report.sources.find(s => s.source && s.source.includes('METAR'));
-      const windDir = metarSource?.wind_direction_deg
-        ?? report.sources.find(s => s.wind_direction_deg != null)?.wind_direction_deg
-        ?? null;
-      if (windDir === null) return;
+      const wind = report.wind_consensus;
+      if (!wind) {
+        document.getElementById('windComponentResult').classList.add('hidden');
+        document.getElementById('windComponentStatus').textContent = 'Kayıtlı, kullanılabilir ortak rüzgâr yok; pist bileşenleri hesaplanamaz.';
+        return;
+      }
+      document.getElementById('windComponentStatus').textContent = 'Rapor oluşturulurken kaydedilen ortak rüzgâr kullanılıyor; ortalama yerel hamleleri temsil etmeyebilir.';
+      const avgWind = wind.wind_speed_knots;
+      const windDir = wind.wind_direction_deg;
 
       const sel = document.getElementById('runwaySelect');
       const manualInput = document.getElementById('manualRunwayHeading');
@@ -3210,24 +3256,26 @@
     }
 
     function _beaufortLabel(knots) {
-      if (knots < 1)  return '0 — Sakin';
-      if (knots < 4)  return '1–3 — Hafif';
-      if (knots < 8)  return '4–5 — Orta';
-      if (knots < 14) return '6–7 — Kuvvetli';
-      return '8+ — Fırtına';
+      const limits = [1, 4, 7, 11, 17, 22, 28, 34, 41, 48, 56, 64];
+      const labels = ['Sakin', 'Hafif esinti', 'Hafif meltem', 'Tatlı meltem', 'Orta meltem', 'Sert meltem', 'Kuvvetli rüzgâr', 'Fırtınamsı rüzgâr', 'Fırtına', 'Kuvvetli fırtına', 'Tam fırtına', 'Çok şiddetli fırtına', 'Kasırga'];
+      const index = limits.findIndex(limit => knots < limit);
+      const force = index < 0 ? 12 : index;
+      return `${force} — ${labels[force]}`;
     }
 
     function _reliabilityBadge(reliability) {
       const cfg = {
-        high:   { label: 'YÜKSEK', cls: 'bg-green-500/20 text-green-300 border-green-500/40' },
-        medium: { label: 'ORTA',   cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
-        low:    { label: 'DÜŞÜK',  cls: 'bg-slate-500/20 text-slate-300 border-slate-500/40' },
+        high:   { label: 'GÖZLEM ÖNCELİĞİ', cls: 'bg-green-500/20 text-green-300 border-green-500/40' },
+        medium: { label: 'STANDART AĞIRLIK', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+        low:    { label: 'DÜŞÜK AĞIRLIK',  cls: 'bg-slate-500/20 text-slate-300 border-slate-500/40' },
       };
       const c = cfg[reliability] || cfg.low;
       return `<span class="mono text-[10px] border rounded px-2 py-0.5 ${c.cls}">${c.label}</span>`;
     }
 
+    let windRequestVersion = 0;
     async function loadWindData(lat, lon) {
+      const version = ++windRequestVersion;
       _currentWindLat = lat;
       _currentWindLon = lon;
       document.getElementById('windPlaceholder').classList.add('hidden');
@@ -3236,6 +3284,7 @@
       document.getElementById('windLoading').classList.remove('hidden');
       try {
         const res = await fetch(`/api/v1/weather/wind?lat=${lat}&lon=${lon}`);
+        if (version !== windRequestVersion) return;
         document.getElementById('windLoading').classList.add('hidden');
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -3244,8 +3293,10 @@
           return;
         }
         const data = await res.json();
+        if (version !== windRequestVersion) return;
         _renderWindData(data);
       } catch(e) {
+        if (version !== windRequestVersion) return;
         document.getElementById('windLoading').classList.add('hidden');
         document.getElementById('windError').textContent = 'Rüzgâr verisi alınamadı: ' + e.message;
         document.getElementById('windError').classList.remove('hidden');
@@ -3290,7 +3341,7 @@
         tr.innerHTML = `
           <td class="py-2 pr-4 text-cyan-100 text-[12px]">${s.source}${isBest ? ' <span class="text-cyan-400/70 text-[10px]">Öncelikli kaynak</span>' : ''}</td>
           <td class="py-2 pr-4 text-cyan-200 text-[12px]">${dirCell}</td>
-          <td class="py-2 pr-4 text-cyan-200 text-[12px]">${s.wind_speed_knots.toFixed(1)}</td>
+          <td class="py-2 pr-4 text-cyan-200 text-[12px]">${weatherNumber(s.wind_speed_knots)}</td>
           <td class="py-2">${_reliabilityBadge(s.reliability)}</td>
         `;
         tbody.appendChild(tr);
@@ -3323,6 +3374,8 @@
     }
 
     function getMarkerColor(pt, mode) {
+      const field = { wind: 'wind_speed_knots', cloud: 'cloud_cover_pct', humidity: 'humidity_pct', temperature: 'temperature_c' }[mode];
+      if (field && !Number.isFinite(pt[field])) return getHudColors().muted;
       if (mode === 'decision') {
         const colors = getHudColors();
         return { UYGUN: colors.safe, RISKLI: colors.caution, UYGUN_DEGIL: colors.danger }[pt.decision] || colors.accent;
@@ -3372,42 +3425,23 @@
     }
 
     function buildGridPopupHtml(pt) {
-      const lim = loadSettings();
-      const dec = pt.decision;
-      const decBadge = dec === 'UYGUN'
-        ? '<span class="popup-badge popup-badge-ok">UYGUN</span>'
-        : dec === 'RISKLI'
-          ? '<span class="popup-badge popup-badge-warn">RİSKLİ</span>'
-          : '<span class="popup-badge popup-badge-bad">UYGUN DEĞİL</span>';
-
-      const wLvl = _paramLevel(pt.wind_speed_knots, lim.wind_ok_max_knots, lim.wind_risky_max_knots);
-      const vLvl = _paramLevelMin(pt.visibility_km, lim.visibility_ok_min_km, lim.visibility_risky_min_km);
-      const hLvl = _paramLevel(pt.humidity_pct, lim.humidity_ok_max_pct, lim.humidity_risky_max_pct);
-      const tOk  = pt.temperature_c >= lim.temp_ok_min_c && pt.temperature_c <= lim.temp_ok_max_c;
-      const tLvl = tOk ? 0 : 2;
-      const cloudVal = pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0;
-      const cLvl = cloudVal <= lim.cloud_cover_ok_max_pct ? 0 : 1;
-      const bLvl = pt.cloud_base_ft == null ? 0
-                 : _paramLevelMin(pt.cloud_base_ft, lim.cloud_base_ok_min_ft, lim.cloud_base_risky_min_ft);
-      const pLvl = Math.min(pt.precipitation_level, 2);
-
-      const row = (label, value, lvl) =>
-        `<tr><td>${label}</td><td>${value}</td><td>${_badge(lvl)}</td></tr>`;
-
+      const esc = value => {
+        const element = document.createElement('span');
+        element.textContent = value;
+        return element.innerHTML;
+      };
+      const rows = (pt.parameters || []).map(p =>
+        `<tr><td>${esc(p.name)}</td><td>${esc(p.value)}</td><td>${esc(formatDecisionLabel(p.decision))}</td></tr>`
+      ).join('');
       return (
         '<div class="map-report-popup">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">' +
         '<span style="font-weight:600">' + pt.lat.toFixed(4) + ', ' + pt.lon.toFixed(4) + '</span>' +
-        decBadge + '</div>' +
+        esc(formatDecisionLabel(pt.decision)) + '</div>' +
         '<table style="width:100%;border-collapse:collapse">' +
-        row('Rüzgâr (kt)', pt.wind_speed_knots.toFixed(1), wLvl) +
-        row('Görüş (km)', pt.visibility_km.toFixed(1), vLvl) +
-        row('Nem (%)', Math.round(pt.humidity_pct) + '%', hLvl) +
-        row('Sıcaklık', pt.temperature_c.toFixed(1) + '°C', tLvl) +
-        row('Bulutluluk', Math.round(pt.cloud_cover_pct != null ? pt.cloud_cover_pct : 0) + '%', cLvl) +
-        (pt.cloud_base_ft != null ? row('Bulut tabanı', Math.round(pt.cloud_base_ft) + ' ft', bLvl) : '') +
-        row('Yağış', PRECIP_LABELS_LOCAL[pt.precipitation_level] || '—', pLvl) +
-        '</table></div>'
+        rows + '</table><p>' + esc(plainAnalysisText(pt.detail || 'Bu noktanın ayrıntılı verisi yok.')) +
+        '</p><p>' + esc(pt.wind_method || '') + '</p>' +
+        (pt.time ? '<p>Hedef: ' + esc(pt.time) + '</p>' : '') + '</div>'
       );
     }
 
@@ -3451,10 +3485,10 @@
 
     function setFilter(f) {
       activeFilter = f;
-      ['filterAll', 'filterUygun', 'filterRiskli', 'filterUD'].forEach(id => {
+      ['filterAll', 'filterUygun', 'filterRiskli', 'filterUD', 'filterUnknown'].forEach(id => {
         document.getElementById(id).classList.remove('filter-active');
       });
-      const idMap = { ALL: 'filterAll', UYGUN: 'filterUygun', RISKLI: 'filterRiskli', UYGUN_DEGIL: 'filterUD' };
+      const idMap = { ALL: 'filterAll', UYGUN: 'filterUygun', RISKLI: 'filterRiskli', UYGUN_DEGIL: 'filterUD', VERI_YETERSIZ: 'filterUnknown' };
       document.getElementById(idMap[f]).classList.add('filter-active');
       gridMarkers.forEach(({ marker, pt }) => {
         if (activeFilter === 'ALL' || pt.decision === activeFilter) {
@@ -3466,12 +3500,13 @@
     }
 
     function _updateFilterCounts(points) {
-      const counts = { ALL: points.length, UYGUN: 0, RISKLI: 0, UYGUN_DEGIL: 0 };
+      const counts = { ALL: points.length, UYGUN: 0, RISKLI: 0, UYGUN_DEGIL: 0, VERI_YETERSIZ: 0 };
       points.forEach(p => { if (counts[p.decision] !== undefined) counts[p.decision]++; });
       document.getElementById('filterAll').textContent    = 'TÜM NOKTALAR (' + counts.ALL + ')';
       document.getElementById('filterUygun').textContent  = 'UYGUN (' + counts.UYGUN + ')';
       document.getElementById('filterRiskli').textContent = 'RİSKLİ (' + counts.RISKLI + ')';
       document.getElementById('filterUD').textContent     = 'UYGUN DEĞİL (' + counts.UYGUN_DEGIL + ')';
+      document.getElementById('filterUnknown').textContent = 'VERİ YETERSİZ (' + counts.VERI_YETERSIZ + ')';
     }
 
     // ── Map init ───────────────────────────────────────────────────────
@@ -3688,21 +3723,25 @@
         document.getElementById('summaryBar').innerHTML =
           '<div style="width:' + (s.UYGUN / total * 100).toFixed(1) + '%;background:' + getHudColors().safe + ';height:100%"></div>' +
           '<div style="width:' + (s.RISKLI / total * 100).toFixed(1) + '%;background:' + getHudColors().caution + ';height:100%"></div>' +
-          '<div style="width:' + (s.UYGUN_DEGIL / total * 100).toFixed(1) + '%;background:' + getHudColors().danger + ';height:100%"></div>';
+          '<div style="width:' + (s.UYGUN_DEGIL / total * 100).toFixed(1) + '%;background:' + getHudColors().danger + ';height:100%"></div>' +
+          '<div style="width:' + ((s.VERI_YETERSIZ || 0) / total * 100).toFixed(1) + '%;background:' + getHudColors().muted + ';height:100%"></div>';
         document.getElementById('summaryPercent').textContent =
-          s.total + ' nokta — Uygun: ' + (s.UYGUN / total * 100).toFixed(0) + '%';
+          s.total + ' nokta — Uygun: ' + (s.UYGUN / total * 100).toFixed(0) + '% · Veri yetersiz: ' + (s.VERI_YETERSIZ || 0);
 
         // ── Extended stats ──
         const pts = data.points;
-        const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        const avg = arr => {
+          const values = arr.filter(Number.isFinite);
+          return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+        };
         document.getElementById('avgWind').textContent =
-          avg(pts.map(p => p.wind_speed_knots)).toFixed(1) + ' kt';
+          weatherNumber(avg(pts.map(p => p.wind_speed_knots))) + ' kt';
         document.getElementById('avgCloud').textContent =
-          Math.round(avg(pts.map(p => p.cloud_cover_pct != null ? p.cloud_cover_pct : 0))) + '%';
+          weatherNumber(avg(pts.map(p => p.cloud_cover_pct)), 0) + '%';
         document.getElementById('avgHumidity').textContent =
-          Math.round(avg(pts.map(p => p.humidity_pct))) + '%';
+          weatherNumber(avg(pts.map(p => p.humidity_pct)), 0) + '%';
         document.getElementById('avgTemp').textContent =
-          avg(pts.map(p => p.temperature_c)).toFixed(1) + '°C';
+          weatherNumber(avg(pts.map(p => p.temperature_c))) + '°C';
 
         // ── Best / Worst points ──
         const bestBtn = document.getElementById('bestPointBtn');
@@ -3748,6 +3787,9 @@
       const s = gridData.summary || {};
       const pts = gridData.points || [];
       const total = s.total || pts.length || 0;
+      if (s.VERI_YETERSIZ || pts.some(p => p.decision === 'VERI_YETERSIZ')) {
+        return `${total} noktada ${s.VERI_YETERSIZ || pts.filter(p => p.decision === 'VERI_YETERSIZ').length} veri yetersiz, ${s.UYGUN || 0} uygun, ${s.RISKLI || 0} riskli, ${s.UYGUN_DEGIL || 0} uygun değil. Eksik noktalar uygun kabul edilmez; bölgenin tamamı için uçuş uygunluğu doğrulanamaz.`;
+      }
       const pctUygun = total ? Math.round((s.UYGUN || 0) / total * 100) : 0;
 
       let overall = 'Bölge için yeterli veri bulunamadı.';
@@ -3780,6 +3822,31 @@
       aiSection.classList.remove('hidden');
     }
 
+    let planningLoadedReportId = null;
+    let seasonalLoadedReportId = null;
+    function loadPlanningTools() {
+      if (!currentReportData || currentReportData.is_saved_report || planningLoadedReportId === currentReportId) return;
+      planningLoadedReportId = currentReportId;
+      fetchForecastChange();
+      fetchFlightPlan();
+    }
+    function loadSeasonalTools() {
+      if (!currentReportData || currentReportData.is_saved_report || seasonalLoadedReportId === currentReportId) return;
+      seasonalLoadedReportId = currentReportId;
+      fetchSeasonal();
+    }
+    document.getElementById('planningTools').addEventListener('toggle', event => {
+      if (event.currentTarget.open) loadPlanningTools();
+    });
+    document.getElementById('seasonalSection').addEventListener('toggle', event => {
+      if (event.currentTarget.open) loadSeasonalTools();
+    });
+    document.getElementById('airportTools').addEventListener('toggle', event => {
+      if (event.currentTarget.open && currentReportData && !currentReportData.is_saved_report) {
+        loadNearbyRunways(currentReportData.lat, currentReportData.lon);
+        loadPointAirgram();
+      }
+    });
   </script>
 </body>
 </html>

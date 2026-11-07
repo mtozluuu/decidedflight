@@ -12,6 +12,7 @@ from decideflight.services.decision_engine import (
     RISKLI,
     UYGUN,
     UYGUN_DEGIL,
+    VERI_YETERSIZ,
     make_decision,
 )
 from decideflight.services.weather_fetcher import (
@@ -78,10 +79,10 @@ class TestDecisionEngine:
 
     def test_missing_cloud_data_explanation_is_not_current_or_safe_claim(self):
         result = make_decision([_make_source(cloud_base=None, cloud_ceiling=None)])
-        assert result.decision == UYGUN
+        assert result.decision == VERI_YETERSIZ
         clouds = [p for p in result.parameters if p.value == "N/A"]
         assert len(clouds) == 2
-        assert all("Veri yok" in p.explanation for p in clouds)
+        assert all("Kullanılabilir veri yok" in p.explanation for p in clouds)
 
     @pytest.mark.parametrize(
         "cover, expected", [(0, UYGUN), (50, UYGUN), (50.1, RISKLI), (100, RISKLI)]
@@ -180,9 +181,9 @@ class TestDecisionEngine:
         result = make_decision(sources)
         assert result.decision == UYGUN_DEGIL
 
-    def test_none_cloud_base_treated_as_ok(self):
+    def test_unknown_clouds_do_not_imply_suitable_flight(self):
         result = make_decision([_make_source(cloud_base=None, cloud_ceiling=None)])
-        assert result.decision == UYGUN
+        assert result.decision == VERI_YETERSIZ
 
     def test_parameters_list_length(self):
         result = make_decision([_make_source()])

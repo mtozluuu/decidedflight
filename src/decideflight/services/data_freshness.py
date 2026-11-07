@@ -80,7 +80,9 @@ def source_timing(source: WeatherSourceData, now: datetime) -> dict:
         value = raw.get("last_updated_epoch")
     elif source.source == "Windy":
         times = raw.get("ts")
-        value = times[0] / 1000 if times and isinstance(times[0], (int, float)) else None
+        value = raw.get("selected_time")
+        if value is None:
+            value = times[0] / 1000 if times and isinstance(times[0], (int, float)) else None
         kind = "forecast"
     elif "NOAA" in source.source:
         value = raw.get("obsTime")
@@ -105,6 +107,12 @@ def source_timing(source: WeatherSourceData, now: datetime) -> dict:
     age = (now - timestamp).total_seconds() / 60
     if kind == "forecast":
         result["freshness_message"] = "Tahminin hedef zamanı; model üretim zamanı bilinmiyor."
+        if age > 120:
+            result["freshness"] = "stale"
+            result["freshness_message"] += " Hedef zamanı 120 dakikadan eski; değerlendirmeye katılmaz."
+        elif age < -120:
+            result["freshness"] = "stale"
+            result["freshness_message"] += " Hedef zamanı anlık değerlendirmeden 120 dakikadan fazla ileride; değerlendirmeye katılmaz."
     elif age < -5:
         result["freshness_message"] = "Veri zamanı gelecekte; güncellik doğrulanamadı."
     else:
@@ -114,5 +122,6 @@ def source_timing(source: WeatherSourceData, now: datetime) -> dict:
             if age > 60:
                 result["freshness_message"] += " Eski veri: 60 dakikayı aşıyor."
         else:
-            result["freshness_message"] += " Sağlayıcı güncellik eşiği tanımlı değil."
+            result["freshness"] = "stale" if age > 120 else "current"
+            result["freshness_message"] += " Güncellik sınırı: 120 dakika."
     return result

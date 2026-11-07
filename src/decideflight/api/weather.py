@@ -28,6 +28,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 from decideflight.services.mgm_observations import fetch_mgm_observations
 from decideflight.services.airgram import fetch_airgram
+from decideflight.services.weather_cache import WeatherCache
 from decideflight.services.data_freshness import observation_timing, source_timing
 from decideflight.services.flight_limits import DroneLimit
 from decideflight.services.weather_fetcher import airport_location
@@ -46,7 +47,7 @@ from decideflight.services.ai_decision_engine import (
     make_ai_decision,
 )
 from decideflight.services.decision_engine import DecisionResult, ParameterResult, make_decision
-from decideflight.services.decision_engine import compute_wind_components
+from decideflight.services.decision_engine import compute_wind_components, usable_sources, wind_consensus
 from decideflight.services.geocoding import geocode_city
 from decideflight.services.report_generator import generate_pdf
 from decideflight.services.trend_analyzer import fetch_wind_trend
@@ -54,6 +55,8 @@ from decideflight.services.weather_fetcher import (
     AirQualityData,
     WeatherSourceData,
     _fetch_with_retry,
+    _precip_level,
+    _to_float,
     fetch_air_quality,
     fetch_all_sources,
     fetch_nearby_runways,
@@ -62,6 +65,12 @@ from decideflight.services.weather_fetcher import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
+_hourly_cache: WeatherCache[dict[str, Any]] = WeatherCache(ttl=120)
+_seasonal_cache: WeatherCache[SeasonalResponse] = WeatherCache(ttl=86400)
+
+
+def _round_optional(value: float | None, digits: int = 1) -> float | None:
+    return round(value, digits) if value is not None else None
 
 # Grid analysis: batch size and inter-batch delay to avoid rate limits
 _GRID_BATCH_SIZE = 5
@@ -101,8 +110,8 @@ def get_db():
 class WeatherReportRequest(BaseModel):
     limits: DroneLimit | None = None
     location: str | None = None
-    lat: float | None = None
-    lon: float | None = None
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
 
     @model_validator(mode="after")
     def _check_input(self) -> "WeatherReportRequest":
@@ -128,14 +137,18 @@ class WeatherSourceSchema(BaseModel):
     freshness: str = "unknown"
     freshness_message: str = "Veri zamanı doğrulanamadı."
     cloud_cover_pct: float | None = None
-    wind_speed_knots: float
-    temperature_c: float
-    humidity_pct: float
-    visibility_km: float
-    precipitation_level: int
+    wind_speed_knots: float | None
+    temperature_c: float | None
+    humidity_pct: float | None
+    visibility_km: float | None
+    precipitation_level: int | None
     cloud_base_ft: float | None
     cloud_ceiling_ft: float | None
     wind_direction_deg: float | None = None
+    data_kind: str = "unknown"
+    station_distance_km: float | None = None
+    ceiling_unlimited: bool = False
+    clouds_clear: bool = False
 
 
 class AirportObservationsResponse(BaseModel):
@@ -243,6 +256,11 @@ class WeatherReportResponse(BaseModel):
     aqi_score: int | None = None
     pm25: float | None = None
     pm10: float | None = None
+    missing_parameters: list[str] = Field(default_factory=list)
+    known_decision: str | None = None
+    excluded_sources: list[str] = Field(default_factory=list)
+    data_quality: dict[str, Any] | None = None
+    wind_consensus: dict[str, float | int] | None = None
 
 
 class DataSourceCheckSchema(BaseModel):
@@ -522,6 +540,23 @@ async def create_weather_report(
             for source in sources
         ],
     }
+    selected, _ = usable_sources(sources)
+    ai_payload["data_quality"] = {
+        "available_parameters": 7 - len(decision_result.missing_parameters),
+        "required_parameters": 7,
+        "usable_sources": len(selected),
+        "received_sources": len(sources),
+        "warnings": [
+            f"{s.source}: {source_timing(s, datetime.now(timezone.utc))['freshness_message']}"
+            for s in selected
+            if source_timing(s, datetime.now(timezone.utc))["freshness"] == "unknown"
+        ] + decision_result.excluded_sources,
+    }
+    wind = wind_consensus(sources)
+    ai_payload["wind_consensus"] = (
+        {"wind_speed_knots": wind[0], "wind_direction_deg": wind[1], "source_count": wind[2]}
+        if wind else None
+    )
     if isinstance(decision_result, AIDecisionResult):
         ai_payload.update(
             {
@@ -545,7 +580,7 @@ async def create_weather_report(
     ai_data = json.dumps(ai_payload, ensure_ascii=False) if ai_payload else None
 
     sources_json = json.dumps(
-        [{k: v for k, v in asdict(s).items() if k != "raw"} for s in sources]
+        [asdict(s) for s in sources]
     )
     report = WeatherReport(
         location=location_name,
@@ -597,6 +632,10 @@ async def create_weather_report(
                 cloud_ceiling_ft=s.cloud_ceiling_ft,
                 cloud_cover_pct=s.cloud_cover_pct,
                 wind_direction_deg=s.wind_direction_deg,
+                data_kind=s.data_kind,
+                station_distance_km=s.station_distance_km,
+                ceiling_unlimited=s.ceiling_unlimited,
+                clouds_clear=s.clouds_clear,
             )
             for s in sources
         ],
@@ -623,6 +662,11 @@ async def create_weather_report(
         aqi_score=decision_result.aqi_score,
         pm25=decision_result.pm25,
         pm10=decision_result.pm10,
+        missing_parameters=decision_result.missing_parameters,
+        known_decision=decision_result.known_decision,
+        excluded_sources=decision_result.excluded_sources,
+        data_quality=ai_payload["data_quality"],
+        wind_consensus=ai_payload["wind_consensus"],
     )
 
 
@@ -751,6 +795,11 @@ def _load_report_sources(report: WeatherReport) -> list[WeatherSourceData]:
             wind_direction_deg=source.get("wind_direction_deg"),
             reliability_weight=source.get("reliability_weight", 1.0),
             raw=source.get("raw", {}),
+            data_kind=source.get("data_kind", "unknown"),
+            ceiling_unlimited=source.get("ceiling_unlimited", False),
+            clouds_clear=source.get("clouds_clear", False),
+            station_distance_km=source.get("station_distance_km"),
+            observation_id=source.get("observation_id"),
         )
         for source in raw_sources
     ]
@@ -880,20 +929,28 @@ async def get_weather_report(
         aqi_score=decision.aqi_score,
         pm25=decision.pm25,
         pm10=decision.pm10,
+        missing_parameters=decision.missing_parameters,
+        known_decision=decision.known_decision,
+        excluded_sources=decision.excluded_sources,
+        data_quality=payload.get("data_quality"),
+        wind_consensus=payload.get("wind_consensus"),
     )
 
 
 def _build_point_source(hour_data: dict[str, Any]) -> WeatherSourceData:
     return WeatherSourceData(
         source="Open-Meteo Forecast",
-        wind_speed_knots=float(hour_data["wind_speed_knots"]),
-        temperature_c=float(hour_data["temperature_c"]),
-        humidity_pct=float(hour_data["humidity_pct"]),
-        visibility_km=float(hour_data["visibility_km"]),
-        precipitation_level=int(hour_data["precipitation_level"]),
+        wind_speed_knots=hour_data["wind_speed_knots"],
+        temperature_c=hour_data["temperature_c"],
+        humidity_pct=hour_data["humidity_pct"],
+        visibility_km=hour_data["visibility_km"],
+        precipitation_level=hour_data["precipitation_level"],
         cloud_base_ft=hour_data.get("cloud_base_ft"),
         cloud_ceiling_ft=hour_data.get("cloud_ceiling_ft"),
         cloud_cover_pct=hour_data.get("cloud_cover_pct"),
+        ceiling_unlimited=hour_data.get("ceiling_unlimited", False),
+        clouds_clear=hour_data.get("clouds_clear", False),
+        data_kind="forecast",
     )
 
 
@@ -908,12 +965,12 @@ class ReportChatResponse(BaseModel):
 class ForecastHourSchema(BaseModel):
     offset: int
     decision: str
-    wind_kt: float
-    temperature_c: float
-    humidity_pct: float
-    visibility_km: float
+    wind_kt: float | None
+    temperature_c: float | None
+    humidity_pct: float | None
+    visibility_km: float | None
     cloud_base_ft: float | None = None
-    precipitation_level: int
+    precipitation_level: int | None
     time: datetime
     detail: str
     cloud_cover_pct: float | None = None
@@ -931,8 +988,8 @@ class NotamResponse(BaseModel):
 
 class FlightPlanRequest(BaseModel):
     limits: DroneLimit | None = None
-    lat: float
-    lon: float
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
     date_offset: int
     start_hour: int
     end_hour: int
@@ -951,12 +1008,12 @@ class FlightPlanRequest(BaseModel):
 class FlightPlanHourSchema(BaseModel):
     hour: int
     decision: str
-    wind_kt: float
-    temperature_c: float
-    humidity_pct: float
-    visibility_km: float
+    wind_kt: float | None
+    temperature_c: float | None
+    humidity_pct: float | None
+    visibility_km: float | None
     cloud_base_ft: float | None = None
-    precipitation_level: int
+    precipitation_level: int | None
     time: datetime | None = None
     detail: str = ""
     cloud_cover_pct: float | None = None
@@ -992,20 +1049,26 @@ class HistoryResponse(BaseModel):
 
 
 class SeasonalRequest(BaseModel):
-    lat: float
-    lon: float
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
 
 
 class SeasonalMonthSchema(BaseModel):
     month: str
-    avg_wind_kt: float
-    avg_visibility_km: float
-    suitability_score: int
+    avg_wind_kt: float | None
+    avg_visibility_km: float | None = None
+    suitability_score: int | None = None
     decision: str
+    avg_temperature_c: float | None = None
+    avg_precipitation_mm: float | None = None
+    sample_count: int = 0
 
 
 class SeasonalResponse(BaseModel):
     months: list[SeasonalMonthSchema]
+    source: str = "Open-Meteo Historical Weather / ERA5"
+    period: str = "1991–2020"
+    disclaimer: str = "Tarihsel yeniden analiz; ölçüm veya güncel uçuş tahmini değildir. Rüzgâr günlük maksimumların ortalamasıdır. Görüş/tavan olmadığı için uçuş uygunluğu hesaplanmaz."
 
 
 _MONTHS_TR = [
@@ -1045,6 +1108,13 @@ async def _fetch_open_meteo_hourly(
     timezone_name: str = "UTC",
     forecast_days: int = 3,
 ) -> dict[str, Any]:
+    return await _hourly_cache.get(
+        (lat, lon, timezone_name, forecast_days),
+        lambda: _load_open_meteo_hourly(lat, lon, timezone_name, forecast_days),
+    )
+
+
+async def _load_open_meteo_hourly(lat: float, lon: float, timezone_name: str, forecast_days: int) -> dict[str, Any]:
     async with httpx.AsyncClient() as client:
         resp = await _fetch_with_retry(
             client,
@@ -1076,35 +1146,37 @@ def _hourly_row_from_payload(
         values = hourly.get(key, [])
         if len(values) <= index or values[index] is None:
             return default
-        return float(values[index])
+        value = float(values[index])
+        return value if math.isfinite(value) else default
 
     temp_c = _value("temperature_2m")
-    if temp_c is None:
+    if all(_value(key) is None for key in (
+        "temperature_2m", "wind_speed_10m", "relative_humidity_2m",
+        "visibility", "precipitation", "cloud_cover", "dew_point_2m",
+    )):
         return None
 
     dew_c = _value("dew_point_2m")
-    cloud_cover = _value("cloud_cover", 0.0) or 0.0
+    cloud_cover = _value("cloud_cover")
     base_ft: float | None = None
-    if dew_c is not None:
+    if dew_c is not None and temp_c is not None:
         spread = max(temp_c - dew_c, 0.0)
         base_ft = spread * 122.5 * 3.28084
 
     return {
         "time": times[index],
-        "wind_speed_knots": ((_value("wind_speed_10m", 0.0) or 0.0) * 0.539957),
+        "wind_speed_knots": _value("wind_speed_10m") * 0.539957 if _value("wind_speed_10m") is not None else None,
         "temperature_c": temp_c,
-        "humidity_pct": _value("relative_humidity_2m", 0.0) or 0.0,
-        "visibility_km": ((_value("visibility", 10000.0) or 10000.0) / 1000.0),
+        "humidity_pct": _value("relative_humidity_2m"),
+        "visibility_km": _value("visibility") / 1000.0 if _value("visibility") is not None else None,
         "cloud_base_ft": base_ft,
         "cloud_cover_pct": _value("cloud_cover"),
         "cloud_ceiling_ft": (
-            base_ft + 200.0 if base_ft is not None and cloud_cover > 50 else None
+            base_ft + 200.0 if base_ft is not None and cloud_cover is not None and cloud_cover > 50 else None
         ),
-        "precipitation_level": (
-            0
-            if ((_value("precipitation", 0.0) or 0.0) <= 0)
-            else 1 if ((_value("precipitation", 0.0) or 0.0) < 2.5) else 2
-        ),
+        "precipitation_level": _precip_level(_value("precipitation")) if _value("precipitation") is not None else None,
+        "ceiling_unlimited": cloud_cover is not None and cloud_cover <= 50,
+        "clouds_clear": cloud_cover == 0,
     }
 
 
@@ -1218,12 +1290,12 @@ async def forecast_change(
             ForecastHourSchema(
                 offset=offset,
                 decision=decision.decision,
-                wind_kt=round(float(result["wind_speed_knots"]), 1),
-                temperature_c=round(float(result["temperature_c"]), 1),
-                humidity_pct=round(float(result["humidity_pct"]), 1),
-                visibility_km=round(float(result["visibility_km"]), 1),
+                wind_kt=_round_optional(result["wind_speed_knots"]),
+                temperature_c=_round_optional(result["temperature_c"]),
+                humidity_pct=_round_optional(result["humidity_pct"]),
+                visibility_km=_round_optional(result["visibility_km"]),
                 cloud_base_ft=result.get("cloud_base_ft"),
-                precipitation_level=int(result["precipitation_level"]),
+                precipitation_level=result["precipitation_level"],
                 time=timestamp,
                 detail=decision.detail,
                 cloud_cover_pct=decision.avg_cloud_cover_pct,
@@ -1300,12 +1372,12 @@ async def flight_plan(body: FlightPlanRequest) -> FlightPlanResponse:
                 FlightPlanHourSchema(
                     hour=timestamp.hour,
                     decision=decision.decision,
-                    wind_kt=round(float(row["wind_speed_knots"]), 1),
-                    temperature_c=round(float(row["temperature_c"]), 1),
-                    humidity_pct=round(float(row["humidity_pct"]), 1),
-                    visibility_km=round(float(row["visibility_km"]), 1),
+                    wind_kt=_round_optional(row["wind_speed_knots"]),
+                    temperature_c=_round_optional(row["temperature_c"]),
+                    humidity_pct=_round_optional(row["humidity_pct"]),
+                    visibility_km=_round_optional(row["visibility_km"]),
                     cloud_base_ft=row.get("cloud_base_ft"),
-                    precipitation_level=int(row["precipitation_level"]),
+                    precipitation_level=row["precipitation_level"],
                     time=timestamp,
                     detail=decision.detail,
                     cloud_cover_pct=decision.avg_cloud_cover_pct,
@@ -1386,37 +1458,37 @@ async def weather_history(
     summary="Mevsimsel uçuş uygunluğu analizi oluştur",
 )
 async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
-    """Compute seasonal flight suitability using ERA5 30-year climate normals.
+    return await _seasonal_cache.get(
+        (body.lat, body.lon), lambda: _load_seasonal_analysis(body),
+    )
 
-    Tries the Open-Meteo Climate API (ERA5 1991-2020 daily data, averaged by
-    month).  Falls back to latitude-based climate zone normals if the API is
-    unavailable or returns unexpected data.
-    """
-    monthly_wind_kmh: list[float] | None = None
-    monthly_precip_mm: list[float] | None = None
-    monthly_temp_c: list[float] | None = None
+
+async def _load_seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
+    """Show historical monthly statistics without inventing flight suitability."""
+    monthly_wind_kmh: list[float | None] | None = None
+    monthly_precip_mm: list[float | None] | None = None
+    monthly_temp_c: list[float | None] | None = None
 
     try:
         async with httpx.AsyncClient() as client:
             resp = await _fetch_with_retry(
                 client,
-                "https://climate-api.open-meteo.com/v1/climate",
+                "https://archive-api.open-meteo.com/v1/archive",
                 {
                     "latitude": body.lat,
                     "longitude": body.lon,
-                    "daily": (
-                        "wind_speed_10m_mean,precipitation_sum," "temperature_2m_mean"
-                    ),
+                    "daily": "wind_speed_10m_max,precipitation_sum,temperature_2m_mean",
                     "start_date": "1991-01-01",
                     "end_date": "2020-12-31",
-                    "models": "ERA5",
+                    "models": "era5",
+                    "timezone": "UTC",
                 },
             )
             payload = resp.json()
 
         daily = payload.get("daily", {})
         times = daily.get("time", [])
-        winds = daily.get("wind_speed_10m_mean", [])
+        winds = daily.get("wind_speed_10m_max", [])
         precips = daily.get("precipitation_sum", [])
         temps = daily.get("temperature_2m_mean", [])
 
@@ -1429,190 +1501,48 @@ async def seasonal_analysis(body: SeasonalRequest) -> SeasonalResponse:
             for i, t in enumerate(times):
                 # "1991-01-01" → month index 0
                 m = int(t[5:7]) - 1
-                if len(winds) > i and winds[i] is not None:
+                if (
+                    len(winds) > i and len(precips) > i and len(temps) > i
+                    and all(isinstance(v, (int, float)) and math.isfinite(v) for v in (winds[i], precips[i], temps[i]))
+                ):
                     wind_sums[m] += float(winds[i])
                     counts[m] += 1
-                if len(precips) > i and precips[i] is not None:
                     precip_sums[m] += float(precips[i])
-                if len(temps) > i and temps[i] is not None:
                     temp_sums[m] += float(temps[i])
 
             if any(c > 0 for c in counts):
                 monthly_wind_kmh = [
-                    wind_sums[i] / counts[i] if counts[i] > 0 else 0.0
+                    wind_sums[i] / counts[i] if counts[i] > 0 else None
                     for i in range(12)
                 ]
                 monthly_precip_mm = [
-                    precip_sums[i] / counts[i] if counts[i] > 0 else 0.0
+                    precip_sums[i] / counts[i] if counts[i] > 0 else None
                     for i in range(12)
                 ]
                 monthly_temp_c = [
-                    temp_sums[i] / counts[i] if counts[i] > 0 else _DEFAULT_TEMP_C
+                    temp_sums[i] / counts[i] if counts[i] > 0 else None
                     for i in range(12)
                 ]
-    except Exception:
-        pass  # Fall through to latitude-based fallback
+    except (httpx.HTTPError, ValueError, TypeError, IndexError) as exc:
+        logger.warning("Historical seasonal data unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Tarihsel iklim verisi alınamadı; varsayımsal tablo gösterilmiyor.") from exc
 
     if monthly_wind_kmh is None:
-        # Latitude-based climate zone fallback
-        abs_lat = abs(body.lat)
-        if abs_lat < _TROPICAL_LAT_THRESHOLD:  # Tropical
-            monthly_wind_kmh = [
-                12.0,
-                12.0,
-                13.0,
-                13.0,
-                14.0,
-                15.0,
-                15.0,
-                14.0,
-                13.0,
-                12.0,
-                12.0,
-                12.0,
-            ]
-            monthly_precip_mm = [
-                5.0,
-                5.0,
-                6.0,
-                8.0,
-                12.0,
-                18.0,
-                20.0,
-                18.0,
-                15.0,
-                10.0,
-                7.0,
-                5.0,
-            ]
-            monthly_temp_c = [28.0] * 12
-        elif abs_lat < _POLAR_LAT_THRESHOLD:  # Temperate
-            monthly_wind_kmh = [
-                18.0,
-                17.0,
-                16.0,
-                14.0,
-                12.0,
-                11.0,
-                11.0,
-                12.0,
-                14.0,
-                16.0,
-                18.0,
-                19.0,
-            ]
-            monthly_precip_mm = [
-                8.0,
-                7.0,
-                8.0,
-                7.0,
-                7.0,
-                6.0,
-                5.0,
-                6.0,
-                7.0,
-                9.0,
-                10.0,
-                9.0,
-            ]
-            monthly_temp_c = [
-                2.0,
-                3.0,
-                7.0,
-                12.0,
-                17.0,
-                21.0,
-                23.0,
-                22.0,
-                18.0,
-                12.0,
-                7.0,
-                3.0,
-            ]
-        else:  # Polar
-            monthly_wind_kmh = [
-                25.0,
-                23.0,
-                20.0,
-                18.0,
-                15.0,
-                12.0,
-                12.0,
-                14.0,
-                18.0,
-                22.0,
-                25.0,
-                27.0,
-            ]
-            monthly_precip_mm = [
-                4.0,
-                3.0,
-                4.0,
-                4.0,
-                5.0,
-                6.0,
-                7.0,
-                7.0,
-                6.0,
-                5.0,
-                4.0,
-                4.0,
-            ]
-            monthly_temp_c = [
-                -15.0,
-                -14.0,
-                -9.0,
-                -2.0,
-                5.0,
-                12.0,
-                14.0,
-                13.0,
-                7.0,
-                -1.0,
-                -9.0,
-                -13.0,
-            ]
+        logger.warning("Historical seasonal payload contains no complete days")
+        raise HTTPException(status_code=503, detail="Tarihsel iklim verisi eksik; uygunluk hesaplanmadı.")
+    assert monthly_precip_mm is not None and monthly_temp_c is not None
 
     months: list[SeasonalMonthSchema] = []
     for index, month_name in enumerate(_MONTHS_TR):
         wind_kmh = monthly_wind_kmh[index]
-        precip = monthly_precip_mm[index] if monthly_precip_mm else 0.0
-        temp = monthly_temp_c[index] if monthly_temp_c else _DEFAULT_TEMP_C
-
-        visibility_km = (
-            10.0
-            if precip < _PRECIP_LIGHT_MM
-            else (7.0 if precip < _PRECIP_MODERATE_MM else 4.0)
-        )
-        precip_level = (
-            0
-            if precip < _PRECIP_LIGHT_MM
-            else (1 if precip < _PRECIP_MODERATE_MM else 2)
-        )
-
-        source = WeatherSourceData(
-            source="Open-Meteo Climate",
-            wind_speed_knots=wind_kmh * 0.539957,
-            temperature_c=temp,
-            humidity_pct=60.0,
-            visibility_km=visibility_km,
-            precipitation_level=precip_level,
-            cloud_base_ft=None,
-            cloud_ceiling_ft=None,
-        )
-        decision = make_decision([source])
-        suitability = {
-            "UYGUN": 85,
-            "RISKLI": 55,
-            "UYGUN_DEGIL": 25,
-        }[decision.decision]
         months.append(
             SeasonalMonthSchema(
                 month=month_name,
-                avg_wind_kt=round(source.wind_speed_knots, 1),
-                avg_visibility_km=round(visibility_km, 1),
-                suitability_score=suitability,
-                decision=decision.decision,
+                avg_wind_kt=_round_optional(wind_kmh * 0.539957) if wind_kmh is not None else None,
+                avg_temperature_c=_round_optional(monthly_temp_c[index]),
+                avg_precipitation_mm=_round_optional(monthly_precip_mm[index]),
+                sample_count=counts[index],
+                decision="VERI_YETERSIZ",
             )
         )
     return SeasonalResponse(months=months)
@@ -1647,14 +1577,18 @@ class GridPointWeather(BaseModel):
     lat: float
     lon: float
     decision: str
-    wind_speed_knots: float
-    temperature_c: float
-    humidity_pct: float
-    visibility_km: float
+    wind_speed_knots: float | None
+    temperature_c: float | None
+    humidity_pct: float | None
+    visibility_km: float | None
     cloud_base_ft: float | None
     cloud_ceiling_ft: float | None
-    precipitation_level: int
-    cloud_cover_pct: float = 0.0
+    precipitation_level: int | None
+    cloud_cover_pct: float | None = None
+    detail: str = ""
+    parameters: list[ParameterResultSchema] = Field(default_factory=list)
+    time: datetime | None = None
+    wind_method: str = ""
 
 
 class GridSummary(BaseModel):
@@ -1662,6 +1596,7 @@ class GridSummary(BaseModel):
     RISKLI: int
     UYGUN_DEGIL: int
     total: int
+    VERI_YETERSIZ: int = 0
 
 
 class GridAnalysisResponse(BaseModel):
@@ -1712,7 +1647,7 @@ async def _fetch_grid_point_weather(
 
     When ``hours`` is 0 or 1 the current conditions are returned.
     For ``hours > 1`` the hourly forecast is fetched and data at the
-    requested hour offset (used as array index) is returned.
+    requested UTC target hour is returned.
 
     For altitudes above ~1500 ft the nearest pressure-level wind speed is
     requested and used in place of the 10 m wind.
@@ -1767,175 +1702,153 @@ async def _fetch_grid_point_weather(
 
     if not use_hourly:
         cur = data.get("current", {})
-        temp_c: float | None = cur.get("temperature_2m")
-        if temp_c is None:
-            return None
+        temp_c: float | None = _to_float(cur.get("temperature_2m"))
+        valid_time = _hourly_timestamp(cur["time"]) if cur.get("time") else None
 
-        dew_c: float | None = cur.get("dew_point_2m")
-        wind_kmh: float = cur.get("wind_speed_10m", 0.0)
-        rh: float = cur.get("relative_humidity_2m", 0.0)
-        precip_mm: float = cur.get("precipitation", 0.0)
-        vis_m: float = cur.get("visibility", 10000.0)
-        cloud_pct: float = cur.get("cloud_cover", 0.0)
+        dew_c: float | None = _to_float(cur.get("dew_point_2m"))
+        wind_kmh = _to_float(cur.get("wind_speed_10m"))
+        rh = _to_float(cur.get("relative_humidity_2m"))
+        precip_mm = _to_float(cur.get("precipitation"))
+        vis_m = _to_float(cur.get("visibility"))
+        cloud_pct = _to_float(cur.get("cloud_cover"))
 
-        wind_knots = wind_kmh * 0.539957
+        wind_knots = wind_kmh * 0.539957 if wind_kmh is not None else None
 
         if pressure_hpa is not None:
             hourly = data.get("hourly", {})
             pl_wind_list = hourly.get(f"wind_speed_{pressure_hpa}hPa", [])
-            if pl_wind_list:
-                wind_knots = float(pl_wind_list[0]) * 0.539957
+            target = valid_time.replace(minute=0, second=0, microsecond=0) if valid_time else None
+            idx = next((i for i, text in enumerate(hourly.get("time", [])) if _hourly_timestamp(text) == target), None)
+            pl_wind = _to_float(pl_wind_list[idx]) if idx is not None and len(pl_wind_list) > idx else None
+            wind_knots = pl_wind * 0.539957 if pl_wind is not None else None
         else:
             # Power-law wind profile: V(z) = V_ref * (z/z_ref)^(1/7)
             # Exponent 1/7 (~0.143) is the standard value for open terrain
             # (Hellmann exponent); z_ref = 10 m (Open-Meteo measurement height).
             alt_m = altitude_ft * 0.3048
             ref_m = 10.0
-            if alt_m > ref_m:
+            if alt_m > ref_m and wind_knots is not None:
                 wind_knots *= (alt_m / ref_m) ** (1.0 / 7.0)
     else:
-        # Parse hourly arrays at the requested index
         hourly = data.get("hourly", {})
         temp_list: list[Any] = hourly.get("temperature_2m", [])
-        if not temp_list or len(temp_list) <= hours:
+        target = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) + timedelta(hours=hours)
+        idx = next((i for i, text in enumerate(hourly.get("time", [])) if _hourly_timestamp(text) == target), None)
+        if idx is None:
+            logger.warning("Grid target hour missing: %s", target.isoformat())
             return None
-        idx = hours
+        valid_time = target
 
-        temp_c = temp_list[idx]
-        if temp_c is None:
-            return None
+        temp_c = _to_float(temp_list[idx]) if len(temp_list) > idx else None
 
-        def _h(key: str, default: float) -> float:
+        def _h(key: str) -> float | None:
             lst = hourly.get(key, [])
             val = lst[idx] if len(lst) > idx else None
-            return float(val) if val is not None else default
+            return _to_float(val)
 
         dew_c_val = hourly.get("dew_point_2m", [])
         dew_c = (
-            float(dew_c_val[idx])
+            _to_float(dew_c_val[idx])
             if len(dew_c_val) > idx and dew_c_val[idx] is not None
             else None
         )
-        wind_kmh = _h("wind_speed_10m", 0.0)
-        rh = _h("relative_humidity_2m", 0.0)
-        precip_mm = _h("precipitation", 0.0)
-        vis_m = _h("visibility", 10000.0)
-        cloud_pct = _h("cloud_cover", 0.0)
+        wind_kmh = _h("wind_speed_10m")
+        rh = _h("relative_humidity_2m")
+        precip_mm = _h("precipitation")
+        vis_m = _h("visibility")
+        cloud_pct = _h("cloud_cover")
 
-        wind_knots = wind_kmh * 0.539957
+        wind_knots = wind_kmh * 0.539957 if wind_kmh is not None else None
 
         if pressure_hpa is not None:
             pl_wind_list = hourly.get(f"wind_speed_{pressure_hpa}hPa", [])
             if len(pl_wind_list) > idx and pl_wind_list[idx] is not None:
-                wind_knots = float(pl_wind_list[idx]) * 0.539957
+                pl_wind = _to_float(pl_wind_list[idx])
+                wind_knots = pl_wind * 0.539957 if pl_wind is not None else None
+            else:
+                wind_knots = None
         else:
             alt_m = altitude_ft * 0.3048
             ref_m = 10.0
-            if alt_m > ref_m:
+            if alt_m > ref_m and wind_knots is not None:
                 wind_knots *= (alt_m / ref_m) ** (1.0 / 7.0)
 
     base_ft: float | None = None
-    if dew_c is not None:
+    if dew_c is not None and temp_c is not None:
         spread = max(temp_c - dew_c, 0.0)
         # Standard approximation: ~122.5 m per degC of T/Td spread
         base_ft = spread * 122.5 * 3.28084
 
     ceiling_ft: float | None = None
-    if base_ft is not None and cloud_pct > 50:
+    if base_ft is not None and cloud_pct is not None and cloud_pct > 50:
         # Heuristic: when cloud cover > 50 % the ceiling is just above the
         # estimated base (200 ft offset mirrors the existing weather_fetcher).
         ceiling_ft = base_ft + 200.0
 
-    if precip_mm <= 0:
+    if precip_mm is not None and precip_mm < 0:
+        logger.warning("Grid returned negative precipitation; marked unknown")
+        precip_mm = None
+    if precip_mm is None:
+        precip_level = None
+    elif precip_mm <= 0:
         precip_level = 0
     elif precip_mm < 2.5:
         precip_level = 1
     else:
         precip_level = 2
 
+    validated = WeatherSourceData(
+        source="Open-Meteo",
+        wind_speed_knots=wind_knots,
+        temperature_c=temp_c,
+        humidity_pct=rh,
+        visibility_km=vis_m / 1000.0 if vis_m is not None else None,
+        cloud_base_ft=base_ft,
+        cloud_ceiling_ft=ceiling_ft,
+        precipitation_level=precip_level,
+        cloud_cover_pct=cloud_pct,
+    )
     return {
-        "wind_speed_knots": round(wind_knots, 2),
-        "temperature_c": temp_c,
-        "humidity_pct": rh,
-        "visibility_km": vis_m / 1000.0,
-        "cloud_base_ft": base_ft,
-        "cloud_ceiling_ft": ceiling_ft,
-        "precipitation_level": precip_level,
-        "cloud_cover_pct": cloud_pct,
+        "wind_speed_knots": _round_optional(validated.wind_speed_knots, 2),
+        "temperature_c": validated.temperature_c,
+        "humidity_pct": validated.humidity_pct,
+        "visibility_km": validated.visibility_km,
+        "cloud_base_ft": validated.cloud_base_ft if validated.temperature_c is not None else None,
+        "cloud_ceiling_ft": validated.cloud_ceiling_ft if validated.temperature_c is not None and validated.cloud_cover_pct is not None else None,
+        "precipitation_level": validated.precipitation_level,
+        "cloud_cover_pct": validated.cloud_cover_pct,
+        "ceiling_unlimited": validated.cloud_cover_pct is not None and validated.cloud_cover_pct <= 50,
+        "clouds_clear": validated.cloud_cover_pct == 0,
+        "time": valid_time,
+        "wind_method": (
+            f"{pressure_hpa} hPa model seviyesi; yükseklik yaklaşık, sıcaklık/nem yüzey değeridir"
+            if pressure_hpa else "10 m model rüzgârından açık arazi güç kanunuyla yaklaşık irtifa hesabı"
+            if altitude_ft * 0.3048 > 10 else "10 m model rüzgârı"
+        ),
     }
 
 
 def _eval_grid_decision(
-    wind_speed_knots: float,
-    visibility_km: float,
-    temperature_c: float,
-    humidity_pct: float,
+    wind_speed_knots: float | None,
+    visibility_km: float | None,
+    temperature_c: float | None,
+    humidity_pct: float | None,
     cloud_base_ft: float | None,
     cloud_ceiling_ft: float | None,
-    precipitation_level: int,
+    precipitation_level: int | None,
     limits: DroneLimit,
     cloud_cover_pct: float | None = None,
+    ceiling_unlimited: bool = False,
 ) -> str:
-    """Return UYGUN / RISKLI / UYGUN_DEGIL for one grid point."""
-    scores: list[int] = []
-    if cloud_cover_pct is not None:
-        scores.append(1 if cloud_cover_pct > limits.cloud_cover_ok_max_pct else 0)
-
-    # Wind
-    if wind_speed_knots < limits.wind_ok_max_knots:
-        scores.append(0)
-    elif wind_speed_knots <= limits.wind_risky_max_knots:
-        scores.append(1)
-    else:
-        scores.append(2)
-
-    # Visibility
-    if visibility_km > limits.visibility_ok_min_km:
-        scores.append(0)
-    elif visibility_km >= limits.visibility_risky_min_km:
-        scores.append(1)
-    else:
-        scores.append(2)
-
-    # Precipitation
-    scores.append(min(precipitation_level, 2))
-
-    # Temperature
-    if limits.temp_ok_min_c <= temperature_c <= limits.temp_ok_max_c:
-        scores.append(0)
-    elif (limits.temp_ok_min_c - 5) <= temperature_c <= (limits.temp_ok_max_c + 5):
-        scores.append(1)
-    else:
-        scores.append(2)
-
-    # Humidity
-    if humidity_pct < limits.humidity_ok_max_pct:
-        scores.append(0)
-    elif humidity_pct <= limits.humidity_risky_max_pct:
-        scores.append(1)
-    else:
-        scores.append(2)
-
-    # Cloud base
-    if cloud_base_ft is not None:
-        if cloud_base_ft > limits.cloud_base_ok_min_ft:
-            scores.append(0)
-        elif cloud_base_ft >= limits.cloud_base_risky_min_ft:
-            scores.append(1)
-        else:
-            scores.append(2)
-
-    # Cloud ceiling
-    if cloud_ceiling_ft is not None:
-        if cloud_ceiling_ft > limits.cloud_ceiling_ok_min_ft:
-            scores.append(0)
-        elif cloud_ceiling_ft >= limits.cloud_ceiling_risky_min_ft:
-            scores.append(1)
-        else:
-            scores.append(2)
-
-    worst = max(scores) if scores else 0
-    return [_UYGUN, _RISKLI, _UYGUN_DEGIL][worst]
+    """Use the same rules and missing-data policy as point/hourly analysis."""
+    return make_decision([WeatherSourceData(
+        source="Open-Meteo Grid", wind_speed_knots=wind_speed_knots,
+        temperature_c=temperature_c, humidity_pct=humidity_pct,
+        visibility_km=visibility_km, precipitation_level=precipitation_level,
+        cloud_base_ft=cloud_base_ft, cloud_ceiling_ft=cloud_ceiling_ft,
+        cloud_cover_pct=cloud_cover_pct, ceiling_unlimited=ceiling_unlimited,
+        data_kind="forecast",
+    )], limits=limits).decision
 
 
 # ---------------------------------------------------------------------------
@@ -1993,27 +1906,24 @@ async def analyse_weather_grid(
     for (lat, lon), result in zip(grid_coords, raw_results):
         if isinstance(result, Exception):
             logger.warning("Grid point (%.4f, %.4f) raised: %s", lat, lon, result)
-            continue
+            result = None
         if result is None:
+            points.append(GridPointWeather(
+                lat=lat, lon=lon, decision="VERI_YETERSIZ",
+                wind_speed_knots=None, temperature_c=None, humidity_pct=None,
+                visibility_km=None, precipitation_level=None,
+                cloud_base_ft=None, cloud_ceiling_ft=None,
+                detail="Bu noktanın hava verisi alınamadı.",
+            ))
             continue
 
-        decision = _eval_grid_decision(
-            wind_speed_knots=result["wind_speed_knots"],
-            visibility_km=result["visibility_km"],
-            temperature_c=result["temperature_c"],
-            humidity_pct=result["humidity_pct"],
-            cloud_base_ft=result["cloud_base_ft"],
-            cloud_ceiling_ft=result["cloud_ceiling_ft"],
-            precipitation_level=result["precipitation_level"],
-            limits=body.limits,
-            cloud_cover_pct=result.get("cloud_cover_pct"),
-        )
+        decision = make_decision([_build_point_source(result)], limits=body.limits)
 
         points.append(
             GridPointWeather(
                 lat=lat,
                 lon=lon,
-                decision=decision,
+                decision=decision.decision,
                 wind_speed_knots=result["wind_speed_knots"],
                 temperature_c=result["temperature_c"],
                 humidity_pct=result["humidity_pct"],
@@ -2022,6 +1932,10 @@ async def analyse_weather_grid(
                 cloud_ceiling_ft=result["cloud_ceiling_ft"],
                 precipitation_level=result["precipitation_level"],
                 cloud_cover_pct=result.get("cloud_cover_pct", 0.0),
+                detail=decision.detail,
+                parameters=[ParameterResultSchema(**asdict(p)) for p in decision.parameters],
+                time=result.get("time"),
+                wind_method=result.get("wind_method", ""),
             )
         )
 
@@ -2039,6 +1953,7 @@ async def analyse_weather_grid(
         RISKLI=n_riskli,
         UYGUN_DEGIL=n_uygun_degil,
         total=len(points),
+        VERI_YETERSIZ=sum(p.decision == "VERI_YETERSIZ" for p in points),
     )
     ai_regional_summary = await _build_grid_ai_summary(
         GridSummaryRequest(
@@ -2132,7 +2047,10 @@ def _build_grid_summary_metrics(body: GridSummaryRequest) -> GridSummaryMetrics 
     points = body.points
     summary = body.summary
 
-    if not points:
+    if not points or summary.VERI_YETERSIZ or any(
+        value is None for p in points
+        for value in (p.wind_speed_knots, p.temperature_c, p.humidity_pct, p.visibility_km)
+    ):
         return None
 
     avg_wind = sum(p.wind_speed_knots for p in points) / len(points)
@@ -2385,9 +2303,9 @@ async def calculate_wind_components(
 _SOURCE_NOTES: dict[str, str] = {
     "METAR (AVWX)": "Gerçek havalimanı ölçümü",
     "METAR (CheckWX)": "Gerçek havalimanı ölçümü",
-    "METAR (AviationWeather)": "Gerçek havalimanı ölçümü",
-    "Windy": "Yüksek çözünürlüklü model",
-    "OWM": "OpenWeatherMap anlık verisi",
+    "METAR (NOAA/aviationweather.gov)": "Havalimanı gözlemi; hamle varsa hızda kullanılır",
+    "Windy": "GFS model tahmini",
+    "OpenWeatherMap": "OpenWeatherMap güncel hava ürünü",
     "WeatherAPI": "WeatherAPI anlık verisi",
     "Open-Meteo": "Açık kaynak hava modeli",
     "MGM": "Meteoroloji Genel Müdürlüğü",
@@ -2411,7 +2329,7 @@ def _reliability_label(weight: float) -> str:
 
 class WindSourceItem(BaseModel):
     source: str
-    wind_speed_knots: float
+    wind_speed_knots: float | None
     wind_direction_deg: float | None
     reliability: str
     reliability_weight: float
@@ -2450,42 +2368,29 @@ async def get_wind(lat: float, lon: float) -> WindResponse:
             detail=str(exc),
         ) from exc
 
+    sources, excluded = usable_sources(sources)
     items = sorted(sources, key=lambda s: s.reliability_weight, reverse=True)
 
     # Weighted average consensus from sources that have wind_direction_deg
-    valid = [s for s in items if s.wind_direction_deg is not None]
-    if not valid:
+    consensus = wind_consensus(items)
+    if consensus is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No source returned a valid wind direction.",
+            detail="Kullanılabilir rüzgâr hız/yön çifti yok veya kaynak yönleri çelişiyor; ortak rüzgâr hesaplanamaz.",
         )
 
-    total_weight = sum(s.reliability_weight for s in valid)
-    avg_speed = (
-        sum(s.wind_speed_knots * s.reliability_weight for s in valid) / total_weight
-    )
-
-    # Circular mean for wind direction
-    sin_sum = sum(
-        math.sin(math.radians(s.wind_direction_deg)) * s.reliability_weight
-        for s in valid
-    )
-    cos_sum = sum(
-        math.cos(math.radians(s.wind_direction_deg)) * s.reliability_weight
-        for s in valid
-    )
-    avg_dir = math.degrees(math.atan2(sin_sum, cos_sum)) % 360.0
+    avg_speed, avg_dir, count = consensus
 
     return WindResponse(
         consensus=WindConsensus(
             wind_speed_knots=round(avg_speed, 1),
             wind_direction_deg=round(avg_dir, 1),
-            source_count=len(valid),
+            source_count=count,
         ),
         sources=[
             WindSourceItem(
                 source=s.source,
-                wind_speed_knots=round(s.wind_speed_knots, 1),
+                wind_speed_knots=_round_optional(s.wind_speed_knots),
                 wind_direction_deg=(
                     round(s.wind_direction_deg, 1)
                     if s.wind_direction_deg is not None

@@ -48,7 +48,8 @@ def test_missing_hour_breaks_window_and_is_reported(monkeypatch, fixed_clock):
     response = plan(monkeypatch, hourly_payload([9, 10, 11, 12], missing=10))
     assert response.status_code == 200
     body = response.json()
-    assert body["missing_hours"] == [10]
+    assert body["missing_hours"] == []
+    assert next(hour for hour in body["hours"] if hour["hour"] == 10)["decision"] == "VERI_YETERSIZ"
     assert body["best_window"] == {"start_hour": 11, "end_hour": 12, "length": 2}
     assert body["date"] == "2026-11-07"
     assert body["timezone"] == "UTC"
@@ -112,9 +113,10 @@ async def test_forecast_is_next_hour_not_current_and_uses_saved_limits(monkeypat
     })
     db = SimpleNamespace(get=lambda *args: SimpleNamespace(lat=37, lon=37))
     result = await weather.forecast_change(1, db=db)
-    assert result.missing_offsets == [2]
-    assert [hour.time.hour for hour in result.hours] == [9, 11, 12, 13, 14]
-    assert all(hour.decision == "RISKLI" for hour in result.hours)
+    assert result.missing_offsets == []
+    assert [hour.time.hour for hour in result.hours] == [9, 10, 11, 12, 13, 14]
+    assert result.hours[1].decision == "VERI_YETERSIZ"
+    assert all(hour.decision == "RISKLI" for hour in result.hours if hour.time.hour != 10)
     assert "8–12" in result.hours[0].detail
     fetch.assert_awaited_once_with(37, 37)
 

@@ -36,6 +36,7 @@ from decideflight.services.decision_engine import (
     UYGUN,
     RISKLI,
     UYGUN_DEGIL,
+    VERI_YETERSIZ,
 )
 from decideflight.services.weather_fetcher import WeatherSourceData
 
@@ -46,12 +47,14 @@ _DECISION_COLOURS = {
     UYGUN: colors.HexColor("#1a7a1a"),
     RISKLI: colors.HexColor("#c47a00"),
     UYGUN_DEGIL: colors.HexColor("#c0392b"),
+    VERI_YETERSIZ: colors.HexColor("#536170"),
 }
 
 _PARAM_BG = {
     UYGUN: colors.HexColor("#d4edda"),
     RISKLI: colors.HexColor("#fff3cd"),
     UYGUN_DEGIL: colors.HexColor("#f8d7da"),
+    VERI_YETERSIZ: colors.HexColor("#e2e6eb"),
 }
 
 _HEADER_BG = colors.HexColor("#2c3e50")
@@ -112,9 +115,9 @@ _DECISION_LABEL_STYLE = ParagraphStyle(
 # ---------------------------------------------------------------------------
 
 
-def _precip_label(level: float) -> str:
+def _precip_label(level: float | None) -> str:
     mapping = {0: "Yok", 1: "Hafif", 2: "Orta/Şiddetli"}
-    return mapping.get(int(level), "Bilinmiyor")
+    return mapping.get(int(level), "Bilinmiyor") if level is not None else "Bilinmiyor"
 
 
 def _optional_str(val: float | None, unit: str = "ft") -> str:
@@ -139,10 +142,10 @@ def _header_row() -> list[str]:
 def _source_row(s: WeatherSourceData) -> list[str]:
     return [
         s.source,
-        f"{s.wind_speed_knots:.1f}",
-        f"{s.temperature_c:.1f}",
-        f"{s.humidity_pct:.0f}",
-        f"{s.visibility_km:.1f}",
+        f"{s.wind_speed_knots:.1f}" if s.wind_speed_knots is not None else "N/A",
+        f"{s.temperature_c:.1f}" if s.temperature_c is not None else "N/A",
+        f"{s.humidity_pct:.0f}" if s.humidity_pct is not None else "N/A",
+        f"{s.visibility_km:.1f}" if s.visibility_km is not None else "N/A",
         _precip_label(s.precipitation_level),
         _optional_str(s.cloud_base_ft),
         _optional_str(s.cloud_ceiling_ft),
@@ -152,10 +155,10 @@ def _source_row(s: WeatherSourceData) -> list[str]:
 def _avg_row(dr: DecisionResult) -> list[str]:
     return [
         "ORTALAMA",
-        f"{dr.avg_wind_knots:.1f}",
-        f"{dr.avg_temp_c:.1f}",
-        f"{dr.avg_humidity_pct:.0f}",
-        f"{dr.avg_visibility_km:.1f}",
+        f"{dr.avg_wind_knots:.1f}" if dr.avg_wind_knots is not None else "N/A",
+        f"{dr.avg_temp_c:.1f}" if dr.avg_temp_c is not None else "N/A",
+        f"{dr.avg_humidity_pct:.0f}" if dr.avg_humidity_pct is not None else "N/A",
+        f"{dr.avg_visibility_km:.1f}" if dr.avg_visibility_km is not None else "N/A",
         _precip_label(dr.avg_precip_level),
         _optional_str(dr.avg_cloud_base_ft),
         _optional_str(dr.avg_cloud_ceiling_ft),
@@ -277,6 +280,7 @@ def generate_pdf(
         UYGUN: "✅ UYGUN",
         RISKLI: "⚠️ RİSKLİ",
         UYGUN_DEGIL: "❌ UYGUN DEĞİL",
+        VERI_YETERSIZ: "VERI YETERSIZ",
     }.get(decision_result.decision, decision_result.decision)
 
     dec_label_style = ParagraphStyle(
@@ -373,6 +377,7 @@ def generate_pdf(
             UYGUN: "✅ Uygun",
             RISKLI: "⚠️ Riskli",
             UYGUN_DEGIL: "❌ Uygun Değil",
+            VERI_YETERSIZ: "Veri yetersiz",
         }.get(p.decision, p.decision)
         param_data.append([
             p.name, p.value, label,

@@ -12,3 +12,12 @@ import decideflight.models  # noqa: F401
 def initialize_test_database():
     """Create all DB tables once for the test session."""
     init_db()
+
+
+@pytest.fixture(autouse=True)
+def clear_weather_caches():
+    from decideflight.api.weather import _hourly_cache, _seasonal_cache
+    from decideflight.services.weather_fetcher import _air_quality_cache, _weather_cache
+
+    for cache in (_hourly_cache, _seasonal_cache, _air_quality_cache, _weather_cache):
+        cache.clear()
