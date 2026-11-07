@@ -139,7 +139,7 @@ def test_map_layer_grid_and_parsing() -> None:
 
 
 def test_map_layer_endpoint(monkeypatch) -> None:
-    async def fake_layer(level: str):
+    async def fake_layer(level: str, hour: int = 0):
         return {"level": level, "label": "x", "valid_time_utc": "t", "points": []}
 
     monkeypatch.setattr("decideflight.api.map_layers.load_layer", fake_layer)
@@ -162,7 +162,7 @@ def test_airports_endpoint_lists_turkish_icao_airports() -> None:
 def test_ui_wires_route_and_sigmet_plugins() -> None:
     index = (STATIC / "index.html").read_text()
     sw = (STATIC / "sw.js").read_text()
-    for name in ("sigmet.js", "route.js"):
+    for name in ("sigmet.js", "route.js", "region.js"):
         assert f"/static/{name}" in index
         assert f"'/static/{name}'" in sw
 
@@ -201,3 +201,12 @@ def test_status_and_sigmet_endpoints(monkeypatch) -> None:
 
     assert client.get("/api/v1/map-layers/airports/status").json()["stations"]["LTAC"]["category"] == "IFR"
     assert client.get("/api/v1/map-layers/sigmet").json()["sigmets"] == []
+
+
+def test_parse_response_picks_requested_hour() -> None:
+    from decideflight.services import map_layers
+
+    payload = {"hourly": {"time": ["t0", "t1"], "wind_speed_10m": [5, 9], "wind_direction_10m": [1, 2], "cloud_cover": [10, 20]}}
+    data = map_layers.parse_response("surface", [(40.0, 30.0)], payload, hour=1)
+    assert data["valid_time_utc"] == "t1"
+    assert data["points"][0]["wind_speed_knots"] == 9 and data["points"][0]["cloud_cover_pct"] == 20

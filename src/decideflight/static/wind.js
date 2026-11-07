@@ -38,8 +38,11 @@
     let statusEl = null;
     let requestId = 0;
 
-    function setStatus(text) {
-      if (statusEl) statusEl.textContent = text;
+    let hour = 0;
+    let levelSelect = null;
+
+    function setStatus(text, retry) {
+      MapUtil.setStatus(statusEl, text, retry);
     }
 
     async function redraw() {
@@ -52,7 +55,7 @@
       const current = ++requestId;
       setStatus('Yükleniyor…');
       try {
-        const res = await fetch('/api/v1/map-layers/wind-cloud?level=' + encodeURIComponent(level));
+        const res = await fetch('/api/v1/map-layers/wind-cloud?level=' + encodeURIComponent(level) + (hour ? '&hour=' + hour : ''));
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Veri alınamadı');
         if (current !== requestId) return;
@@ -86,9 +89,9 @@
           }
         });
         group.addTo(map);
-        setStatus(data.label + ' · ' + String(data.valid_time_utc).replace('T', ' ') + ' UTC · model tahmini');
+        setStatus(data.label + (hour ? ' · +' + hour + ' sa' : '') + ' · ' + String(data.valid_time_utc).replace('T', ' ') + ' UTC · model tahmini');
       } catch (err) {
-        setStatus(err.message);
+        setStatus(err.message, redraw);
       }
     }
 
@@ -112,6 +115,20 @@
         option.textContent = text;
       });
       select.addEventListener('change', () => { level = select.value; redraw(); });
+      levelSelect = select;
+      map._windApi = {
+        setLevel(value) {
+          if (value === level) return;
+          level = value;
+          select.value = value;
+          redraw();
+        },
+        setHour(value) {
+          if (value === hour) return;
+          hour = value;
+          redraw();
+        },
+      };
       const legend = L.DomUtil.create('div', 'cloud-legend', box);
       legend.innerHTML = '<span>Bulut %0</span><i></i><span>%100</span>';
       statusEl = L.DomUtil.create('div', 'airspace-status', box);

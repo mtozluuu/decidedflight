@@ -78,7 +78,7 @@ def _variables(level: str) -> list[str]:
     return [f"wind_speed{suffix}", f"wind_direction{suffix}", f"cloud_cover{suffix}"]
 
 
-def parse_response(level: str, points: list[tuple[float, float]], payload: Any) -> dict[str, Any]:
+def parse_response(level: str, points: list[tuple[float, float]], payload: Any, hour: int = 0) -> dict[str, Any]:
     speed_key, dir_key, cloud_key = _variables(level)
     entries = payload if isinstance(payload, list) else [payload]
     if len(entries) != len(points):
@@ -88,12 +88,12 @@ def parse_response(level: str, points: list[tuple[float, float]], payload: Any) 
     for (lat, lon), entry in zip(points, entries):
         hourly = entry.get("hourly") or {}
         times = hourly.get("time") or []
-        if times and valid_time is None:
-            valid_time = times[0]
+        if len(times) > hour and valid_time is None:
+            valid_time = times[hour]
 
         def first(key: str) -> float | None:
             values = hourly.get(key) or []
-            return values[0] if values else None
+            return values[hour] if len(values) > hour else None
 
         samples.append(
             {
@@ -107,9 +107,10 @@ def parse_response(level: str, points: list[tuple[float, float]], payload: Any) 
     return {"level": level, "label": LEVELS[level]["label"], "valid_time_utc": valid_time, "points": samples}
 
 
-async def _load_layer_once(level: str) -> dict[str, Any]:
+async def _load_layer_once(level: str, hour: int = 0) -> dict[str, Any]:
     now = time.time()
-    cached = _cache.get(level)
+    key = level if hour == 0 else f"{level}:{hour}"
+    cached = _cache.get(key)
     if cached and now - cached[0] < CACHE_TTL_SECONDS:
         return cached[1]
     points = grid_points()
@@ -118,31 +119,31 @@ async def _load_layer_once(level: str) -> dict[str, Any]:
         "longitude": ",".join(str(lon) for _, lon in points),
         "hourly": ",".join(_variables(level)),
         "wind_speed_unit": "kn",
-        "forecast_hours": 1,
+        "forecast_hours": hour + 1,
         "timezone": "GMT",
     }
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(OPEN_METEO_URL, params=params)
             response.raise_for_status()
-            data = parse_response(level, points, response.json())
+            data = parse_response(level, points, response.json(), hour)
     except (httpx.HTTPError, ValueError) as exc:
         raise MapLayerUnavailableError("Open-Meteo harita verisi alınamadı.") from exc
-    _cache[level] = (now, data)
+    _cache[key] = (now, data)
     return data
 
 
 _layer_lock = asyncio.Lock()
 
 
-async def load_layer(level: str) -> dict[str, Any]:
+async def load_layer(level: str, hour: int = 0) -> dict[str, Any]:
     # Open-Meteo rejects concurrent requests, so layers are fetched one at a time with one retry.
     async with _layer_lock:
         try:
-            return await _load_layer_once(level)
+            return await _load_layer_once(level, hour)
         except MapLayerUnavailableError:
             await asyncio.sleep(1.5)
-            return await _load_layer_once(level)
+            return await _load_layer_once(level, hour)
 
 
 AWC_METAR_URL = "https://aviationweather.gov/api/data/metar"

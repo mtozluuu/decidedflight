@@ -28,11 +28,14 @@ def airports() -> dict:
 
 
 @router.get("/wind-cloud")
-async def wind_cloud(level: str = Query("surface", description="surface, 850, 700 veya 500")) -> dict:
+async def wind_cloud(
+    level: str = Query("surface", description="surface, 850, 700 veya 500"),
+    hour: int = Query(0, ge=0, le=24, description="Şimdiden itibaren saat farkı"),
+) -> dict:
     if level not in LEVELS:
         raise HTTPException(status_code=422, detail="Geçersiz seviye. surface, 850, 700 veya 500 kullanın.")
     try:
-        data = await load_layer(level)
+        data = await load_layer(level, hour)
     except MapLayerUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {**data, "source": "Open-Meteo", "disclaimer": DISCLAIMER}
